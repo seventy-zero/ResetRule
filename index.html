@@ -190,10 +190,12 @@
                     
                     // Initialize game state
                     gameStarted = true;
-                    console.log('Game state initialized');
+                    console.log('Game state initialized, gameStarted =', gameStarted);
                     
                     // Reset player position and state
                     camera.position.set(0, playerHeight, 0);
+                    console.log('Camera position reset to:', camera.position);
+                    
                     velocity.set(0, 0, 0);
                     flingVelocity.set(0, 0, 0);
                     verticalVelocity = 0;
@@ -214,7 +216,7 @@
                     
                     // Lock controls after everything is set up
                     controls.lock();
-                    console.log('Controls locked');
+                    console.log('Controls lock requested');
                 }
             } catch (error) {
                 console.error('Error during game initialization:', error);
@@ -230,9 +232,12 @@
         controls.addEventListener('lock', function() {
             instructions.classList.add('hidden');
             console.log('Controls locked - Player started:', playerUsername);
-            // Ensure camera is at correct position after lock
-            camera.position.set(0, playerHeight, 0);
-            camera.rotation.set(0, 0, 0);
+            console.log('Current game state:', {
+                gameStarted,
+                isLocked: controls.isLocked,
+                cameraPosition: camera.position.toArray(),
+                cameraRotation: camera.rotation.toArray()
+            });
         });
 
         controls.addEventListener('unlock', function() {
@@ -859,10 +864,46 @@
         scene.add(tubeMesh);
 
         // Animation loop
-        function animate() {
+        let lastRenderTime = 0;
+        function animate(currentTime) {
             requestAnimationFrame(animate);
 
-            if (controls.isLocked) {
+            // Log first few frames after game start
+            if (gameStarted && currentTime - lastRenderTime > 1000) {
+                console.log('Render frame:', {
+                    gameStarted,
+                    isLocked: controls.isLocked,
+                    cameraPosition: camera.position.toArray(),
+                    scene: {
+                        children: scene.children.length,
+                        visible: scene.visible
+                    }
+                });
+                lastRenderTime = currentTime;
+            }
+
+            // Always render the scene, regardless of control state
+            renderer.render(scene, camera);
+
+            // Update nebula animations
+            const time = performance.now() * 0.001;
+            nebulas.forEach((nebula, index) => {
+                nebula.material.uniforms.time.value = time;
+                nebula.rotation.y += 0.0001;
+                nebula.rotation.x += 0.00005;
+                
+                // Subtle position animation
+                const offset = Math.sin(time * 0.2 + index) * 5;
+                nebula.position.y += Math.sin(time * 0.1 + index) * 0.05;
+                nebula.position.x += Math.cos(time * 0.15 + index) * 0.05;
+            });
+
+            // Rotate star fields slowly
+            starField.rotation.y += 0.0001;
+            largeStarField.rotation.y += 0.00015;
+
+            // Only process movement and game logic if controls are locked
+            if (controls.isLocked && gameStarted) {
                 // Store current position
                 const oldPosition = camera.position.clone();
 
@@ -1077,25 +1118,6 @@
                     }));
                 }
             }
-
-            // Update nebula animations
-            const time = performance.now() * 0.001;
-            nebulas.forEach((nebula, index) => {
-                nebula.material.uniforms.time.value = time;
-                nebula.rotation.y += 0.0001;
-                nebula.rotation.x += 0.00005;
-                
-                // Subtle position animation
-                const offset = Math.sin(time * 0.2 + index) * 5;
-                nebula.position.y += Math.sin(time * 0.1 + index) * 0.05;
-                nebula.position.x += Math.cos(time * 0.15 + index) * 0.05;
-            });
-
-            // Rotate star fields slowly
-            starField.rotation.y += 0.0001;
-            largeStarField.rotation.y += 0.00015;
-
-            renderer.render(scene, camera);
         }
 
         // Start animation loop immediately
