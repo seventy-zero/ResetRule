@@ -214,37 +214,21 @@
                 this.username = username;
                 this.mesh = mesh;
                 this.targetPosition = new THREE.Vector3();
-                this.targetRotation = new THREE.Euler();
+                this.targetRotation = new THREE.Vector3();
                 this.lastUpdateTime = Date.now();
-            }
-
-            update(deltaTime) {
-                if (!this.mesh) return;
-                
-                // Smoothly interpolate position
-                this.mesh.position.lerp(this.targetPosition, INTERPOLATION_SPEED);
-                
-                // Smoothly interpolate rotation
-                this.mesh.rotation.x = THREE.MathUtils.lerp(
-                    this.mesh.rotation.x,
-                    this.targetRotation.x,
-                    INTERPOLATION_SPEED
-                );
-                this.mesh.rotation.y = THREE.MathUtils.lerp(
-                    this.mesh.rotation.y,
-                    this.targetRotation.y,
-                    INTERPOLATION_SPEED
-                );
-                this.mesh.rotation.z = THREE.MathUtils.lerp(
-                    this.mesh.rotation.z,
-                    this.targetRotation.z,
-                    INTERPOLATION_SPEED
-                );
             }
         }
 
         // Function to create player model
         function createPlayerModel(username) {
+            console.log('Creating player model for:', username);
+            
+            // Check if player model already exists
+            if (playerStates.has(username)) {
+                console.log('Player model already exists for:', username);
+                return;
+            }
+
             const geometry = new THREE.CapsuleGeometry(2, 6, 2, 8);
             const material = new THREE.MeshBasicMaterial({ 
                 color: 0x00ff00, 
@@ -273,6 +257,7 @@
             sprite.position.y = 6;
             playerMesh.add(sprite);
             
+            // Add to scene
             scene.add(playerMesh);
             
             // Create and store player state
@@ -281,7 +266,7 @@
             playerState.targetRotation.set(0, 0, 0);
             playerStates.set(username, playerState);
             
-            console.log(`Created player model for ${username}`);
+            console.log('Player model created successfully for:', username);
             return playerMesh;
         }
 
@@ -289,39 +274,46 @@
         function updatePlayerPosition(username, position, rotation) {
             const playerState = playerStates.get(username);
             if (playerState) {
-                // Update target position and rotation
+                // Update target position
                 if (position) {
                     if (Array.isArray(position)) {
                         playerState.targetPosition.fromArray(position);
                     } else {
-                        playerState.targetPosition.copy(position);
+                        playerState.targetPosition.set(position.x, position.y, position.z);
                     }
                 }
+                
+                // Update target rotation
                 if (rotation) {
                     if (Array.isArray(rotation)) {
                         playerState.targetRotation.fromArray(rotation);
                     } else {
-                        playerState.targetRotation.copy(rotation);
+                        playerState.targetRotation.set(rotation.x, rotation.y, rotation.z);
                     }
                 }
+                
+                // Update mesh position and rotation immediately
+                playerState.mesh.position.copy(playerState.targetPosition);
+                playerState.mesh.rotation.set(
+                    playerState.targetRotation.x,
+                    playerState.targetRotation.y,
+                    playerState.targetRotation.z
+                );
+                
                 playerState.lastUpdateTime = Date.now();
+            } else {
+                console.warn('No player state found for username:', username);
             }
         }
 
         // Function to remove player
         function removePlayer(username) {
+            console.log('Removing player:', username);
             const playerState = playerStates.get(username);
             if (playerState) {
-                // Remove all children (like username sprite) first
-                while(playerState.mesh.children.length > 0) {
-                    playerState.mesh.remove(playerState.mesh.children[0]);
-                }
-                // Remove from scene and dispose geometries/materials
                 scene.remove(playerState.mesh);
-                if (playerState.mesh.geometry) playerState.mesh.geometry.dispose();
-                if (playerState.mesh.material) playerState.mesh.material.dispose();
                 playerStates.delete(username);
-                console.log(`Removed player model for ${username}`);
+                console.log('Player removed successfully:', username);
             }
         }
 
@@ -353,6 +345,7 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
+                console.log('Received message:', data.type);
                 
                 switch (data.type) {
                     case 'room_info':
@@ -364,9 +357,7 @@
                         console.log('Player joined:', data.username);
                         if (data.username !== playerUsername) {
                             createPlayerModel(data.username);
-                            if (data.position && data.rotation) {
-                                updatePlayerPosition(data.username, data.position, data.rotation);
-                            }
+                            updatePlayerPosition(data.username, data.position, data.rotation);
                         }
                         break;
 
