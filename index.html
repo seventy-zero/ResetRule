@@ -1147,10 +1147,9 @@
                     // Update camera rotation
                     const lookSpeed = 0.05;
                     
-                    // Direct mapping of joystick to camera rotation
-                    camera.rotation.y -= (joystickX / maxDistance) * lookSpeed;
-                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
-                        camera.rotation.x - (joystickY / maxDistance) * lookSpeed));
+                    // Use PointerLockControls methods for rotation
+                    controls.moveRight(-(joystickX / maxDistance) * lookSpeed * 100);
+                    controls.moveForward(-(joystickY / maxDistance) * lookSpeed * 100);
                     
                     // Force roll to 0
                     camera.rotation.z = 0;
