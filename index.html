@@ -1148,14 +1148,17 @@
                     const lookSpeed = 0.05;
                     
                     // Rotate camera based on joystick position
+                    // Y rotation (yaw) for left/right looking
                     camera.rotation.y -= (joystickX / maxDistance) * lookSpeed;
+                    // X rotation (pitch) for up/down looking
                     camera.rotation.x -= (joystickY / maxDistance) * lookSpeed;
                     
                     // Clamp vertical rotation to prevent over-rotation
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
                     
-                    // Force roll to 0
+                    // Force roll to 0 and ensure proper rotation order
                     camera.rotation.z = 0;
+                    camera.rotation.order = 'YXZ'; // Set rotation order to prevent gimbal lock
                     
                     console.log('Touch moved:', joystickX, joystickY);
                 }, { passive: false });
