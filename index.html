@@ -4,6 +4,7 @@
     <title>ResetRule</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
     <style>
         body { 
             margin: 0; 
@@ -1073,7 +1074,7 @@
                     window.rightJoystick.destroy();
                 }
 
-                // Create new joysticks
+                // Create new joysticks with improved settings
                 window.leftJoystick = nipplejs.create({
                     zone: document.getElementById('leftJoystick'),
                     mode: 'static',
@@ -1082,7 +1083,10 @@
                     size: 120,
                     multitouch: true,
                     maxNumberOfNipples: 2,
-                    dataOnly: false
+                    dataOnly: false,
+                    lockX: false,
+                    lockY: false,
+                    fadeTime: 0
                 });
 
                 window.rightJoystick = nipplejs.create({
@@ -1093,24 +1097,30 @@
                     size: 120,
                     multitouch: true,
                     maxNumberOfNipples: 2,
-                    dataOnly: false
+                    dataOnly: false,
+                    lockX: false,
+                    lockY: false,
+                    fadeTime: 0
                 });
 
-                // Movement joystick handling
+                // Movement joystick handling with improved sensitivity
                 window.leftJoystick.on('move', function(evt, data) {
+                    if (!data.vector) return;
+                    
                     // Get the vector data from the correct property
                     const forward = -data.vector.y; // Invert Y for correct forward/back
                     const right = data.vector.x;
                     
-                    // Set movement flags
-                    moveForward = forward > 0;
-                    moveBackward = forward < 0;
-                    moveLeft = right < 0;
-                    moveRight = right > 0;
+                    // Set movement flags with deadzone
+                    const deadzone = 0.1;
+                    moveForward = forward > deadzone;
+                    moveBackward = forward < -deadzone;
+                    moveLeft = right < -deadzone;
+                    moveRight = right > deadzone;
                     
-                    // Set velocity directly based on joystick position
-                    velocity.z = forward * moveSpeed * 4;
-                    velocity.x = right * moveSpeed * 4;
+                    // Set velocity directly based on joystick position with increased sensitivity
+                    velocity.z = forward * moveSpeed * 6;
+                    velocity.x = right * moveSpeed * 6;
                 });
 
                 window.leftJoystick.on('end', function() {
@@ -1122,10 +1132,12 @@
                     velocity.z = 0;
                 });
 
-                // Look joystick handling with direct rotation
+                // Look joystick handling with improved sensitivity
                 window.rightJoystick.on('move', function(evt, data) {
+                    if (!data.vector) return;
+                    
                     // Get the vector data from the correct property
-                    const lookSpeed = 0.03;
+                    const lookSpeed = 0.05; // Increased sensitivity
                     camera.rotation.y -= data.vector.x * lookSpeed;
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
                         camera.rotation.x - data.vector.y * lookSpeed));
@@ -1133,19 +1145,20 @@
 
                 // Fling button handling with improved touch response
                 const flingButton = document.getElementById('flingButton');
+                const hammer = new Hammer(flingButton);
                 
-                flingButton.addEventListener('touchstart', function(e) {
+                hammer.on('touchstart', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
                     showLine = true;
-                    this.classList.add('active');
-                }, { passive: false });
+                    flingButton.classList.add('active');
+                });
 
-                flingButton.addEventListener('touchend', function(e) {
+                hammer.on('touchend', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
                     showLine = false;
-                    this.classList.remove('active');
+                    flingButton.classList.remove('active');
                     if (lineCollisionPoint) {
                         // Trigger fling immediately on release if we have a valid target
                         const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
@@ -1160,7 +1173,7 @@
                         isGrounded = false;
                         lineCollisionPoint = null;
                     }
-                }, { passive: false });
+                });
 
                 console.log('Mobile controls initialized');
             }
