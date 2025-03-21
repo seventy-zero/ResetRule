@@ -98,7 +98,7 @@
             display: none;
             position: fixed;
             bottom: 20px;
-            left: 20px;
+            right: 20px;
             width: 80px;
             height: 80px;
             background: rgba(76, 175, 80, 0.6);
@@ -1108,12 +1108,12 @@
                     follow: true
                 });
 
-                // Movement joystick handling with improved sensitivity
+                // Movement joystick handling
                 window.leftJoystick.on('move', function(evt, data) {
                     if (!data.vector) return;
                     
-                    // Get the vector data from the correct property
-                    const forward = -data.vector.y; // Invert Y for correct forward/back
+                    // Get the vector data
+                    const forward = -data.vector.y;
                     const right = data.vector.x;
                     
                     // Set movement flags with deadzone
@@ -1123,9 +1123,14 @@
                     moveLeft = right < -deadzone;
                     moveRight = right > deadzone;
                     
-                    // Set velocity directly based on joystick position with increased sensitivity
-                    velocity.z = forward * moveSpeed * 6;
-                    velocity.x = right * moveSpeed * 6;
+                    // Calculate movement direction based on camera rotation
+                    const angle = camera.rotation.y;
+                    const moveX = right * Math.cos(angle) - forward * Math.sin(angle);
+                    const moveZ = right * Math.sin(angle) + forward * Math.cos(angle);
+                    
+                    // Set velocity
+                    velocity.x = moveX * moveSpeed * 6;
+                    velocity.z = moveZ * moveSpeed * 6;
                 });
 
                 window.leftJoystick.on('end', function() {
@@ -1137,18 +1142,24 @@
                     velocity.z = 0;
                 });
 
-                // Look joystick handling with improved sensitivity and locked rotation
+                // Look joystick handling - FPS style camera control
                 window.rightJoystick.on('move', function(evt, data) {
                     if (!data.vector) return;
                     
-                    // Get the vector data from the correct property
-                    const lookSpeed = 0.05; // Increased sensitivity
+                    // Get the vector data
+                    const lookX = data.vector.x;
+                    const lookY = data.vector.y;
                     
-                    // Only allow horizontal and vertical rotation, no roll
-                    camera.rotation.y -= data.vector.x * lookSpeed;
+                    // Calculate rotation speed
+                    const lookSpeed = 0.1;
+                    
+                    // Update camera rotation
+                    camera.rotation.y -= lookX * lookSpeed;
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
-                        camera.rotation.x - data.vector.y * lookSpeed));
-                    camera.rotation.z = 0; // Lock Z rotation to prevent sideways movement
+                        camera.rotation.x - lookY * lookSpeed));
+                    
+                    // Lock Z rotation
+                    camera.rotation.z = 0;
                 });
 
                 // Fling button with improved touch handling
