@@ -1067,94 +1067,75 @@
             function initializeMobileControls() {
                 console.log('Initializing mobile controls');
                 
-                // Clean up existing joysticks if they exist
-                if (window.leftJoystick) {
-                    window.leftJoystick.destroy();
-                }
-                if (window.rightJoystick) {
-                    window.rightJoystick.destroy();
-                }
-
-                // Create new joysticks with improved settings
-                window.leftJoystick = nipplejs.create({
-                    zone: document.getElementById('leftTouchArea'),
-                    mode: 'static',
-                    position: { left: '60px', bottom: '60px' },
-                    color: 'white',
-                    size: 120,
-                    multitouch: true,
-                    maxNumberOfNipples: 2,
-                    dataOnly: false,
-                    lockX: false,
-                    lockY: false,
-                    fadeTime: 0,
-                    dynamicPage: true,
-                    follow: true
-                });
-
-                window.rightJoystick = nipplejs.create({
-                    zone: document.getElementById('rightTouchArea'),
-                    mode: 'static',
-                    position: { right: '60px', bottom: '60px' },
-                    color: 'white',
-                    size: 120,
-                    multitouch: true,
-                    maxNumberOfNipples: 2,
-                    dataOnly: false,
-                    lockX: false,
-                    lockY: false,
-                    fadeTime: 0,
-                    dynamicPage: true,
-                    follow: true
-                });
-
-                // Movement joystick handling
-                window.leftJoystick.on('move', function(evt, data) {
-                    if (!data.vector) return;
+                const leftTouchArea = document.getElementById('leftTouchArea');
+                const rightTouchArea = document.getElementById('rightTouchArea');
+                const flingButton = document.getElementById('flingButton');
+                
+                // Movement controls (WASD style)
+                let lastLeftTouch = null;
+                leftTouchArea.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    lastLeftTouch = e.touches[0];
+                }, { passive: false });
+                
+                leftTouchArea.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    if (!lastLeftTouch) return;
                     
-                    // Get the vector data
-                    const forward = -data.vector.y;
-                    const right = data.vector.x;
+                    const touch = e.touches[0];
+                    const deltaX = touch.clientX - lastLeftTouch.clientX;
+                    const deltaY = touch.clientY - lastLeftTouch.clientY;
                     
-                    // Set movement flags with deadzone
-                    const deadzone = 0.1;
-                    moveForward = forward > deadzone;
-                    moveBackward = forward < -deadzone;
-                    moveLeft = right < -deadzone;
-                    moveRight = right > deadzone;
-                });
-
-                window.leftJoystick.on('end', function() {
+                    // Set movement based on touch position relative to center
+                    const centerX = leftTouchArea.offsetWidth / 2;
+                    const centerY = leftTouchArea.offsetHeight / 2;
+                    const relativeX = touch.clientX - leftTouchArea.getBoundingClientRect().left - centerX;
+                    const relativeY = touch.clientY - leftTouchArea.getBoundingClientRect().top - centerY;
+                    
+                    // Set movement flags based on position relative to center
+                    moveForward = relativeY < -20;
+                    moveBackward = relativeY > 20;
+                    moveLeft = relativeX < -20;
+                    moveRight = relativeX > 20;
+                    
+                    lastLeftTouch = touch;
+                }, { passive: false });
+                
+                leftTouchArea.addEventListener('touchend', () => {
                     moveForward = false;
                     moveBackward = false;
                     moveLeft = false;
                     moveRight = false;
+                    lastLeftTouch = null;
                 });
-
-                // Look joystick handling - FPS style camera control
-                window.rightJoystick.on('move', function(evt, data) {
-                    if (!data.vector) return;
+                
+                // Camera controls (trackpad style)
+                let lastRightTouch = null;
+                rightTouchArea.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    lastRightTouch = e.touches[0];
+                }, { passive: false });
+                
+                rightTouchArea.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    if (!lastRightTouch) return;
                     
-                    // Get the vector data
-                    const lookX = data.vector.x;
-                    const lookY = data.vector.y;
+                    const touch = e.touches[0];
+                    const deltaX = touch.clientX - lastRightTouch.clientX;
+                    const deltaY = touch.clientY - lastRightTouch.clientY;
                     
-                    // Calculate rotation speed
-                    const lookSpeed = 0.1;
+                    // Rotate camera based on touch movement
+                    controls.rotateLeft(deltaX * 0.002);
+                    controls.rotateUp(deltaY * 0.002);
                     
-                    // Use PointerLockControls' rotation methods
-                    controls.rotateLeft(lookX * lookSpeed * 100);
-                    controls.rotateUp(lookY * lookSpeed * 100);
+                    lastRightTouch = touch;
+                }, { passive: false });
+                
+                rightTouchArea.addEventListener('touchend', () => {
+                    lastRightTouch = null;
                 });
-
-                // Fling button with improved touch handling
-                const flingButton = document.getElementById('flingButton');
                 
-                // Remove any existing event listeners
-                flingButton.removeEventListener('touchstart', handleFlingStart);
-                flingButton.removeEventListener('touchend', handleFlingEnd);
-                
-                // Add new event listeners
+                // Fling button
                 flingButton.addEventListener('touchstart', handleFlingStart, { passive: false });
                 flingButton.addEventListener('touchend', handleFlingEnd, { passive: false });
                 
