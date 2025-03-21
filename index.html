@@ -108,6 +108,9 @@
         let playerId = null;
         let playerUsername = '';
 
+        // Controls setup
+        const controls = new PointerLockControls(camera, document.body);
+
         // Enable/disable start button based on username input
         usernameInput.addEventListener('input', function() {
             const username = this.value.trim();
@@ -452,9 +455,6 @@
         let verticalVelocity = 0;
         const groundLevel = playerHeight;
         let isGrounded = true;
-
-        // Controls setup
-        const controls = new PointerLockControls(camera, document.body);
 
         // Create the floor
         const size = 6000;
