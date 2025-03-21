@@ -22,9 +22,39 @@ app.get('/health', (req, res) => {
     res.status(200).send('OK');
 });
 
-// Store connected players
+// Store connected players with last activity timestamp
 const players = new Map();
 const MAX_PLAYERS = 20;
+const INACTIVE_TIMEOUT = 10000; // 10 seconds in milliseconds
+
+// Cleanup inactive players periodically
+function cleanupInactivePlayers() {
+    const now = Date.now();
+    let cleanedCount = 0;
+    
+    players.forEach((player, username) => {
+        if (now - player.lastActivity > INACTIVE_TIMEOUT) {
+            // Player hasn't moved in 5 seconds, remove them
+            players.delete(username);
+            cleanedCount++;
+            
+            // Notify all clients about the removed player
+            broadcast({
+                type: 'playerLeft',
+                username: username
+            });
+            
+            console.log(`Removed inactive player: ${username}`);
+        }
+    });
+    
+    if (cleanedCount > 0) {
+        console.log(`Cleaned up ${cleanedCount} inactive players. Active players: ${players.size}`);
+    }
+}
+
+// Run cleanup every 5 seconds
+setInterval(cleanupInactivePlayers, 5000);
 
 // Handle WebSocket errors
 wss.on('error', (error) => {
@@ -54,12 +84,13 @@ wss.on('connection', (ws, req) => {
                         return;
                     }
 
-                    // Add new player
+                    // Add new player with initial activity timestamp
                     players.set(playerUsername, {
                         ws,
                         position: [0, 10, 0],
                         rotation: [0, 0, 0],
-                        username: playerUsername
+                        username: playerUsername,
+                        lastActivity: Date.now()
                     });
 
                     // Send current players to new player
@@ -95,6 +126,7 @@ wss.on('connection', (ws, req) => {
                         const player = players.get(playerUsername);
                         player.position = data.position;
                         player.rotation = data.rotation;
+                        player.lastActivity = Date.now(); // Update last activity time
 
                         // Broadcast position update to other players
                         broadcast({
@@ -103,6 +135,21 @@ wss.on('connection', (ws, req) => {
                             position: data.position,
                             rotation: data.rotation
                         }, ws);
+                    }
+                    break;
+
+                case 'playerLeft':
+                    if (playerUsername && players.has(playerUsername)) {
+                        players.delete(playerUsername);
+                        
+                        // Broadcast to ALL clients, including the sender
+                        broadcast({
+                            type: 'playerLeft',
+                            username: playerUsername
+                        });
+
+                        console.log(`Player left: ${playerUsername} (${players.size} players online)`);
+                        playerUsername = ''; // Clear the username
                     }
                     break;
             }
@@ -119,22 +166,22 @@ wss.on('connection', (ws, req) => {
         if (playerUsername && players.has(playerUsername)) {
             players.delete(playerUsername);
             
-            // Notify others about player leaving
+            // Broadcast to ALL clients that the player has left
             broadcast({
                 type: 'playerLeft',
                 username: playerUsername
             });
 
-            console.log(`Player left: ${playerUsername} (${players.size} players online)`);
+            console.log(`Player disconnected: ${playerUsername} (${players.size} players online)`);
         }
     });
 });
 
 // Broadcast message to all clients except sender
-function broadcast(message, exclude) {
+function broadcast(message, exclude = null) {
     const messageStr = JSON.stringify(message);
     wss.clients.forEach(client => {
-        if (client !== exclude && client.readyState === WebSocket.OPEN) {
+        if (client.readyState === WebSocket.OPEN && (exclude === null || client !== exclude)) {
             client.send(messageStr);
         }
     });

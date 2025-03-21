@@ -772,14 +772,12 @@
             // Controls lock/unlock handlers
             controls.addEventListener('lock', function() {
                 instructions.classList.add('hidden');
-                console.log('Controls locked');
             });
 
             controls.addEventListener('unlock', function() {
                 if (!isMobile) {
                     instructions.classList.remove('hidden');
                 }
-                console.log('Controls unlocked');
                 
                 // When unlocking (pressing escape), clear the player state
                 if (gameStarted && playerUsername) {
@@ -790,6 +788,14 @@
                             username: playerUsername
                         }));
                     }
+                    
+                    // Remove our own player model if it exists
+                    removePlayer(playerUsername);
+                    
+                    // Clear all other player models
+                    otherPlayers.forEach((mesh, username) => {
+                        removePlayer(username);
+                    });
                     
                     // Reset game state
                     gameStarted = false;
@@ -1418,8 +1424,16 @@
             function removePlayer(username) {
                 const playerMesh = otherPlayers.get(username);
                 if (playerMesh) {
+                    // Remove all children (like username sprite) first
+                    while(playerMesh.children.length > 0) {
+                        playerMesh.remove(playerMesh.children[0]);
+                    }
+                    // Remove from scene and dispose geometries/materials
                     scene.remove(playerMesh);
+                    if (playerMesh.geometry) playerMesh.geometry.dispose();
+                    if (playerMesh.material) playerMesh.material.dispose();
                     otherPlayers.delete(username);
+                    console.log(`Removed player model for ${username}`);
                 }
             }
 
