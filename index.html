@@ -1153,13 +1153,9 @@
                     // Calculate rotation speed
                     const lookSpeed = 0.1;
                     
-                    // Update camera rotation directly
-                    camera.rotation.y -= lookX * lookSpeed;
-                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
-                        camera.rotation.x - lookY * lookSpeed));
-                    
-                    // Lock Z rotation
-                    camera.rotation.z = 0;
+                    // Use PointerLockControls' rotation methods
+                    controls.rotateLeft(lookX * lookSpeed * 100);
+                    controls.rotateUp(lookY * lookSpeed * 100);
                 });
 
                 // Fling button with improved touch handling
