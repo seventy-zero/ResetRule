@@ -1147,16 +1147,30 @@
                     // Update camera rotation
                     const lookSpeed = 0.05;
                     
-                    // Create a new Euler rotation to enforce strict two-axis system
-                    const newRotation = new THREE.Euler();
-                    newRotation.x = camera.rotation.x;
-                    newRotation.y = camera.rotation.y;
-                    newRotation.z = 0; // Force roll to always be 0
+                    // Create a quaternion for the current rotation
+                    const quaternion = new THREE.Quaternion();
+                    quaternion.setFromEuler(camera.rotation);
                     
-                    // Update only horizontal and vertical rotation
-                    newRotation.y -= (joystickX / maxDistance) * lookSpeed;
-                    newRotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
-                        newRotation.x - (joystickY / maxDistance) * lookSpeed));
+                    // Create rotation quaternions for horizontal and vertical movement
+                    const horizontalQuat = new THREE.Quaternion();
+                    horizontalQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -(joystickX / maxDistance) * lookSpeed);
+                    
+                    const verticalQuat = new THREE.Quaternion();
+                    verticalQuat.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -(joystickY / maxDistance) * lookSpeed);
+                    
+                    // Apply rotations in sequence
+                    quaternion.multiply(horizontalQuat);
+                    quaternion.multiply(verticalQuat);
+                    
+                    // Convert back to Euler angles
+                    const newRotation = new THREE.Euler();
+                    newRotation.setFromQuaternion(quaternion);
+                    
+                    // Clamp vertical rotation
+                    newRotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, newRotation.x));
+                    
+                    // Force roll to 0
+                    newRotation.z = 0;
                     
                     // Apply the new rotation
                     camera.rotation.copy(newRotation);
