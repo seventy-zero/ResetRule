@@ -1,7 +1,7 @@
 {
-  "name": "reset-rule",
+  "name": "resetrule-multiplayer",
   "version": "1.0.0",
-  "description": "A multiplayer 3D game",
+  "description": "Multiplayer first-person game",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,11 +9,10 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "ws": "^8.13.0",
-    "helmet": "^7.0.0"
+    "ws": "^8.16.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.3"
   },
   "engines": {
     "node": ">=18.0.0"
