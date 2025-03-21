@@ -786,77 +786,66 @@
             function initializeMobileControls() {
                 console.log('Initializing mobile controls');
                 
-                // Clean up existing joysticks
                 if (window.leftJoystick) window.leftJoystick.destroy();
                 if (window.rightJoystick) window.rightJoystick.destroy();
 
-                // Create left joystick for movement
                 window.leftJoystick = nipplejs.create({
                     zone: document.getElementById('leftJoystick'),
                     mode: 'static',
                     position: { left: '60px', bottom: '60px' },
                     color: 'white',
-                    size: 120
+                    size: 120,
+                    multitouch: true
                 });
 
-                // Create right joystick for looking
                 window.rightJoystick = nipplejs.create({
                     zone: document.getElementById('rightJoystick'),
                     mode: 'static',
                     position: { right: '60px', bottom: '60px' },
                     color: 'white',
-                    size: 120
+                    size: 120,
+                    multitouch: true
                 });
 
-                // Movement joystick handling
                 window.leftJoystick.on('move', function(evt, data) {
-                    const forward = -data.vector.y;
+                    if (!gameStarted) return;
+                    
+                    const forward = data.vector.y;
                     const right = data.vector.x;
+                    const force = Math.min(data.force, 1);
                     
-                    // Set movement flags
-                    moveForward = forward < 0;
-                    moveBackward = forward > 0;
-                    moveLeft = right < 0;
-                    moveRight = right > 0;
-                    
-                    // Set velocity directly
-                    velocity.x = -right * moveSpeed * 4;
-                    velocity.z = -forward * moveSpeed * 4;
+                    velocity.z = -forward * moveSpeed * 4 * force;
+                    velocity.x = -right * moveSpeed * 4 * force;
                 });
 
                 window.leftJoystick.on('end', function() {
-                    moveForward = false;
-                    moveBackward = false;
-                    moveLeft = false;
-                    moveRight = false;
                     velocity.x = 0;
                     velocity.z = 0;
                 });
 
-                // Look joystick handling
-                let lookSpeed = 0.05;
                 window.rightJoystick.on('move', function(evt, data) {
-                    if (!controls.isLocked) return;
+                    if (!gameStarted) return;
                     
-                    // Apply rotation directly to the camera
-                    camera.rotation.y -= data.vector.x * lookSpeed;
+                    const lookSpeed = 0.03;
+                    const deltaX = data.vector.x * lookSpeed;
+                    const deltaY = data.vector.y * lookSpeed;
                     
-                    // Clamp vertical rotation to prevent flipping
-                    let newRotationX = camera.rotation.x - data.vector.y * lookSpeed;
-                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, newRotationX));
+                    camera.rotation.y -= deltaX;
+                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x - deltaY));
                 });
 
-                // Fling button handling
                 const flingButton = document.getElementById('flingButton');
                 
                 flingButton.addEventListener('touchstart', function(e) {
                     e.preventDefault();
+                    if (!gameStarted) return;
                     showLine = true;
                     this.classList.add('active');
                 }, { passive: false });
 
                 flingButton.addEventListener('touchend', function(e) {
                     e.preventDefault();
+                    if (!gameStarted) return;
                     showLine = false;
                     this.classList.remove('active');
                     
@@ -874,8 +863,6 @@
                         lineCollisionPoint = null;
                     }
                 }, { passive: false });
-
-                console.log('Mobile controls initialized successfully');
             }
 
             // Mobile-specific touch handlers
