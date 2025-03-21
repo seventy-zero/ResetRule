@@ -217,6 +217,30 @@
                 this.targetRotation = new THREE.Vector3();
                 this.lastUpdateTime = Date.now();
             }
+
+            update(deltaTime) {
+                if (!this.mesh) return;
+                
+                // Smoothly interpolate position
+                this.mesh.position.lerp(this.targetPosition, INTERPOLATION_SPEED);
+                
+                // Smoothly interpolate rotation
+                this.mesh.rotation.x = THREE.MathUtils.lerp(
+                    this.mesh.rotation.x,
+                    this.targetRotation.x,
+                    INTERPOLATION_SPEED
+                );
+                this.mesh.rotation.y = THREE.MathUtils.lerp(
+                    this.mesh.rotation.y,
+                    this.targetRotation.y,
+                    INTERPOLATION_SPEED
+                );
+                this.mesh.rotation.z = THREE.MathUtils.lerp(
+                    this.mesh.rotation.z,
+                    this.targetRotation.z,
+                    INTERPOLATION_SPEED
+                );
+            }
         }
 
         // Function to create player model
@@ -1243,14 +1267,21 @@
             // Animation loop with collision detection, star rotation, and nebula animation
             function animate() {
                 requestAnimationFrame(animate);
-
+                
                 const deltaTime = clock.getDelta();
                 
                 if (gameStarted) {
                     // Update other players' positions
                     playerStates.forEach((playerState, username) => {
                         if (username !== playerUsername) {
-                            playerState.update(deltaTime);
+                            // Check if player hasn't been updated recently
+                            const timeSinceUpdate = Date.now() - playerState.lastUpdateTime;
+                            if (timeSinceUpdate > 5000) { // 5 seconds
+                                console.log('Removing inactive player:', username);
+                                removePlayer(username);
+                            } else {
+                                playerState.update(deltaTime);
+                            }
                         }
                     });
 
