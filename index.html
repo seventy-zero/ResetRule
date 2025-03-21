@@ -71,7 +71,7 @@
             right: 20px;
             height: 120px;
             width: 120px;
-            pointer-events: none;
+            pointer-events: auto;
             z-index: 1000;
         }
         .joystick-zone {
@@ -82,6 +82,7 @@
             border-radius: 60px;
             pointer-events: auto;
             z-index: 1000;
+            touch-action: none;
         }
         #rightJoystick {
             right: 0;
@@ -113,6 +114,7 @@
             cursor: pointer;
             -webkit-tap-highlight-color: transparent;
             z-index: 1000;
+            touch-action: none;
         }
         #flingButton.active {
             background: rgba(76, 175, 80, 0.9);
@@ -1112,7 +1114,13 @@
                     baseY: 60,
                     limitStickTravel: true,
                     stickRadius: 50,
-                    color: 'white'
+                    color: 'white',
+                    touchStart: function() {
+                        console.log('Joystick touch started');
+                    },
+                    touchEnd: function() {
+                        console.log('Joystick touch ended');
+                    }
                 });
 
                 // Look joystick handling with improved sensitivity
@@ -1124,9 +1132,11 @@
                     const y = window.rightJoystick.deltaY() / 50;
                     
                     // Apply rotation with improved sensitivity
-                    camera.rotation.y -= x * lookSpeed;
-                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
-                        camera.rotation.x - y * lookSpeed));
+                    if (Math.abs(x) > 0.1 || Math.abs(y) > 0.1) {
+                        camera.rotation.y -= x * lookSpeed;
+                        camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+                            camera.rotation.x - y * lookSpeed));
+                    }
                     
                     requestAnimationFrame(updateJoystick);
                 }
@@ -1137,6 +1147,7 @@
                 const flingButton = document.getElementById('flingButton');
                 
                 flingButton.addEventListener('touchstart', function(e) {
+                    console.log('Fling button touch started');
                     e.preventDefault();
                     e.stopPropagation();
                     showLine = true;
@@ -1144,6 +1155,7 @@
                 }, { passive: false });
 
                 flingButton.addEventListener('touchend', function(e) {
+                    console.log('Fling button touch ended');
                     e.preventDefault();
                     e.stopPropagation();
                     showLine = false;
