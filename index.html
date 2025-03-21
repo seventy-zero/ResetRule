@@ -191,6 +191,7 @@
 
         // Scene-related variables
         let scene, camera, renderer, controls;
+        let tubeMesh, curve; // Add these to global scope
 
         // Collections
         const towers = [];
@@ -616,7 +617,7 @@
                 scene.add(directionalLight);
 
                 // Create the line trace
-                const curve = new THREE.CatmullRomCurve3([
+                curve = new THREE.CatmullRomCurve3([
                     new THREE.Vector3(0, 0, 0),
                     new THREE.Vector3(0, 0, 1)
                 ]);
@@ -626,7 +627,7 @@
                     transparent: true,
                     opacity: 0.8
                 });
-                const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
+                tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
                 scene.add(tubeMesh);
 
                 // Create grids
