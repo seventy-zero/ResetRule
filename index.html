@@ -596,154 +596,85 @@
         // WebSocket setup with Railway support
         const getWebSocketUrl = () => {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const host = window.location.host;
-            
-            // Check if we're on Railway
-            if (host.includes('.railway.app')) {
-                // Add authentication token if available
-                const token = localStorage.getItem('railway_token');
-                if (token) {
-                    return `${protocol}//${host}?token=${token}`;
-                }
-                return `${protocol}//${host}`;
+            if (window.location.hostname.includes('.railway.app')) {
+                return `${protocol}//${window.location.host}`;
             }
-            
-            // Local development
             return 'ws://localhost:3000';
         };
 
         let wsReconnectAttempts = 0;
         const MAX_RECONNECT_ATTEMPTS = 5;
-        let reconnectTimeout = null;
 
         function setupWebSocket() {
-            // Clear any existing timeout
-            if (reconnectTimeout) {
-                clearTimeout(reconnectTimeout);
-            }
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}`;
+            ws = new WebSocket(wsUrl);
 
-            const wsUrl = getWebSocketUrl();
-            console.log('Attempting to connect to WebSocket at:', wsUrl);
-            
-            try {
-                ws = new WebSocket(wsUrl);
+            ws.onopen = () => {
+                console.log('Connected to server');
+                // Send join message with username
+                ws.send(JSON.stringify({
+                    type: 'join',
+                    username: playerUsername
+                }));
+            };
 
-                ws.onopen = () => {
-                    console.log('Connected to server');
-                    wsReconnectAttempts = 0; // Reset reconnect attempts on successful connection
-                    
-                    // Send join message with username if we have one
-                    if (playerUsername) {
-                        ws.send(JSON.stringify({
-                            type: 'join',
-                            username: playerUsername
-                        }));
-                    }
-                };
-
-                ws.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        console.log('Received message:', data.type);
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Received message:', data.type);
+                
+                switch (data.type) {
+                    case 'world_data':
+                        console.log('Received world data');
+                        // Clear existing towers
+                        towers.forEach(tower => {
+                            scene.remove(tower.mesh);
+                        });
+                        towers.length = 0;
                         
-                        // Handle authentication response
-                        if (data.type === 'auth') {
-                            if (data.token) {
-                                localStorage.setItem('railway_token', data.token);
-                            }
-                            return;
-                        }
+                        // Create towers from server data
+                        data.towers.forEach(towerData => {
+                            createTowerFromData(towerData);
+                        });
                         
-                        switch (data.type) {
-                            case 'world_data':
-                                console.log('Received world data');
-                                // Clear existing towers
-                                towers.forEach(tower => {
-                                    scene.remove(tower.mesh);
-                                });
-                                towers.length = 0;
-                                
-                                // Create towers from server data
-                                data.towers.forEach(towerData => {
-                                    createTowerFromData(towerData);
-                                });
-                                
-                                // Create bridges from server data
-                                data.bridges.forEach(bridgeData => {
-                                    createBridgeFromData(bridgeData);
-                                });
-                                break;
+                        // Create bridges from server data
+                        data.bridges.forEach(bridgeData => {
+                            createBridgeFromData(bridgeData);
+                        });
+                        break;
 
-                            case 'room_info':
-                                console.log(`Joined room ${data.name} with ${data.playerCount} players`);
-                                document.getElementById('roomInfo').textContent = `${data.name} - Players: ${data.playerCount}/20`;
-                                break;
+                    case 'room_info':
+                        console.log(`Joined room ${data.name} with ${data.playerCount} players`);
+                        document.getElementById('roomInfo').textContent = `${data.name} - Players: ${data.playerCount}/20`;
+                        break;
 
-                            case 'player_joined':
-                                console.log('Player joined:', data.username);
-                                handlePlayerJoined(data.username);
-                                break;
+                    case 'player_joined':
+                        console.log('Player joined:', data.username);
+                        handlePlayerJoined(data.username);
+                        break;
 
-                            case 'position':
-                                if (data.username !== playerUsername && gameStarted) {
-                                    updatePlayerPosition(data.username, data.position, data.rotation);
-                                }
-                                break;
-
-                            case 'player_left':
-                                console.log('Player left:', data.username);
-                                handlePlayerLeft(data.username);
-                                break;
+                    case 'position':
+                        if (data.username !== playerUsername && gameStarted) {
+                            updatePlayerPosition(data.username, data.position, data.rotation);
                         }
-                    } catch (error) {
-                        console.error('Error processing message:', error);
-                    }
-                };
+                        break;
 
-                ws.onerror = (error) => {
-                    console.error('WebSocket error:', error);
-                    handleWebSocketError();
-                };
+                    case 'player_left':
+                        console.log('Player left:', data.username);
+                        handlePlayerLeft(data.username);
+                        break;
+                }
+            };
 
-                ws.onclose = (event) => {
-                    console.log('WebSocket closed:', event.code, event.reason);
-                    handleWebSocketError();
-                };
-            } catch (error) {
-                console.error('Error creating WebSocket:', error);
-                handleWebSocketError();
-            }
-        }
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
 
-        function handleWebSocketError() {
-            if (wsReconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                wsReconnectAttempts++;
-                const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts), 30000); // Exponential backoff
-                console.log(`Attempting to reconnect in ${delay/1000} seconds... (Attempt ${wsReconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-                reconnectTimeout = setTimeout(setupWebSocket, delay);
-            } else {
-                console.error('Max reconnection attempts reached');
-                // Show error to user
-                const errorDiv = document.createElement('div');
-                errorDiv.style.cssText = `
-                    position: fixed;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    background: rgba(0, 0, 0, 0.8);
-                    color: white;
-                    padding: 20px;
-                    border-radius: 10px;
-                    text-align: center;
-                    z-index: 1000;
-                `;
-                errorDiv.innerHTML = `
-                    <h2>Connection Error</h2>
-                    <p>Failed to connect to the server. Please check your internet connection and try again.</p>
-                    <button onclick="location.reload()" style="margin-top: 10px; padding: 8px 16px;">Retry</button>
-                `;
-                document.body.appendChild(errorDiv);
-            }
+            ws.onclose = () => {
+                console.log('Disconnected from server');
+                // Attempt to reconnect after a delay
+                setTimeout(setupWebSocket, 3000);
+            };
         }
 
         // Function to update player list
@@ -1217,17 +1148,14 @@
                     const lookSpeed = 0.05;
                     
                     // Rotate camera based on joystick position
-                    // Y rotation (yaw) for left/right looking
                     camera.rotation.y -= (joystickX / maxDistance) * lookSpeed;
-                    // X rotation (pitch) for up/down looking
                     camera.rotation.x -= (joystickY / maxDistance) * lookSpeed;
                     
                     // Clamp vertical rotation to prevent over-rotation
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
                     
-                    // Force roll to 0 and ensure proper rotation order
+                    // Force roll to 0
                     camera.rotation.z = 0;
-                    camera.rotation.order = 'YXZ'; // Set rotation order to prevent gimbal lock
                     
                     console.log('Touch moved:', joystickX, joystickY);
                 }, { passive: false });
