@@ -417,46 +417,13 @@
             // Create collision box for the tower
             let collisionGeometry;
 
-            // Create LOD group
-            const lodGroup = new THREE.LOD();
-            lodGroup.position.set(towerData.x, height/2 + baseHeight, towerData.z);
-
-            // Function to create tower mesh with different detail levels
-            function createTowerMesh(geometry, detailLevel) {
-                const mesh = new THREE.Mesh(geometry, materials[0]);
-                const edges = new THREE.LineSegments(
-                    new THREE.EdgesGeometry(geometry),
-                    materials[1]
-                );
-                const group = new THREE.Group();
-                group.add(mesh);
-                group.add(edges);
-                return group;
-            }
-
             switch(towerData.type) {
                 case 0: // Cylindrical tower
-                    // High detail
-                    geometry = new THREE.CylinderGeometry(18, 18, height, 16);
-                    lodGroup.addLevel(createTowerMesh(geometry, 'high'), 0);
-                    // Medium detail
-                    geometry = new THREE.CylinderGeometry(18, 18, height, 12);
-                    lodGroup.addLevel(createTowerMesh(geometry, 'medium'), 100);
-                    // Low detail
                     geometry = new THREE.CylinderGeometry(18, 18, height, 8);
-                    lodGroup.addLevel(createTowerMesh(geometry, 'low'), 300);
                     collisionGeometry = new THREE.CylinderGeometry(18, 18, height, 8);
                     break;
                 case 1: // Tapered tower
-                    // High detail
-                    geometry = new THREE.CylinderGeometry(12, 24, height, 12);
-                    lodGroup.addLevel(createTowerMesh(geometry, 'high'), 0);
-                    // Medium detail
-                    geometry = new THREE.CylinderGeometry(12, 24, height, 8);
-                    lodGroup.addLevel(createTowerMesh(geometry, 'medium'), 100);
-                    // Low detail
                     geometry = new THREE.CylinderGeometry(12, 24, height, 6);
-                    lodGroup.addLevel(createTowerMesh(geometry, 'low'), 300);
                     collisionGeometry = new THREE.CylinderGeometry(24, 24, height, 6);
                     break;
                 case 2: // Square tower
@@ -550,15 +517,28 @@
                     return;
             }
 
-            scene.add(lodGroup);
+            // Create the main mesh with solid faces
+            const mesh = new THREE.Mesh(geometry, materials[0]);
+            
+            // Create the edges
+            const edges = new THREE.LineSegments(
+                new THREE.EdgesGeometry(geometry),
+                materials[1]
+            );
+            
+            // Group the mesh and edges together
+            const group = new THREE.Group();
+            group.add(mesh);
+            group.add(edges);
+            group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
+            scene.add(group);
 
             // Add collision data
             const collisionMesh = new THREE.Mesh(collisionGeometry);
-            collisionMesh.position.copy(lodGroup.position);
+            collisionMesh.position.copy(group.position);
             towers.push({
                 mesh: collisionMesh,
-                boundingBox: new THREE.Box3().setFromObject(collisionMesh),
-                lodGroup: lodGroup
+                boundingBox: new THREE.Box3().setFromObject(collisionMesh)
             });
         }
 
@@ -602,22 +582,14 @@
             
             scene.add(bridgeGroup);
             
-            // Create a more accurate collision box for the bridge
-            // Use a box that matches the visual bridge more closely
-            const collisionGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.8);
+            // Create a narrower collision box for the bridge
+            const collisionGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.6);
             const collisionMesh = new THREE.Mesh(collisionGeometry);
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
-            
-            // Create a bounding box that's slightly larger than the visual bridge
-            const boundingBox = new THREE.Box3().setFromObject(collisionMesh);
-            // Expand the bounding box slightly to make collisions more forgiving
-            boundingBox.expandByScalar(1.2);
-            
             towers.push({
                 mesh: collisionMesh,
-                boundingBox: boundingBox,
-                isBridge: true // Mark this as a bridge for special collision handling
+                boundingBox: new THREE.Box3().setFromObject(collisionMesh)
             });
         }
 
@@ -758,8 +730,7 @@
             renderer = new THREE.WebGLRenderer({ 
                 antialias: true,
                 powerPreference: "high-performance",
-                alpha: false,
-                precision: "mediump" // Use medium precision for better performance
+                alpha: false
             });
             
             if (!renderer.capabilities.isWebGL2) {
@@ -925,28 +896,25 @@
             // Create the floor
             const size = 6000;
             const divisions = 300; // Increased from 200 to 300 for much denser main grid
-            const gridHelper = new THREE.GridHelper(size, divisions, 0x444444, 0x888888);
-            gridHelper.material.opacity = 0.75;
+            const gridHelper = new THREE.GridHelper(size, divisions);
+            gridHelper.material.opacity = 0.75; // Slightly increased opacity
             gridHelper.material.transparent = true;
-            gridHelper.material.depthWrite = false; // Prevent z-fighting
             scene.add(gridHelper);
 
             // Add a second, larger grid with fewer divisions for distant floor effect
             const farSize = 12000;
             const farDivisions = 150; // Increased from 100 to 150 for denser far grid
-            const farGridHelper = new THREE.GridHelper(farSize, farDivisions, 0x444444, 0x888888);
-            farGridHelper.material.opacity = 0.3;
+            const farGridHelper = new THREE.GridHelper(farSize, farDivisions);
+            farGridHelper.material.opacity = 0.3; // Slightly increased opacity
             farGridHelper.material.transparent = true;
-            farGridHelper.material.depthWrite = false;
             scene.add(farGridHelper);
 
             // Add a medium grid between the main and far grid for smoother transition
             const midSize = 9000;
             const midDivisions = 225; // Increased from 150 to 225 for denser middle grid
-            const midGridHelper = new THREE.GridHelper(midSize, midDivisions, 0x444444, 0x888888);
-            midGridHelper.material.opacity = 0.5;
+            const midGridHelper = new THREE.GridHelper(midSize, midDivisions);
+            midGridHelper.material.opacity = 0.5; // Slightly increased opacity
             midGridHelper.material.transparent = true;
-            midGridHelper.material.depthWrite = false;
             scene.add(midGridHelper);
 
             // Create star field
@@ -1346,63 +1314,44 @@
                 const deltaTime = clock.getDelta();
                 
                 if (gameStarted) {
-                    // Update camera frustum
-                    const projScreenMatrix = new THREE.Matrix4();
-                    projScreenMatrix.multiplyMatrices(
-                        camera.projectionMatrix,
-                        camera.matrixWorldInverse
-                    );
-                    const frustum = new THREE.Frustum();
-                    frustum.setFromProjectionMatrix(projScreenMatrix);
-
-                    // Update other players' positions with frustum culling
+                    // Update other players' positions
                     playerStates.forEach((playerState, username) => {
                         if (username !== playerUsername) {
+                            // Check if player hasn't been updated recently
                             const timeSinceUpdate = Date.now() - playerState.lastUpdateTime;
-                            if (timeSinceUpdate > 5000) {
+                            if (timeSinceUpdate > 5000) { // 5 seconds
                                 console.log('Removing inactive player:', username);
                                 removePlayer(username);
                             } else {
-                                // Only update visible players
-                                if (frustum.containsPoint(playerState.mesh.position)) {
-                                    playerState.update(deltaTime);
-                                }
+                                playerState.update(deltaTime);
                             }
                         }
                     });
 
-                    // Update LOD levels based on distance
-                    towers.forEach(tower => {
-                        if (tower.lodGroup) {
-                            const distance = camera.position.distanceTo(tower.lodGroup.position);
-                            tower.lodGroup.update(camera, distance);
-                        }
-                    });
-
-                    // Render scene with optimized settings
+                    // Always render the scene
                     renderer.render(scene, camera);
 
-                    // Throttle nebula and star updates
-                    const currentTime = performance.now();
-                    if (currentTime % 32 < 16) { // Update every other frame
-                        const time = currentTime * 0.001;
-                        nebulas.forEach((nebula, index) => {
-                            if (nebula?.material?.uniforms) {
-                                nebula.material.uniforms.time.value = time;
-                                nebula.rotation.y += 0.0001;
-                                nebula.rotation.x += 0.00005;
-                                nebula.position.y += Math.sin(time * 0.1 + index) * 0.05;
-                                nebula.position.x += Math.cos(time * 0.15 + index) * 0.05;
-                            }
-                        });
-
-                        if (starField && largeStarField) {
-                            starField.rotation.y += 0.0001;
-                            largeStarField.rotation.y += 0.00015;
+                    // Update nebula animations
+                    const time = performance.now() * 0.001;
+                    nebulas.forEach((nebula, index) => {
+                        if (nebula && nebula.material && nebula.material.uniforms) {
+                            nebula.material.uniforms.time.value = time;
+                            nebula.rotation.y += 0.0001;
+                            nebula.rotation.x += 0.00005;
+                            
+                            // Subtle position animation
+                            nebula.position.y += Math.sin(time * 0.1 + index) * 0.05;
+                            nebula.position.x += Math.cos(time * 0.15 + index) * 0.05;
                         }
+                    });
+
+                    // Rotate star fields slowly
+                    if (starField && largeStarField) {
+                        starField.rotation.y += 0.0001;
+                        largeStarField.rotation.y += 0.00015;
                     }
 
-                    // Process game logic
+                    // Only process movement and game logic if controls are locked and game is started
                     if (controls.isLocked && gameStarted) {
                         // Store current position
                         const oldPosition = camera.position.clone();
@@ -1597,19 +1546,8 @@
                                 // During fling, push out strongly
                                 const pushDir = new THREE.Vector3();
                                 pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
-                                
-                                // Special handling for bridges
-                                if (collisionTower.isBridge) {
-                                    // For bridges, push out more horizontally
-                                    pushDir.y *= 0.3; // Reduce vertical push
-                                    camera.position.x += pushDir.x * 4;
-                                    camera.position.z += pushDir.z * 4;
-                                    camera.position.y += pushDir.y * 2;
-                                } else {
-                                    // Normal tower collision
-                                    camera.position.x += pushDir.x * 3;
-                                    camera.position.z += pushDir.z * 3;
-                                }
+                                camera.position.x += pushDir.x * 3;
+                                camera.position.z += pushDir.z * 3;
                             } else {
                                 // During normal movement, just prevent movement
                                 camera.position.copy(oldPosition);
