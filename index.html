@@ -67,7 +67,7 @@
         #healthBar {
             position: fixed;
             bottom: 20px;
-            right: 20px;
+            left: 20px;
             display: flex;
             gap: 2px;
             z-index: 1000;
@@ -212,6 +212,8 @@
         let lineCollisionPoint = null;
         let verticalVelocity = 0;
         let ws = null;
+        let playerHealth = 10;
+        const healthSegments = [];
 
         // Movement state variables
         let moveForward = false;
@@ -503,6 +505,12 @@
             renderer.setClearColor(0x000000, 1);
             document.body.appendChild(renderer.domElement);
             console.log('Renderer initialized');
+
+            // Initialize health segments array
+            document.querySelectorAll('.healthSegment').forEach(segment => {
+                healthSegments.push(segment);
+            });
+            updateHealthDisplay();
 
             // Controls setup
             controls = new PointerLockControls(camera, document.body);
@@ -1596,16 +1604,6 @@
 
         // Initialize WebSocket connection AFTER scene is set up
         setupWebSocket();
-
-        // Add these with other global variables
-        let playerHealth = 10;
-        const healthSegments = [];
-
-        // Add this after document.body.appendChild(renderer.domElement);
-        // Initialize health segments array
-        document.querySelectorAll('.healthSegment').forEach(segment => {
-            healthSegments.push(segment);
-        });
 
         // Add this function near other game functions
         function updateHealthDisplay() {
