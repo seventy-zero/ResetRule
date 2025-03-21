@@ -1154,9 +1154,11 @@
                     const lookSpeed = 0.1;
                     
                     // Update camera rotation
-                    camera.rotation.y -= lookX * lookSpeed;
+                    // Invert X for correct left/right rotation
+                    camera.rotation.y += lookX * lookSpeed;
+                    // Invert Y for correct up/down rotation
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
-                        camera.rotation.x - lookY * lookSpeed));
+                        camera.rotation.x + lookY * lookSpeed));
                     
                     // Lock Z rotation
                     camera.rotation.z = 0;
