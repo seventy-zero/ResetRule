@@ -40,158 +40,6 @@ const server = app.listen(PORT, () => {
 
 const wss = new WebSocket.Server({ server });
 
-// World generation constants
-const WORLD_CONSTANTS = {
-    numTowers: 3000,
-    maxRadius: 4800,
-    numNebulas: 12,
-    nebulaRadius: 4500,
-    numStars: 30000,
-    numLargeStars: 1000,
-    starRadius: 5400,
-    largeStarRadius: 1800,
-    gridSize: 6000,
-    farGridSize: 12000,
-    midGridSize: 9000
-};
-
-// World generation functions
-function generateWorld() {
-    const world = {
-        towers: [],
-        nebulas: [],
-        stars: [],
-        largeStars: [],
-        grid: {
-            size: WORLD_CONSTANTS.gridSize,
-            divisions: 300,
-            opacity: 0.75
-        },
-        farGrid: {
-            size: WORLD_CONSTANTS.farGridSize,
-            divisions: 150,
-            opacity: 0.3
-        },
-        midGrid: {
-            size: WORLD_CONSTANTS.midGridSize,
-            divisions: 225,
-            opacity: 0.5
-        }
-    };
-
-    // Generate towers
-    const gridSize = Math.sqrt(WORLD_CONSTANTS.numTowers);
-    const spacing = (WORLD_CONSTANTS.maxRadius * 2) / gridSize;
-    const towerPositions = [];
-
-    for (let i = 0; i < gridSize; i++) {
-        for (let j = 0; j < gridSize; j++) {
-            const x = -WORLD_CONSTANTS.maxRadius + i * spacing + (Math.random() * spacing * 0.5);
-            const z = -WORLD_CONSTANTS.maxRadius + j * spacing + (Math.random() * spacing * 0.5);
-            
-            const offsetX = (Math.random() - 0.5) * spacing * 0.5;
-            const offsetZ = (Math.random() - 0.5) * spacing * 0.5;
-            
-            const finalX = x + offsetX;
-            const finalZ = z + offsetZ;
-            
-            const towerType = Math.floor(Math.random() * 12);
-            const height = Math.random() * 300 + 150;
-            const isFloating = Math.random() < 0.15;
-            const baseHeight = isFloating ? Math.random() * 30 + 15 : 0;
-
-            world.towers.push({
-                type: towerType,
-                position: { x: finalX, y: height/2 + baseHeight, z: finalZ },
-                height: height,
-                isFloating: isFloating,
-                baseHeight: baseHeight
-            });
-
-            towerPositions.push({
-                position: { x: finalX, y: height/2, z: finalZ },
-                height: height
-            });
-        }
-    }
-
-    // Generate bridges between towers
-    const maxBridgeDistance = spacing * 2;
-    const bridgeChance = 0.1;
-    
-    for (let i = 0; i < towerPositions.length; i++) {
-        for (let j = i + 1; j < towerPositions.length; j++) {
-            const tower1 = towerPositions[i];
-            const tower2 = towerPositions[j];
-            
-            const distance = Math.sqrt(
-                Math.pow(tower1.position.x - tower2.position.x, 2) +
-                Math.pow(tower1.position.y - tower2.position.y, 2) +
-                Math.pow(tower1.position.z - tower2.position.z, 2)
-            );
-            
-            if (distance <= maxBridgeDistance && Math.random() < bridgeChance) {
-                const minHeight = Math.min(tower1.height, tower2.height);
-                const bridgeHeight = minHeight * (0.3 + Math.random() * 0.5);
-                
-                world.towers.push({
-                    type: 'bridge',
-                    startPos: { x: tower1.position.x, y: bridgeHeight, z: tower1.position.z },
-                    endPos: { x: tower2.position.x, y: bridgeHeight, z: tower2.position.z }
-                });
-            }
-        }
-    }
-
-    // Generate nebulas
-    for (let i = 0; i < WORLD_CONSTANTS.numNebulas; i++) {
-        const angle = (i / WORLD_CONSTANTS.numNebulas) * Math.PI * 2;
-        world.nebulas.push({
-            position: {
-                x: Math.cos(angle) * WORLD_CONSTANTS.nebulaRadius,
-                y: Math.random() * 2400 - 600,
-                z: Math.sin(angle) * WORLD_CONSTANTS.nebulaRadius
-            },
-            scale: 4 + Math.random() * 6,
-            rotation: {
-                x: Math.random() * Math.PI,
-                y: Math.random() * Math.PI,
-                z: Math.random() * Math.PI
-            }
-        });
-    }
-
-    // Generate stars
-    for (let i = 0; i < WORLD_CONSTANTS.numStars; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(Math.random() * 2 - 1);
-        
-        world.stars.push({
-            position: {
-                x: WORLD_CONSTANTS.starRadius * Math.sin(phi) * Math.cos(theta),
-                y: WORLD_CONSTANTS.starRadius * Math.sin(phi) * Math.sin(theta),
-                z: WORLD_CONSTANTS.starRadius * Math.cos(phi)
-            }
-        });
-    }
-
-    // Generate large stars
-    for (let i = 0; i < WORLD_CONSTANTS.numLargeStars; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(Math.random() * 2 - 1);
-        
-        world.largeStars.push({
-            position: {
-                x: WORLD_CONSTANTS.largeStarRadius * Math.sin(phi) * Math.cos(theta),
-                y: WORLD_CONSTANTS.largeStarRadius * Math.sin(phi) * Math.sin(theta),
-                z: WORLD_CONSTANTS.largeStarRadius * Math.cos(phi)
-            }
-        });
-    }
-
-    return world;
-}
-
 // Room management
 class GameRoom {
     constructor(id) {
@@ -199,7 +47,6 @@ class GameRoom {
         this.name = generateRoomName();
         this.players = new Map();
         this.isActive = true;
-        this.world = null; // Will be generated when first player joins
         this.lastActivity = Date.now();
     }
 
@@ -211,17 +58,6 @@ class GameRoom {
             lastActivity: Date.now()
         });
         this.lastActivity = Date.now();
-
-        // Generate world if this is the first player
-        if (!this.world) {
-            this.world = generateWorld();
-        }
-        
-        // Send world data to the new player
-        ws.send(JSON.stringify({
-            type: 'world_data',
-            world: this.world
-        }));
         
         // Broadcast updated player count to all players in the room
         this.broadcastRoomInfo();
