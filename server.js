@@ -47,21 +47,52 @@ class GameRoom {
         this.name = generateRoomName();
         this.players = new Map();
         this.isActive = true;
+        this.lastActivity = Date.now();
     }
 
     addPlayer(ws, username) {
         this.players.set(ws, {
             username: username,
             position: { x: 0, y: 10, z: 0 },
-            rotation: { x: 0, y: 0, z: 0 }
+            rotation: { x: 0, y: 0, z: 0 },
+            lastActivity: Date.now()
         });
+        this.lastActivity = Date.now();
+        
+        // Broadcast updated player count to all players in the room
+        this.broadcastRoomInfo();
     }
 
     removePlayer(ws) {
-        this.players.delete(ws);
-        if (this.players.size === 0) {
-            this.isActive = false;
+        const player = this.players.get(ws);
+        if (player) {
+            // Broadcast that the player left
+            this.broadcast(JSON.stringify({
+                type: 'player_left',
+                username: player.username
+            }));
+            
+            // Remove the player
+            this.players.delete(ws);
+            
+            // Broadcast updated player count
+            this.broadcastRoomInfo();
+            
+            // Mark room as inactive if empty
+            if (this.players.size === 0) {
+                this.isActive = false;
+            }
         }
+    }
+
+    broadcastRoomInfo() {
+        const info = {
+            type: 'room_info',
+            id: this.id,
+            name: this.name,
+            playerCount: this.players.size
+        };
+        this.broadcast(JSON.stringify(info));
     }
 
     isFull() {
@@ -72,6 +103,15 @@ class GameRoom {
         this.players.forEach((playerData, ws) => {
             if (ws !== excludeWs && ws.readyState === WebSocket.OPEN) {
                 ws.send(message);
+            }
+        });
+    }
+
+    cleanup() {
+        // Remove disconnected players
+        this.players.forEach((playerData, ws) => {
+            if (ws.readyState !== WebSocket.OPEN) {
+                this.removePlayer(ws);
             }
         });
     }
@@ -100,80 +140,90 @@ function findAvailableRoom() {
     return room;
 }
 
-// Clean up inactive rooms periodically
+// Clean up inactive rooms and disconnected players more frequently
 setInterval(() => {
+    // Clean up each room
+    rooms.forEach(room => {
+        room.cleanup();
+    });
+    
+    // Remove inactive rooms
     rooms = rooms.filter(room => room.isActive);
-}, 60000); // Clean up every minute
+}, 10000); // Check every 10 seconds
 
 wss.on('connection', (ws) => {
     let currentRoom = null;
 
     ws.on('message', (message) => {
-        const data = JSON.parse(message);
+        try {
+            const data = JSON.parse(message);
 
-        switch (data.type) {
-            case 'join':
-                currentRoom = findAvailableRoom();
-                currentRoom.addPlayer(ws, data.username);
-                
-                // Send room information to the new player
-                ws.send(JSON.stringify({
-                    type: 'room_info',
-                    id: currentRoom.id,
-                    name: currentRoom.name,
-                    playerCount: currentRoom.players.size
-                }));
+            switch (data.type) {
+                case 'join':
+                    currentRoom = findAvailableRoom();
+                    currentRoom.addPlayer(ws, data.username);
+                    
+                    // Send initial room information to the new player
+                    ws.send(JSON.stringify({
+                        type: 'room_info',
+                        id: currentRoom.id,
+                        name: currentRoom.name,
+                        playerCount: currentRoom.players.size
+                    }));
 
-                // Send existing players to the new player
-                currentRoom.players.forEach((playerData, playerWs) => {
-                    if (playerWs !== ws) {
-                        ws.send(JSON.stringify({
-                            type: 'player_joined',
-                            username: playerData.username,
-                            position: playerData.position,
-                            rotation: playerData.rotation
-                        }));
+                    // Send existing players to the new player
+                    currentRoom.players.forEach((playerData, playerWs) => {
+                        if (playerWs !== ws) {
+                            ws.send(JSON.stringify({
+                                type: 'player_joined',
+                                username: playerData.username,
+                                position: playerData.position,
+                                rotation: playerData.rotation
+                            }));
+                        }
+                    });
+
+                    // Broadcast new player to all other players in the room
+                    currentRoom.broadcast(JSON.stringify({
+                        type: 'player_joined',
+                        username: data.username,
+                        position: { x: 0, y: 10, z: 0 },
+                        rotation: { x: 0, y: 0, z: 0 }
+                    }), ws);
+                    break;
+
+                case 'position':
+                    if (currentRoom) {
+                        const player = currentRoom.players.get(ws);
+                        if (player) {
+                            player.position = data.position;
+                            player.rotation = data.rotation;
+                            
+                            currentRoom.broadcast(JSON.stringify({
+                                type: 'position',
+                                username: player.username,
+                                position: data.position,
+                                rotation: data.rotation
+                            }), ws);
+                        }
                     }
-                });
-
-                // Broadcast new player to all other players in the room
-                currentRoom.broadcast(JSON.stringify({
-                    type: 'player_joined',
-                    username: data.username,
-                    position: { x: 0, y: 10, z: 0 },
-                    rotation: { x: 0, y: 0, z: 0 }
-                }), ws);
-                break;
-
-            case 'position':
-                if (currentRoom) {
-                    const player = currentRoom.players.get(ws);
-                    if (player) {
-                        player.position = data.position;
-                        player.rotation = data.rotation;
-                        
-                        currentRoom.broadcast(JSON.stringify({
-                            type: 'position',
-                            username: player.username,
-                            position: data.position,
-                            rotation: data.rotation
-                        }), ws);
-                    }
-                }
-                break;
+                    break;
+            }
+        } catch (error) {
+            console.error('Error processing message:', error);
         }
     });
 
     ws.on('close', () => {
         if (currentRoom) {
-            const player = currentRoom.players.get(ws);
-            if (player) {
-                currentRoom.broadcast(JSON.stringify({
-                    type: 'player_left',
-                    username: player.username
-                }));
-                currentRoom.removePlayer(ws);
-            }
+            currentRoom.removePlayer(ws);
+        }
+    });
+
+    ws.on('error', (error) => {
+        console.error('WebSocket client error:', error);
+        if (currentRoom) {
+            currentRoom.removePlayer(ws);
         }
     });
 });
