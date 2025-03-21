@@ -183,6 +183,12 @@
         let verticalVelocity = 0;
         let ws = null;
 
+        // Movement state variables
+        let moveForward = false;
+        let moveBackward = false;
+        let moveLeft = false;
+        let moveRight = false;
+
         // Scene-related variables
         let scene, camera, renderer, controls;
 
