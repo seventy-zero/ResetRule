@@ -1,70 +1,87 @@
 const express = require('express');
-const { WebSocketServer } = require('ws');
+const http = require('http');
+const WebSocket = require('ws');
 const path = require('path');
+
 const app = express();
-const port = process.env.PORT || 3000;
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-// Serve static files from the root directory
+// Serve static files from the current directory
 app.use(express.static(__dirname));
-
-// Serve index.html for the root route
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// Start the server
-const server = app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-});
-
-// Create WebSocket server
-const wss = new WebSocketServer({ server });
 
 // Store connected players
 const players = new Map();
+const MAX_PLAYERS = 20;
 
-// WebSocket connection handling
 wss.on('connection', (ws) => {
-    console.log('New client connected');
-    let playerData = null;
+    let playerUsername = '';
 
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
-            
+
             switch (data.type) {
                 case 'join':
-                    // Store player data
-                    playerData = {
-                        username: data.username,
-                        position: { x: 0, y: 10, z: 0 },
-                        rotation: { x: 0, y: 0, z: 0 }
-                    };
-                    players.set(ws, playerData);
+                    // Handle new player joining
+                    playerUsername = data.username;
                     
+                    // Check if room is full
+                    if (players.size >= MAX_PLAYERS) {
+                        ws.send(JSON.stringify({
+                            type: 'error',
+                            message: 'Room is full (20 players maximum)'
+                        }));
+                        ws.close();
+                        return;
+                    }
+
+                    // Add new player
+                    players.set(playerUsername, {
+                        ws,
+                        position: [0, 10, 0],
+                        rotation: [0, 0, 0],
+                        username: playerUsername
+                    });
+
                     // Send current players to new player
-                    const existingPlayers = Array.from(players.values());
+                    const existingPlayers = Array.from(players.values())
+                        .filter(p => p.username !== playerUsername)
+                        .map(p => ({
+                            username: p.username,
+                            position: p.position,
+                            rotation: p.rotation
+                        }));
+
                     ws.send(JSON.stringify({
                         type: 'players',
                         players: existingPlayers
                     }));
-                    
-                    // Broadcast new player to others
+
+                    // Notify others about new player
                     broadcast({
                         type: 'playerJoined',
-                        player: playerData
+                        player: {
+                            username: playerUsername,
+                            position: [0, 10, 0],
+                            rotation: [0, 0, 0]
+                        }
                     }, ws);
+
+                    console.log(`Player joined: ${playerUsername} (${players.size} players online)`);
                     break;
 
                 case 'position':
-                    if (playerData) {
-                        playerData.position = data.position;
-                        playerData.rotation = data.rotation;
-                        
-                        // Broadcast position update
+                    // Update player position and rotation
+                    if (players.has(playerUsername)) {
+                        const player = players.get(playerUsername);
+                        player.position = data.position;
+                        player.rotation = data.rotation;
+
+                        // Broadcast position update to other players
                         broadcast({
                             type: 'playerMoved',
-                            username: playerData.username,
+                            username: playerUsername,
                             position: data.position,
                             rotation: data.rotation
                         }, ws);
@@ -77,23 +94,33 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        if (playerData) {
-            // Broadcast player left
+        if (playerUsername && players.has(playerUsername)) {
+            players.delete(playerUsername);
+            
+            // Notify others about player leaving
             broadcast({
                 type: 'playerLeft',
-                username: playerData.username
+                username: playerUsername
             });
-            players.delete(ws);
+
+            console.log(`Player left: ${playerUsername} (${players.size} players online)`);
         }
-        console.log('Client disconnected');
     });
 });
 
-// Broadcast to all clients except sender
-function broadcast(message, sender = null) {
-    wss.clients.forEach((client) => {
-        if (client !== sender && client.readyState === 1) {
-            client.send(JSON.stringify(message));
+// Broadcast message to all clients except sender
+function broadcast(message, exclude) {
+    const messageStr = JSON.stringify(message);
+    wss.clients.forEach(client => {
+        if (client !== exclude && client.readyState === WebSocket.OPEN) {
+            client.send(messageStr);
         }
     });
+}
+
+// Start server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+}); 
 } 

@@ -744,7 +744,7 @@
                 startButton.disabled = this.value.trim().length === 0;
             });
 
-            // Modified start button handler for both desktop and mobile
+            // Modified start button handler
             startButton.addEventListener('click', function(event) {
                 event.preventDefault();
                 if (usernameInput.value.trim()) {
@@ -752,24 +752,20 @@
                     gameStarted = true;
                     instructions.classList.add('hidden');
                     
-                    if (isMobile) {
-                        // On mobile, we need to handle the start differently
-                        // Force show mobile controls
-                        document.querySelector('.mobile-controls').style.display = 'block';
-                        document.querySelector('.mobile-controls').style.opacity = '1';
-                        document.getElementById('flingButton').style.display = 'block';
-                        document.getElementById('flingButton').style.opacity = '1';
-                        
-                        // Force the controls to be enabled without requiring pointer lock on mobile
-                        controls.isLocked = true;
-                        controls.enabled = true;
-                        
-                        // Initialize mobile controls immediately
-                        initializeMobileControls();
-                    } else {
-                        // On desktop, use normal pointer lock
-                        controls.lock();
+                    // Send join message to server
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'join',
+                            username: playerUsername
+                        }));
                     }
+                    
+                    if (isMobile) {
+                        document.querySelector('.mobile-controls').style.display = 'block';
+                        document.getElementById('flingButton').style.display = 'block';
+                        initializeMobileControls();
+                    }
+                    controls.lock();
                 }
             });
 
@@ -1255,11 +1251,14 @@
                 try {
                     const data = JSON.parse(event.data);
                     switch (data.type) {
+                        case 'error':
+                            alert(data.message);
+                            break;
+
                         case 'players':
                             // Initialize other players
                             data.players.forEach(player => {
                                 if (player.username !== playerUsername) {
-                                    // Create player representation
                                     createPlayerModel(player);
                                 }
                             });
@@ -1267,21 +1266,20 @@
 
                         case 'playerJoined':
                             if (data.player.username !== playerUsername) {
-                                // Create new player representation
                                 createPlayerModel(data.player);
+                                console.log(`Player joined: ${data.player.username}`);
                             }
                             break;
 
                         case 'playerMoved':
                             if (data.username !== playerUsername) {
-                                // Update player position
                                 updatePlayerPosition(data);
                             }
                             break;
 
                         case 'playerLeft':
-                            // Remove player representation
                             removePlayer(data.username);
+                            console.log(`Player left: ${data.username}`);
                             break;
                     }
                 } catch (error) {
@@ -1293,7 +1291,10 @@
             function createPlayerModel(player) {
                 // Create a simple player representation
                 const geometry = new THREE.CapsuleGeometry(2, 6, 2, 8);
-                const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: 0x00ff00, 
+                    wireframe: true 
+                });
                 const playerMesh = new THREE.Mesh(geometry, material);
                 
                 // Add username label
@@ -1313,23 +1314,33 @@
                 const texture = new THREE.CanvasTexture(canvas);
                 const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
                 const sprite = new THREE.Sprite(spriteMaterial);
+                sprite.scale.set(10, 2.5, 1);
                 sprite.position.y = 6;
                 playerMesh.add(sprite);
                 
                 // Set initial position
-                playerMesh.position.copy(player.position);
-                scene.add(playerMesh);
+                if (Array.isArray(player.position)) {
+                    playerMesh.position.fromArray(player.position);
+                }
+                if (Array.isArray(player.rotation)) {
+                    playerMesh.rotation.fromArray(player.rotation);
+                }
                 
-                // Store reference
+                scene.add(playerMesh);
                 otherPlayers.set(player.username, playerMesh);
+                console.log(`Created player model for ${player.username}`);
             }
 
             // Function to update player position
             function updatePlayerPosition(data) {
                 const playerMesh = otherPlayers.get(data.username);
                 if (playerMesh) {
-                    playerMesh.position.copy(data.position);
-                    playerMesh.rotation.copy(data.rotation);
+                    if (Array.isArray(data.position)) {
+                        playerMesh.position.fromArray(data.position);
+                    }
+                    if (Array.isArray(data.rotation)) {
+                        playerMesh.rotation.fromArray(data.rotation);
+                    }
                 }
             }
 
@@ -1344,7 +1355,7 @@
 
             // Send position updates
             function sendPositionUpdate() {
-                if (ws.readyState === WebSocket.OPEN) {
+                if (ws.readyState === WebSocket.OPEN && gameStarted) {
                     ws.send(JSON.stringify({
                         type: 'position',
                         position: camera.position.toArray(),
