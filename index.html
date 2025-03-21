@@ -776,6 +776,84 @@
             }
         }
 
+        // Function to create collectible item
+        function createCollectible(id, position, color) {
+            const geometry = new THREE.SphereGeometry(ITEM_RADIUS, 8, 8);
+            const material = new THREE.MeshBasicMaterial({ 
+                color: color,
+                emissive: color,
+                emissiveIntensity: 0.5
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.copy(position);
+            mesh.userData.id = id;
+            
+            // Add glow effect
+            const glowGeometry = new THREE.SphereGeometry(ITEM_RADIUS * 1.2, 8, 8);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.3
+            });
+            const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
+            mesh.add(glowMesh);
+            
+            scene.add(mesh);
+            collectibles.set(id, {
+                mesh: mesh,
+                position: position.clone(),
+                color: color
+            });
+        }
+
+        // Function to generate random position for collectible
+        function generateRandomPosition() {
+            const maxDistance = 2000;
+            const minDistance = 100;
+            const angle = Math.random() * Math.PI * 2;
+            const distance = minDistance + Math.random() * (maxDistance - minDistance);
+            
+            return new THREE.Vector3(
+                Math.cos(angle) * distance,
+                ITEM_HEIGHT,
+                Math.sin(angle) * distance
+            );
+        }
+
+        // Function to check if position is valid (not too close to other items)
+        function isValidPosition(position) {
+            for (const item of collectibles.values()) {
+                if (position.distanceTo(item.position) < MIN_DISTANCE_BETWEEN_ITEMS) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Function to initialize collectibles
+        function initializeCollectibles() {
+            console.log('Initializing collectibles...');
+            let attempts = 0;
+            const maxAttempts = 100;
+            
+            for (let i = 0; i < ITEM_COUNT; i++) {
+                let position;
+                do {
+                    position = generateRandomPosition();
+                    attempts++;
+                } while (!isValidPosition(position) && attempts < maxAttempts);
+                
+                if (attempts < maxAttempts) {
+                    createCollectible(i, position, ITEM_COLORS[i]);
+                    console.log(`Created collectible ${i} at position:`, position);
+                } else {
+                    console.warn(`Failed to find valid position for collectible ${i} after ${maxAttempts} attempts`);
+                }
+            }
+            
+            console.log(`Initialized ${collectibles.size} collectibles`);
+        }
+
         // Scene setup with error handling
         try {
             // Scene initialization
