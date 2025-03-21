@@ -176,26 +176,63 @@
         });
 
         startButton.addEventListener('click', function() {
-            if (usernameInput.value.trim()) {
-                playerUsername = usernameInput.value.trim();
-                // Join the game
-                ws.send(JSON.stringify({
-                    type: 'join',
-                    username: playerUsername
-                }));
-                controls.lock();
-                gameStarted = true;
+            try {
+                if (usernameInput.value.trim()) {
+                    console.log('Starting game initialization...');
+                    playerUsername = usernameInput.value.trim();
+                    
+                    // Initialize game state
+                    gameStarted = true;
+                    console.log('Game state initialized');
+                    
+                    // Reset player position and state
+                    camera.position.set(0, playerHeight, 0);
+                    velocity.set(0, 0, 0);
+                    flingVelocity.set(0, 0, 0);
+                    verticalVelocity = 0;
+                    isGrounded = true;
+                    isFlinging = false;
+                    console.log('Player state reset');
+                    
+                    // Ensure scene is properly set up
+                    scene.add(camera);
+                    console.log('Camera added to scene');
+                    
+                    // Join the game
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'join',
+                            username: playerUsername
+                        }));
+                        console.log('Join message sent to server');
+                    } else {
+                        console.error('WebSocket not connected');
+                    }
+                    
+                    // Lock controls after everything is set up
+                    controls.lock();
+                    console.log('Controls locked');
+                }
+            } catch (error) {
+                console.error('Error during game initialization:', error);
+                alert('An error occurred while starting the game. Please refresh and try again.');
             }
+        });
+
+        // Add error handler for controls
+        controls.addEventListener('error', function(event) {
+            console.error('PointerLock Error:', event);
         });
 
         controls.addEventListener('lock', function() {
             instructions.classList.add('hidden');
-            console.log('Player started:', playerUsername);
+            console.log('Controls locked - Player started:', playerUsername);
         });
 
         controls.addEventListener('unlock', function() {
             if (gameStarted) {
                 instructions.classList.remove('hidden');
+                console.log('Controls unlocked');
             }
         });
 
