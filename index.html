@@ -821,43 +821,47 @@
                     dataOnly: false
                 });
 
-                // Movement joystick handling with debug logging
-                window.leftJoystick.on('start move', function(evt, data) {
-                    console.log('Left joystick move:', data.vector);
-                    if (data.vector) {
-                        moveForward = data.vector.y > 0;
-                        moveBackward = data.vector.y < 0;
-                        moveRight = data.vector.x > 0;
-                        moveLeft = data.vector.x < 0;
-                    }
+                // Movement joystick handling
+                window.leftJoystick.on('move', function(evt, nipple) {
+                    const force = Math.min(nipple.force, 1.0);
+                    moveForward = nipple.vector.y > 0;
+                    moveBackward = nipple.vector.y < 0;
+                    moveLeft = nipple.vector.x < 0;
+                    moveRight = nipple.vector.x > 0;
+                    
+                    // Adjust movement speed based on joystick force
+                    velocity.z = moveForward ? -force * moveSpeed * 2 : moveBackward ? force * moveSpeed * 2 : 0;
+                    velocity.x = moveRight ? force * moveSpeed * 2 : moveLeft ? -force * moveSpeed * 2 : 0;
                 });
 
-                window.leftJoystick.on('end', function(evt) {
-                    console.log('Left joystick released');
+                window.leftJoystick.on('end', function() {
                     moveForward = false;
                     moveBackward = false;
-                    moveRight = false;
                     moveLeft = false;
+                    moveRight = false;
+                    velocity.x = 0;
+                    velocity.z = 0;
                 });
 
-                // Look joystick handling with increased sensitivity
-                let lookSpeed = 0.008; // Further increased sensitivity
-                window.rightJoystick.on('start move', function(evt, data) {
-                    console.log('Right joystick move:', data.vector);
-                    if (data.vector) {
-                        camera.rotation.y -= data.vector.x * lookSpeed;
-                        camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
-                            camera.rotation.x - data.vector.y * lookSpeed));
-                    }
+                // Look joystick handling
+                const lookSensitivity = 0.05;
+                window.rightJoystick.on('move', function(evt, nipple) {
+                    const force = Math.min(nipple.force, 1.0);
+                    const angle = nipple.angle.radian;
+                    const rotationX = Math.cos(angle) * force * lookSensitivity;
+                    const rotationY = Math.sin(angle) * force * lookSensitivity;
+                    
+                    camera.rotation.y -= rotationX;
+                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+                        camera.rotation.x + rotationY));
                 });
 
-                // Fling button handling
+                // Fling button handling with improved touch response
                 const flingButton = document.getElementById('flingButton');
                 
                 flingButton.addEventListener('touchstart', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log('Fling button pressed');
                     showLine = true;
                     this.classList.add('active');
                 }, { passive: false });
@@ -865,7 +869,6 @@
                 flingButton.addEventListener('touchend', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log('Fling button released');
                     showLine = false;
                     this.classList.remove('active');
                 }, { passive: false });
