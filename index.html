@@ -1137,46 +1137,61 @@
                     velocity.z = 0;
                 });
 
-                // Look joystick handling with improved sensitivity
+                // Look joystick handling with improved sensitivity and locked rotation
                 window.rightJoystick.on('move', function(evt, data) {
                     if (!data.vector) return;
                     
                     // Get the vector data from the correct property
                     const lookSpeed = 0.05; // Increased sensitivity
+                    
+                    // Only allow horizontal and vertical rotation, no roll
                     camera.rotation.y -= data.vector.x * lookSpeed;
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
                         camera.rotation.x - data.vector.y * lookSpeed));
+                    camera.rotation.z = 0; // Lock Z rotation to prevent sideways movement
                 });
 
-                // Fling button
+                // Fling button with improved touch handling
                 const flingButton = document.getElementById('flingButton');
                 
-                flingButton.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    showLine = true;
-                    flingButton.classList.add('active');
-                }, { passive: false });
+                // Remove any existing event listeners
+                flingButton.removeEventListener('touchstart', handleFlingStart);
+                flingButton.removeEventListener('touchend', handleFlingEnd);
                 
-                flingButton.addEventListener('touchend', (e) => {
-                    e.preventDefault();
-                    showLine = false;
-                    flingButton.classList.remove('active');
-                    if (lineCollisionPoint) {
-                        const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
-                        const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                        const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2);
-                        
-                        flingVelocity.x = flingDirection.x * scaledStrength;
-                        flingVelocity.z = flingDirection.z * scaledStrength;
-                        verticalVelocity = flingDirection.y * scaledStrength + 0.4;
-                        
-                        isFlinging = true;
-                        isGrounded = false;
-                        lineCollisionPoint = null;
-                    }
-                }, { passive: false });
+                // Add new event listeners
+                flingButton.addEventListener('touchstart', handleFlingStart, { passive: false });
+                flingButton.addEventListener('touchend', handleFlingEnd, { passive: false });
                 
                 console.log('Mobile controls initialized');
+            }
+
+            // Separate handlers for fling button
+            function handleFlingStart(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                showLine = true;
+                this.classList.add('active');
+            }
+
+            function handleFlingEnd(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                showLine = false;
+                this.classList.remove('active');
+                if (lineCollisionPoint) {
+                    // Trigger fling immediately on release if we have a valid target
+                    const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
+                    const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                    const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2);
+                    
+                    flingVelocity.x = flingDirection.x * scaledStrength;
+                    flingVelocity.z = flingDirection.z * scaledStrength;
+                    verticalVelocity = flingDirection.y * scaledStrength + 0.4;
+                    
+                    isFlinging = true;
+                    isGrounded = false;
+                    lineCollisionPoint = null;
+                }
             }
 
             // Desktop controls
