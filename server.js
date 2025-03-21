@@ -53,21 +53,42 @@ class GameRoom {
 
     generateTowers() {
         const towers = [];
-        const numTowers = 50; // Number of towers to generate
-        const minDistance = 100; // Minimum distance between towers
-        const maxDistance = 2000; // Maximum distance from center
-        const minHeight = 100; // Minimum tower height
-        const maxHeight = 400; // Maximum tower height
+        const numTowers = 100; // Increased number of towers
+        const minDistance = 50; // Reduced minimum distance for more challenging gameplay
+        const maxDistance = 2500; // Increased max distance for larger play area
+        const minHeight = 150; // Increased minimum height
+        const maxHeight = 600; // Increased maximum height for more dramatic towers
 
-        for (let i = 0; i < numTowers; i++) {
+        // Create a central cluster of towers
+        for (let i = 0; i < 20; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 50 + Math.random() * 300; // Closer to center
+            const position = {
+                x: Math.cos(angle) * distance,
+                z: Math.sin(angle) * distance
+            };
+            
+            const height = 200 + Math.random() * 400; // Taller central towers
+            const type = Math.floor(Math.random() * 12);
+            const baseHeight = Math.random() * 30;
+
+            towers.push({
+                type,
+                position,
+                height,
+                baseHeight
+            });
+        }
+
+        // Create outer ring of towers
+        for (let i = 0; i < 80; i++) {
             let position;
             let attempts = 0;
             const maxAttempts = 10;
 
             do {
-                // Generate random position
                 const angle = Math.random() * Math.PI * 2;
-                const distance = minDistance + Math.random() * (maxDistance - minDistance);
+                const distance = 800 + Math.random() * (maxDistance - 800);
                 position = {
                     x: Math.cos(angle) * distance,
                     z: Math.sin(angle) * distance
@@ -75,10 +96,9 @@ class GameRoom {
                 attempts++;
             } while (attempts < maxAttempts && this.isPositionTooClose(position, towers, minDistance));
 
-            // Generate random height and type
             const height = minHeight + Math.random() * (maxHeight - minHeight);
-            const type = Math.floor(Math.random() * 12); // 12 different tower types
-            const baseHeight = Math.random() * 50; // Random base height variation
+            const type = Math.floor(Math.random() * 12);
+            const baseHeight = Math.random() * 50;
 
             towers.push({
                 type,
