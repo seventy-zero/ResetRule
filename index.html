@@ -822,16 +822,20 @@
                 });
 
                 // Movement joystick handling
-                window.leftJoystick.on('move', function(evt, nipple) {
-                    const force = Math.min(nipple.force, 1.0);
-                    moveForward = nipple.vector.y > 0;
-                    moveBackward = nipple.vector.y < 0;
-                    moveLeft = nipple.vector.x < 0;
-                    moveRight = nipple.vector.x > 0;
+                window.leftJoystick.on('move', function(evt, data) {
+                    // Get the vector data from the correct property
+                    const forward = -data.vector.y; // Invert Y for correct forward/back
+                    const right = data.vector.x;
                     
-                    // Adjust movement speed based on joystick force
-                    velocity.z = moveForward ? -force * moveSpeed * 2 : moveBackward ? force * moveSpeed * 2 : 0;
-                    velocity.x = moveRight ? force * moveSpeed * 2 : moveLeft ? -force * moveSpeed * 2 : 0;
+                    // Set movement flags
+                    moveForward = forward > 0;
+                    moveBackward = forward < 0;
+                    moveLeft = right < 0;
+                    moveRight = right > 0;
+                    
+                    // Set velocity directly based on joystick position
+                    velocity.z = forward * moveSpeed * 4;
+                    velocity.x = right * moveSpeed * 4;
                 });
 
                 window.leftJoystick.on('end', function() {
@@ -843,17 +847,13 @@
                     velocity.z = 0;
                 });
 
-                // Look joystick handling
-                const lookSensitivity = 0.05;
-                window.rightJoystick.on('move', function(evt, nipple) {
-                    const force = Math.min(nipple.force, 1.0);
-                    const angle = nipple.angle.radian;
-                    const rotationX = Math.cos(angle) * force * lookSensitivity;
-                    const rotationY = Math.sin(angle) * force * lookSensitivity;
-                    
-                    camera.rotation.y -= rotationX;
+                // Look joystick handling with direct rotation
+                window.rightJoystick.on('move', function(evt, data) {
+                    // Get the vector data from the correct property
+                    const lookSpeed = 0.03;
+                    camera.rotation.y -= data.vector.x * lookSpeed;
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
-                        camera.rotation.x + rotationY));
+                        camera.rotation.x - data.vector.y * lookSpeed));
                 });
 
                 // Fling button handling with improved touch response
@@ -871,6 +871,20 @@
                     e.stopPropagation();
                     showLine = false;
                     this.classList.remove('active');
+                    if (lineCollisionPoint) {
+                        // Trigger fling immediately on release if we have a valid target
+                        const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
+                        const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                        const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2);
+                        
+                        flingVelocity.x = flingDirection.x * scaledStrength;
+                        flingVelocity.z = flingDirection.z * scaledStrength;
+                        verticalVelocity = flingDirection.y * scaledStrength + 0.4;
+                        
+                        isFlinging = true;
+                        isGrounded = false;
+                        lineCollisionPoint = null;
+                    }
                 }, { passive: false });
 
                 console.log('Mobile controls initialized');
