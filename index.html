@@ -1172,19 +1172,28 @@
                 // Show mobile instructions immediately
                 document.getElementById('mobileInstructions').style.display = 'block';
                 
-                // Prevent zoom and scroll
+                // Prevent zoom and scroll only for the game canvas
                 document.addEventListener('touchmove', function(e) {
-                    if (e.target !== usernameInput) {
-                        e.preventDefault();
-                        e.stopPropagation();
+                    // Allow touch events for controls
+                    if (e.target.closest('.mobile-controls') || 
+                        e.target.closest('#flingButton') || 
+                        e.target === usernameInput) {
+                        return;
                     }
+                    e.preventDefault();
+                    e.stopPropagation();
                 }, { passive: false });
 
                 document.addEventListener('touchstart', function(e) {
-                    if (e.target !== usernameInput && e.target !== startButton) {
-                        e.preventDefault();
-                        e.stopPropagation();
+                    // Allow touch events for controls
+                    if (e.target.closest('.mobile-controls') || 
+                        e.target.closest('#flingButton') || 
+                        e.target === usernameInput || 
+                        e.target === startButton) {
+                        return;
                     }
+                    e.preventDefault();
+                    e.stopPropagation();
                 }, { passive: false });
 
                 // Prevent pinch zoom
@@ -1195,6 +1204,11 @@
                 // Prevent double tap zoom
                 let lastTapTime = 0;
                 document.addEventListener('touchend', function(e) {
+                    // Allow touch events for controls
+                    if (e.target.closest('.mobile-controls') || 
+                        e.target.closest('#flingButton')) {
+                        return;
+                    }
                     const currentTime = new Date().getTime();
                     const tapLength = currentTime - lastTapTime;
                     if (tapLength < 500 && tapLength > 0) {
