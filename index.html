@@ -90,6 +90,41 @@
         
         // Store other players
         const otherPlayers = new Map();
+        
+        // Get DOM elements
+        const instructions = document.getElementById('instructions');
+        const usernameInput = document.getElementById('username');
+        const startButton = document.getElementById('startButton');
+        let playerId = null;
+        let playerUsername = '';
+
+        // Enable/disable start button based on username input
+        usernameInput.addEventListener('input', function() {
+            const username = this.value.trim();
+            startButton.disabled = username.length === 0;
+            playerUsername = username;
+        });
+
+        startButton.addEventListener('click', function() {
+            if (usernameInput.value.trim()) {
+                playerUsername = usernameInput.value.trim();
+                // Join the game
+                ws.send(JSON.stringify({
+                    type: 'join',
+                    username: playerUsername
+                }));
+                controls.lock();
+            }
+        });
+
+        controls.addEventListener('lock', function() {
+            instructions.classList.add('hidden');
+            console.log('Player started:', playerUsername); // For debugging
+        });
+
+        controls.addEventListener('unlock', function() {
+            instructions.classList.remove('hidden');
+        });
 
         // Create player model
         function createPlayerModel(color = 0x00ff00) {
@@ -378,38 +413,6 @@
 
         // Controls setup
         const controls = new PointerLockControls(camera, document.body);
-
-        // Click to start with username
-        const instructions = document.getElementById('instructions');
-        const usernameInput = document.getElementById('username');
-        const startButton = document.getElementById('startButton');
-        let playerUsername = '';
-
-        // Enable/disable start button based on username input
-        usernameInput.addEventListener('input', function() {
-            startButton.disabled = this.value.trim().length === 0;
-        });
-
-        startButton.addEventListener('click', function() {
-            if (usernameInput.value.trim()) {
-                playerUsername = usernameInput.value.trim();
-                // Join the game
-                ws.send(JSON.stringify({
-                    type: 'join',
-                    username: playerUsername
-                }));
-                controls.lock();
-            }
-        });
-
-        controls.addEventListener('lock', function() {
-            instructions.classList.add('hidden');
-            console.log('Player started:', playerUsername); // For debugging
-        });
-
-        controls.addEventListener('unlock', function() {
-            instructions.classList.remove('hidden');
-        });
 
         // Create the floor
         const size = 6000;
