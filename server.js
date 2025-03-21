@@ -5,6 +5,11 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// World generation constants
+const NUM_TOWERS = 3000;
+const MAX_RADIUS = 4800;
+const BRIDGE_CHANCE = 0.1;
+
 // Word lists for room names
 const adjectives = [
     'Cosmic', 'Stellar', 'Lunar', 'Solar', 'Astral',
@@ -31,6 +36,101 @@ function generateRoomName() {
     return `${adjective}-${noun}`;
 }
 
+// World generation functions
+function createTower(type, x, z) {
+    const height = Math.random() * 300 + 150;
+    const isFloating = Math.random() < 0.15;
+    const baseHeight = isFloating ? Math.random() * 30 + 15 : 0;
+    
+    return {
+        type,
+        x,
+        z,
+        height,
+        baseHeight,
+        isFloating
+    };
+}
+
+function createBridge(startPos, endPos) {
+    return {
+        startX: startPos.x,
+        startZ: startPos.z,
+        endX: endPos.x,
+        endZ: endPos.z,
+        height: startPos.y
+    };
+}
+
+function generateWorld() {
+    const towers = [];
+    const bridges = [];
+    const towerPositions = [];
+    
+    // Create a grid of towers with some random offset
+    const gridSize = Math.sqrt(NUM_TOWERS);
+    const spacing = (MAX_RADIUS * 2) / gridSize;
+    
+    // Place towers
+    for (let i = 0; i < gridSize; i++) {
+        for (let j = 0; j < gridSize; j++) {
+            const x = -MAX_RADIUS + i * spacing + (Math.random() * spacing * 0.5);
+            const z = -MAX_RADIUS + j * spacing + (Math.random() * spacing * 0.5);
+            
+            const offsetX = (Math.random() - 0.5) * spacing * 0.5;
+            const offsetZ = (Math.random() - 0.5) * spacing * 0.5;
+            
+            const finalX = x + offsetX;
+            const finalZ = z + offsetZ;
+            
+            const towerType = Math.floor(Math.random() * 12);
+            const tower = createTower(towerType, finalX, finalZ);
+            towers.push(tower);
+            
+            // Store tower position and height for bridge generation
+            towerPositions.push({
+                position: { x: finalX, y: tower.height/2, z: finalZ },
+                height: tower.height
+            });
+        }
+    }
+    
+    // Generate bridges between nearby towers
+    const maxBridgeDistance = spacing * 2;
+    
+    for (let i = 0; i < towerPositions.length; i++) {
+        for (let j = i + 1; j < towerPositions.length; j++) {
+            const tower1 = towerPositions[i];
+            const tower2 = towerPositions[j];
+            
+            const distance = Math.sqrt(
+                Math.pow(tower1.position.x - tower2.position.x, 2) +
+                Math.pow(tower1.position.z - tower2.position.z, 2)
+            );
+            
+            if (distance <= maxBridgeDistance && Math.random() < BRIDGE_CHANCE) {
+                const minHeight = Math.min(tower1.height, tower2.height);
+                const bridgeHeight = minHeight * (0.3 + Math.random() * 0.5);
+                
+                const startPos = {
+                    x: tower1.position.x,
+                    y: bridgeHeight,
+                    z: tower1.position.z
+                };
+                const endPos = {
+                    x: tower2.position.x,
+                    y: bridgeHeight,
+                    z: tower2.position.z
+                };
+                
+                bridges.push(createBridge(startPos, endPos));
+            }
+        }
+    }
+    
+    return { towers, bridges };
+}
+
 // Serve static files
 app.use(express.static(path.join(__dirname)));
 
@@ -48,6 +148,7 @@ class GameRoom {
         this.players = new Map();
         this.isActive = true;
         this.lastActivity = Date.now();
+        this.world = generateWorld(); // Generate world when room is created
     }
 
     addPlayer(ws, username) {
@@ -58,6 +159,13 @@ class GameRoom {
             lastActivity: Date.now()
         });
         this.lastActivity = Date.now();
+        
+        // Send world data to the new player
+        ws.send(JSON.stringify({
+            type: 'world_data',
+            towers: this.world.towers,
+            bridges: this.world.bridges
+        }));
         
         // Broadcast updated player count to all players in the room
         this.broadcastRoomInfo();

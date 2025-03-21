@@ -384,6 +384,25 @@
                 console.log('Received message:', data.type);
                 
                 switch (data.type) {
+                    case 'world_data':
+                        console.log('Received world data');
+                        // Clear existing towers
+                        towers.forEach(tower => {
+                            scene.remove(tower.mesh);
+                        });
+                        towers.length = 0;
+                        
+                        // Create towers from server data
+                        data.towers.forEach(towerData => {
+                            createTowerFromData(towerData);
+                        });
+                        
+                        // Create bridges from server data
+                        data.bridges.forEach(bridgeData => {
+                            createBridgeFromData(bridgeData);
+                        });
+                        break;
+
                     case 'room_info':
                         console.log(`Joined room ${data.name} with ${data.playerCount} players`);
                         document.getElementById('roomInfo').textContent = `${data.name} - Players: ${data.playerCount}/20`;
@@ -699,11 +718,11 @@
             const [starField, largeStarField] = createStars();
 
             // Tower generation
-            function createTower(type, x, z) {
+            function createTowerFromData(towerData) {
                 let geometry;
-                let height = Math.random() * 300 + 150;
-                let isFloating = Math.random() < 0.15;
-                let baseHeight = isFloating ? Math.random() * 30 + 15 : 0;
+                const height = towerData.height;
+                const isFloating = towerData.isFloating;
+                const baseHeight = towerData.baseHeight;
                 
                 // Create materials for the tower
                 const materials = [
@@ -714,7 +733,7 @@
                 // Create collision box for the tower
                 let collisionGeometry;
 
-                switch(type) {
+                switch(towerData.type) {
                     case 0: // Cylindrical tower
                         geometry = new THREE.CylinderGeometry(18, 18, height, 8);
                         collisionGeometry = new THREE.CylinderGeometry(18, 18, height, 8);
@@ -800,7 +819,7 @@
                         group.add(baseEdges);
                         group.add(topMesh);
                         group.add(topEdges);
-                        group.position.set(x, height/2 + baseHeight, z);
+                        group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
 
                         // Add collision data
                         const collisionMesh = new THREE.Mesh(collisionGeometry);
@@ -827,7 +846,7 @@
                 const group = new THREE.Group();
                 group.add(mesh);
                 group.add(edges);
-                group.position.set(x, height/2 + baseHeight, z);
+                group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
                 scene.add(group);
 
                 // Add collision data
@@ -839,21 +858,12 @@
                 });
             }
 
-            // Place towers in a grid pattern with some randomization
-            const numTowers = 3000; // Back to original number
-            const maxRadius = 4800;
-            
-            // Create a grid of towers with some random offset
-            const gridSize = Math.sqrt(numTowers);
-            const spacing = (maxRadius * 2) / gridSize;
-            
-            // Store tower positions for bridge generation
-            const towerPositions = [];
-
-            // Function to create a bridge between two towers
-            function createBridge(startPos, endPos) {
+            // Function to create bridge from server data
+            function createBridgeFromData(bridgeData) {
                 // Calculate bridge dimensions
                 const bridgeWidth = 8;
+                const startPos = new THREE.Vector3(bridgeData.startX, bridgeData.height, bridgeData.startZ);
+                const endPos = new THREE.Vector3(bridgeData.endX, bridgeData.height, bridgeData.endZ);
                 const distance = startPos.distanceTo(endPos);
                 
                 // Create bridge geometry
@@ -898,7 +908,7 @@
                     boundingBox: new THREE.Box3().setFromObject(collisionMesh)
                 });
             }
-            
+
             // Place towers
             for (let i = 0; i < gridSize; i++) {
                 for (let j = 0; j < gridSize; j++) {
@@ -912,7 +922,14 @@
                     const finalZ = z + offsetZ;
                     
                     const towerType = Math.floor(Math.random() * 12);
-                    createTower(towerType, finalX, finalZ);
+                    createTowerFromData({
+                        type: towerType,
+                        x: finalX,
+                        z: finalZ,
+                        height: Math.random() * 300 + 150,
+                        isFloating: Math.random() < 0.15,
+                        baseHeight: Math.random() * 30 + 15
+                    });
                     
                     // Store tower position and height for bridge generation
                     const height = Math.random() * 300 + 150;
@@ -942,7 +959,13 @@
                         const startPos = new THREE.Vector3(tower1.position.x, bridgeHeight, tower1.position.z);
                         const endPos = new THREE.Vector3(tower2.position.x, bridgeHeight, tower2.position.z);
                         
-                        createBridge(startPos, endPos);
+                        createBridgeFromData({
+                            startX: startPos.x,
+                            startZ: startPos.z,
+                            endX: endPos.x,
+                            endZ: endPos.z,
+                            height: bridgeHeight
+                        });
                     }
                 }
             }
