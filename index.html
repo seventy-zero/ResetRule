@@ -183,11 +183,8 @@
         let verticalVelocity = 0;
         let ws = null;
 
-        // Movement state
-        let moveForward = false;
-        let moveBackward = false;
-        let moveLeft = false;
-        let moveRight = false;
+        // Scene-related variables
+        let scene, camera, renderer, controls;
 
         // Collections
         const towers = [];
@@ -409,24 +406,21 @@
             };
         }
 
-        // Initialize WebSocket connection
-        setupWebSocket();
-
         // Scene setup with error handling
         try {
             // Scene initialization
-            const scene = new THREE.Scene();
+            scene = new THREE.Scene();
             scene.background = new THREE.Color(0x000000);
             console.log('Scene created');
 
             // Camera setup
-            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000);
             camera.position.set(0, playerHeight, 0);
             scene.add(camera);
             console.log('Camera initialized at height:', playerHeight);
 
             // Renderer setup
-            const renderer = new THREE.WebGLRenderer({ 
+            renderer = new THREE.WebGLRenderer({ 
                 antialias: true,
                 powerPreference: "high-performance",
                 alpha: false
@@ -443,7 +437,7 @@
             console.log('Renderer initialized');
 
             // Controls setup
-            const controls = new PointerLockControls(camera, document.body);
+            controls = new PointerLockControls(camera, document.body);
             console.log('Controls initialized');
 
             // Collision setup
@@ -1521,6 +1515,9 @@
             `;
             throw error;
         }
+
+        // Initialize WebSocket connection AFTER scene is set up
+        setupWebSocket();
     </script>
 </body>
 </html>
