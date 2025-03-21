@@ -3,8 +3,7 @@
 <head>
     <title>ResetRule</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/virtual-joystick.js/1.10.0/virtualjoystick.min.js"></script>
     <style>
         body { 
             margin: 0; 
@@ -75,24 +74,19 @@
             pointer-events: none;
             z-index: 1000;
         }
-        .touch-area {
+        .joystick-container {
             position: absolute;
-            width: 100%;
-            height: 100%;
+            width: 150px;
+            height: 150px;
             pointer-events: auto;
-            touch-action: none;
         }
-        #leftTouchArea {
-            left: 0;
-            bottom: 0;
-            width: 50%;
-            height: 100%;
+        #leftJoystickContainer {
+            left: 20px;
+            bottom: 20px;
         }
-        #rightTouchArea {
-            right: 0;
-            bottom: 0;
-            width: 50%;
-            height: 100%;
+        #rightJoystickContainer {
+            right: 20px;
+            bottom: 20px;
         }
         #flingButton {
             display: none;
@@ -148,8 +142,8 @@
     
     <!-- Mobile Controls -->
     <div class="mobile-controls">
-        <div id="leftTouchArea" class="touch-area"></div>
-        <div id="rightTouchArea" class="touch-area"></div>
+        <div id="leftJoystickContainer" class="joystick-container"></div>
+        <div id="rightJoystickContainer" class="joystick-container"></div>
     </div>
     <div id="flingButton">⚡</div>
 
@@ -1067,75 +1061,65 @@
             function initializeMobileControls() {
                 console.log('Initializing mobile controls');
                 
-                const leftTouchArea = document.getElementById('leftTouchArea');
-                const rightTouchArea = document.getElementById('rightTouchArea');
-                const flingButton = document.getElementById('flingButton');
-                
-                // Movement controls (WASD style)
-                let lastLeftTouch = null;
-                leftTouchArea.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    lastLeftTouch = e.touches[0];
-                }, { passive: false });
-                
-                leftTouchArea.addEventListener('touchmove', (e) => {
-                    e.preventDefault();
-                    if (!lastLeftTouch) return;
-                    
-                    const touch = e.touches[0];
-                    const deltaX = touch.clientX - lastLeftTouch.clientX;
-                    const deltaY = touch.clientY - lastLeftTouch.clientY;
-                    
-                    // Set movement based on touch position relative to center
-                    const centerX = leftTouchArea.offsetWidth / 2;
-                    const centerY = leftTouchArea.offsetHeight / 2;
-                    const relativeX = touch.clientX - leftTouchArea.getBoundingClientRect().left - centerX;
-                    const relativeY = touch.clientY - leftTouchArea.getBoundingClientRect().top - centerY;
-                    
-                    // Set movement flags based on position relative to center
-                    moveForward = relativeY < -20;
-                    moveBackward = relativeY > 20;
-                    moveLeft = relativeX < -20;
-                    moveRight = relativeX > 20;
-                    
-                    lastLeftTouch = touch;
-                }, { passive: false });
-                
-                leftTouchArea.addEventListener('touchend', () => {
-                    moveForward = false;
-                    moveBackward = false;
-                    moveLeft = false;
-                    moveRight = false;
-                    lastLeftTouch = null;
+                // Create movement joystick
+                const leftJoystick = new VirtualJoystick({
+                    container: document.getElementById('leftJoystickContainer'),
+                    mouseSupport: false,
+                    strokeStyle: 'rgba(255, 255, 255, 0.5)',
+                    limitStickTravel: true,
+                    stickRadius: 50
                 });
-                
-                // Camera controls (trackpad style)
-                let lastRightTouch = null;
-                rightTouchArea.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    lastRightTouch = e.touches[0];
-                }, { passive: false });
-                
-                rightTouchArea.addEventListener('touchmove', (e) => {
-                    e.preventDefault();
-                    if (!lastRightTouch) return;
-                    
-                    const touch = e.touches[0];
-                    const deltaX = touch.clientX - lastRightTouch.clientX;
-                    const deltaY = touch.clientY - lastRightTouch.clientY;
-                    
-                    // Rotate camera based on touch movement
-                    controls.rotateLeft(deltaX * 0.002);
-                    controls.rotateUp(deltaY * 0.002);
-                    
-                    lastRightTouch = touch;
-                }, { passive: false });
-                
-                rightTouchArea.addEventListener('touchend', () => {
-                    lastRightTouch = null;
+
+                // Create look joystick
+                const rightJoystick = new VirtualJoystick({
+                    container: document.getElementById('rightJoystickContainer'),
+                    mouseSupport: false,
+                    strokeStyle: 'rgba(255, 255, 255, 0.5)',
+                    limitStickTravel: true,
+                    stickRadius: 50
                 });
-                
+
+                // Movement controls
+                function updateMovement() {
+                    if (leftJoystick.isPressed()) {
+                        const dx = leftJoystick.deltaX();
+                        const dy = leftJoystick.deltaY();
+                        
+                        // Set movement flags based on joystick position
+                        moveForward = dy < -10;
+                        moveBackward = dy > 10;
+                        moveLeft = dx < -10;
+                        moveRight = dx > 10;
+                    } else {
+                        moveForward = false;
+                        moveBackward = false;
+                        moveLeft = false;
+                        moveRight = false;
+                    }
+                }
+
+                // Look controls
+                function updateLook() {
+                    if (rightJoystick.isPressed()) {
+                        const dx = rightJoystick.deltaX();
+                        const dy = rightJoystick.deltaY();
+                        
+                        // Rotate camera based on joystick position
+                        controls.rotateLeft(dx * 0.002);
+                        controls.rotateUp(dy * 0.002);
+                    }
+                }
+
+                // Update controls in animation loop
+                function updateControls() {
+                    updateMovement();
+                    updateLook();
+                    requestAnimationFrame(updateControls);
+                }
+                updateControls();
+
                 // Fling button
+                const flingButton = document.getElementById('flingButton');
                 flingButton.addEventListener('touchstart', handleFlingStart, { passive: false });
                 flingButton.addEventListener('touchend', handleFlingEnd, { passive: false });
                 
