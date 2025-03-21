@@ -3,7 +3,7 @@
 <head>
     <title>ResetRule</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/virtual-joystick/1.10.0/virtual-joystick.min.js"></script>
     <style>
         body { 
             margin: 0; 
@@ -86,6 +86,14 @@
         #rightJoystick {
             right: 0;
             bottom: 0;
+        }
+        .joystick {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 25px;
+            pointer-events: none;
         }
         #flingButton {
             display: none;
@@ -1096,34 +1104,34 @@
                 }
 
                 // Create new joystick with improved configuration
-                window.rightJoystick = nipplejs.create({
-                    zone: document.getElementById('rightJoystick'),
-                    mode: 'static',
-                    position: { right: '60px', bottom: '60px' },
-                    color: 'white',
-                    size: 120,
-                    multitouch: true,
-                    maxNumberOfNipples: 1,
-                    dataOnly: false,
-                    lockX: false,
-                    lockY: false,
-                    threshold: 0.1,
-                    fadeTime: 0
+                window.rightJoystick = new VirtualJoystick({
+                    container: document.getElementById('rightJoystick'),
+                    mouseSupport: false,
+                    stationaryBase: true,
+                    baseX: 60,
+                    baseY: 60,
+                    limitStickTravel: true,
+                    stickRadius: 50,
+                    color: 'white'
                 });
 
                 // Look joystick handling with improved sensitivity
-                window.rightJoystick.on('move', function(evt, data) {
-                    if (!data.vector) return;
+                function updateJoystick() {
+                    if (!window.rightJoystick) return;
                     
                     const lookSpeed = 0.05; // Increased sensitivity
-                    const x = data.vector.x;
-                    const y = data.vector.y;
+                    const x = window.rightJoystick.deltaX() / 50;
+                    const y = window.rightJoystick.deltaY() / 50;
                     
                     // Apply rotation with improved sensitivity
                     camera.rotation.y -= x * lookSpeed;
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
                         camera.rotation.x - y * lookSpeed));
-                });
+                    
+                    requestAnimationFrame(updateJoystick);
+                }
+                
+                updateJoystick();
 
                 // Fling button handling with improved touch response
                 const flingButton = document.getElementById('flingButton');
