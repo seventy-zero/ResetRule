@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Endless Floor - First Person</title>
+    <title>ResetRule</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
     <style>
@@ -787,42 +787,87 @@
 
             // Mobile-specific touch handlers
             if (isMobile) {
-                // Prevent default touch actions on the canvas
-                renderer.domElement.addEventListener('touchstart', function(e) {
-                    e.preventDefault();
+                // Remove readonly attribute from username input
+                usernameInput.removeAttribute('readonly');
+                
+                // Prevent default touch actions except on input field
+                document.addEventListener('touchmove', (e) => {
+                    if (e.target !== usernameInput) {
+                        e.preventDefault();
+                    }
                 }, { passive: false });
 
-                renderer.domElement.addEventListener('touchmove', function(e) {
-                    e.preventDefault();
+                document.addEventListener('touchstart', (e) => {
+                    if (e.target !== usernameInput && e.target !== startButton) {
+                        e.preventDefault();
+                    }
                 }, { passive: false });
 
-                renderer.domElement.addEventListener('touchend', function(e) {
-                    e.preventDefault();
+                document.addEventListener('touchend', (e) => {
+                    if (e.target !== usernameInput && e.target !== startButton) {
+                        e.preventDefault();
+                    }
                 }, { passive: false });
 
-                // Prevent zoom gesture
-                document.addEventListener('gesturestart', function(e) {
-                    e.preventDefault();
-                }, { passive: false });
-
-                // Handle mobile input focus
-                usernameInput.addEventListener('focus', function() {
-                    // Allow keyboard to show up on mobile
-                    this.setAttribute('readonly', false);
+                // Improve input field behavior
+                usernameInput.addEventListener('focus', function(e) {
+                    // Scroll to input when focused
+                    setTimeout(() => {
+                        this.scrollIntoView(false);
+                    }, 200);
                 });
 
                 usernameInput.addEventListener('blur', function() {
-                    // Hide keyboard when done
-                    this.setAttribute('readonly', true);
+                    // Scroll back to center when keyboard is hidden
+                    window.scrollTo(0, 0);
                 });
 
-                // Make start button touch-friendly
+                // Make start button more touch-friendly
+                startButton.style.padding = '12px 24px'; // Larger touch target
+                startButton.addEventListener('touchstart', function(e) {
+                    // Don't prevent default here to allow the button to show active state
+                    if (!this.disabled) {
+                        this.style.backgroundColor = '#45a049';
+                    }
+                });
+
                 startButton.addEventListener('touchend', function(e) {
                     e.preventDefault();
                     if (!this.disabled) {
+                        this.style.backgroundColor = '#4CAF50';
                         this.click();
                     }
                 });
+
+                // Remove the gesturestart prevention as it might interfere with input
+                document.removeEventListener('gesturestart', function(e) {
+                    e.preventDefault();
+                });
+
+                // Add specific styles for mobile input
+                const style = document.createElement('style');
+                style.textContent = `
+                    @media (max-width: 768px) {
+                        #username {
+                            font-size: 16px; /* Prevent zoom on iOS */
+                            padding: 12px;
+                            margin: 15px 0;
+                            width: 80%;
+                            max-width: 250px;
+                        }
+                        #startButton {
+                            font-size: 18px;
+                            padding: 12px 24px;
+                            margin-top: 20px;
+                        }
+                        #instructions {
+                            width: 90%;
+                            max-width: 400px;
+                            padding: 25px;
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
             }
 
             // Desktop controls
