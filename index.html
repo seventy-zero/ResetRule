@@ -76,23 +76,26 @@
         }
         .joystick-container {
             position: absolute;
-            width: 150px;
-            height: 150px;
+            width: 120px;
+            height: 120px;
             pointer-events: auto;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
         }
         #leftJoystickContainer {
-            left: 20px;
-            bottom: 20px;
+            left: 30px;
+            bottom: 30px;
         }
         #rightJoystickContainer {
-            right: 20px;
-            bottom: 20px;
+            right: 30px;
+            bottom: 30px;
         }
         #flingButton {
             display: none;
             position: fixed;
-            bottom: 20px;
-            right: 20px;
+            bottom: 30px;
+            right: 170px;
             width: 80px;
             height: 80px;
             background: rgba(76, 175, 80, 0.6);
@@ -1000,6 +1003,7 @@
                         }));
                     }
                     
+                    // Show mobile controls only on mobile devices
                     if (isMobile) {
                         document.querySelector('.mobile-controls').style.display = 'block';
                         document.getElementById('flingButton').style.display = 'block';
@@ -1057,6 +1061,76 @@
                 }
             });
 
+            // Desktop controls
+            if (!isMobile) {
+                // Movement controls
+                const onKeyDown = function(event) {
+                    switch (event.code) {
+                        case 'ArrowUp':
+                        case 'KeyW':
+                            moveForward = true;
+                            break;
+                        case 'ArrowDown':
+                        case 'KeyS':
+                            moveBackward = true;
+                            break;
+                        case 'ArrowLeft':
+                        case 'KeyA':
+                            moveLeft = true;
+                            break;
+                        case 'ArrowRight':
+                        case 'KeyD':
+                            moveRight = true;
+                            break;
+                        case 'KeyE':
+                        case 'Space':
+                            showLine = true;
+                            break;
+                    }
+                };
+
+                const onKeyUp = function(event) {
+                    switch (event.code) {
+                        case 'ArrowUp':
+                        case 'KeyW':
+                            moveForward = false;
+                            break;
+                        case 'ArrowDown':
+                        case 'KeyS':
+                            moveBackward = false;
+                            break;
+                        case 'ArrowLeft':
+                        case 'KeyA':
+                            moveLeft = false;
+                            break;
+                        case 'ArrowRight':
+                        case 'KeyD':
+                            moveRight = false;
+                            break;
+                        case 'KeyE':
+                        case 'Space':
+                            showLine = false;
+                            break;
+                    }
+                };
+
+                // Mouse controls for line visibility
+                document.addEventListener('mousedown', (event) => {
+                    if (event.button === 0) { // Left mouse button
+                        showLine = true;
+                    }
+                });
+
+                document.addEventListener('mouseup', (event) => {
+                    if (event.button === 0) { // Left mouse button
+                        showLine = false;
+                    }
+                });
+
+                document.addEventListener('keydown', onKeyDown);
+                document.addEventListener('keyup', onKeyUp);
+            }
+
             // Mobile controls initialization function
             function initializeMobileControls() {
                 console.log('Initializing mobile controls');
@@ -1065,18 +1139,22 @@
                 const leftJoystick = new VirtualJoystick({
                     container: document.getElementById('leftJoystickContainer'),
                     mouseSupport: false,
-                    strokeStyle: 'rgba(255, 255, 255, 0.5)',
+                    strokeStyle: 'rgba(255, 255, 255, 0.8)',
                     limitStickTravel: true,
-                    stickRadius: 50
+                    stickRadius: 40,
+                    baseColor: 'rgba(255, 255, 255, 0.2)',
+                    stickColor: 'rgba(255, 255, 255, 0.8)'
                 });
 
                 // Create look joystick
                 const rightJoystick = new VirtualJoystick({
                     container: document.getElementById('rightJoystickContainer'),
                     mouseSupport: false,
-                    strokeStyle: 'rgba(255, 255, 255, 0.5)',
+                    strokeStyle: 'rgba(255, 255, 255, 0.8)',
                     limitStickTravel: true,
-                    stickRadius: 50
+                    stickRadius: 40,
+                    baseColor: 'rgba(255, 255, 255, 0.2)',
+                    stickColor: 'rgba(255, 255, 255, 0.8)'
                 });
 
                 // Movement controls
@@ -1086,10 +1164,10 @@
                         const dy = leftJoystick.deltaY();
                         
                         // Set movement flags based on joystick position
-                        moveForward = dy < -10;
-                        moveBackward = dy > 10;
-                        moveLeft = dx < -10;
-                        moveRight = dx > 10;
+                        moveForward = dy < -5;
+                        moveBackward = dy > 5;
+                        moveLeft = dx < -5;
+                        moveRight = dx > 5;
                     } else {
                         moveForward = false;
                         moveBackward = false;
@@ -1105,8 +1183,8 @@
                         const dy = rightJoystick.deltaY();
                         
                         // Rotate camera based on joystick position
-                        controls.rotateLeft(dx * 0.002);
-                        controls.rotateUp(dy * 0.002);
+                        controls.rotateLeft(dx * 0.003);
+                        controls.rotateUp(dy * 0.003);
                     }
                 }
 
@@ -1153,74 +1231,6 @@
                     isGrounded = false;
                     lineCollisionPoint = null;
                 }
-            }
-
-            // Desktop controls
-            if (!isMobile) {
-                // Movement controls
-                const onKeyDown = function(event) {
-                    switch (event.code) {
-                        case 'ArrowUp':
-                        case 'KeyW':
-                            moveForward = true;
-                            break;
-                        case 'ArrowDown':
-                        case 'KeyS':
-                            moveBackward = true;
-                            break;
-                        case 'ArrowLeft':
-                        case 'KeyA':
-                            moveLeft = true;
-                            break;
-                        case 'ArrowRight':
-                        case 'KeyD':
-                            moveRight = true;
-                            break;
-                        case 'KeyE':
-                            showLine = true;
-                            break;
-                    }
-                };
-
-                const onKeyUp = function(event) {
-                    switch (event.code) {
-                        case 'ArrowUp':
-                        case 'KeyW':
-                            moveForward = false;
-                            break;
-                        case 'ArrowDown':
-                        case 'KeyS':
-                            moveBackward = false;
-                            break;
-                        case 'ArrowLeft':
-                        case 'KeyA':
-                            moveLeft = false;
-                            break;
-                        case 'ArrowRight':
-                        case 'KeyD':
-                            moveRight = false;
-                            break;
-                        case 'KeyE':
-                            showLine = false;
-                            break;
-                    }
-                };
-
-                // Mouse controls for line visibility
-                document.addEventListener('mousedown', (event) => {
-                    if (event.button === 0) { // Left mouse button
-                        showLine = true;
-                    }
-                });
-
-                document.addEventListener('mouseup', (event) => {
-                    if (event.button === 0) { // Left mouse button
-                        showLine = false;
-                    }
-                });
-
-                document.addEventListener('keydown', onKeyDown);
-                document.addEventListener('keyup', onKeyUp);
             }
 
             // Animation loop with collision detection, star rotation, and nebula animation
