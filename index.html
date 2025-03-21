@@ -602,14 +602,22 @@
             
             scene.add(bridgeGroup);
             
-            // Create a narrower collision box for the bridge
-            const collisionGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.6);
+            // Create a more accurate collision box for the bridge
+            // Use a box that matches the visual bridge more closely
+            const collisionGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.8);
             const collisionMesh = new THREE.Mesh(collisionGeometry);
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
+            
+            // Create a bounding box that's slightly larger than the visual bridge
+            const boundingBox = new THREE.Box3().setFromObject(collisionMesh);
+            // Expand the bounding box slightly to make collisions more forgiving
+            boundingBox.expandByScalar(1.2);
+            
             towers.push({
                 mesh: collisionMesh,
-                boundingBox: new THREE.Box3().setFromObject(collisionMesh)
+                boundingBox: boundingBox,
+                isBridge: true // Mark this as a bridge for special collision handling
             });
         }
 
@@ -1589,8 +1597,19 @@
                                 // During fling, push out strongly
                                 const pushDir = new THREE.Vector3();
                                 pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
-                                camera.position.x += pushDir.x * 3;
-                                camera.position.z += pushDir.z * 3;
+                                
+                                // Special handling for bridges
+                                if (collisionTower.isBridge) {
+                                    // For bridges, push out more horizontally
+                                    pushDir.y *= 0.3; // Reduce vertical push
+                                    camera.position.x += pushDir.x * 4;
+                                    camera.position.z += pushDir.z * 4;
+                                    camera.position.y += pushDir.y * 2;
+                                } else {
+                                    // Normal tower collision
+                                    camera.position.x += pushDir.x * 3;
+                                    camera.position.z += pushDir.z * 3;
+                                }
                             } else {
                                 // During normal movement, just prevent movement
                                 camera.position.copy(oldPosition);
