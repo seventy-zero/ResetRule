@@ -1007,7 +1007,14 @@
                 opacity: 0.8
             });
             const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
+            tubeMesh.visible = false; // Start with line hidden
             scene.add(tubeMesh);
+
+            // Function to update line visibility
+            function updateLineVisibility(visible) {
+                tubeMesh.visible = visible;
+                showLine = visible;
+            }
 
             // Handle window resize
             window.addEventListener('resize', onWindowResize, false);
@@ -1186,14 +1193,14 @@
                 
                 flingButton.addEventListener('touchstart', function(e) {
                     e.preventDefault();
-                    showLine = true;
+                    updateLineVisibility(true);
                     this.classList.add('active');
                     console.log('Fling button touch started');
                 }, { passive: false });
 
                 flingButton.addEventListener('touchend', function(e) {
                     e.preventDefault();
-                    showLine = false;
+                    updateLineVisibility(false);
                     this.classList.remove('active');
                     initiateFling();
                     console.log('Fling button touch ended');
@@ -1253,7 +1260,7 @@
                             moveRight = true;
                             break;
                         case 'KeyE':
-                            showLine = true;
+                            updateLineVisibility(true);
                             break;
                         case 'KeyZ':
                             document.getElementById('playerList').classList.add('visible');
@@ -1280,7 +1287,8 @@
                             moveRight = false;
                             break;
                         case 'KeyE':
-                            showLine = false;
+                            updateLineVisibility(false);
+                            initiateFling();
                             break;
                         case 'KeyZ':
                             document.getElementById('playerList').classList.remove('visible');
@@ -1291,13 +1299,13 @@
                 // Mouse controls for line visibility
                 document.addEventListener('mousedown', (event) => {
                     if (event.button === 0) { // Left mouse button
-                        showLine = true;
+                        updateLineVisibility(true);
                     }
                 });
 
                 document.addEventListener('mouseup', (event) => {
                     if (event.button === 0) { // Left mouse button
-                        showLine = false;
+                        updateLineVisibility(false);
                         initiateFling();
                     }
                 });
