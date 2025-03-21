@@ -750,11 +750,10 @@
                 if (usernameInput.value.trim()) {
                     playerUsername = usernameInput.value.trim();
                     gameStarted = true;
+                    instructions.classList.add('hidden');
                     
                     if (isMobile) {
                         // On mobile, we need to handle the start differently
-                        instructions.classList.add('hidden');
-                        
                         // Force show mobile controls
                         document.querySelector('.mobile-controls').style.display = 'block';
                         document.querySelector('.mobile-controls').style.opacity = '1';
@@ -765,12 +764,8 @@
                         controls.isLocked = true;
                         controls.enabled = true;
                         
-                        // Initialize mobile controls
+                        // Initialize mobile controls immediately
                         initializeMobileControls();
-                        
-                        // Dispatch the lock event manually for mobile
-                        const event = new Event('lock');
-                        controls.dispatchEvent(event);
                     } else {
                         // On desktop, use normal pointer lock
                         controls.lock();
@@ -778,68 +773,104 @@
                 }
             });
 
+            // Controls lock/unlock handlers
+            controls.addEventListener('lock', function() {
+                instructions.classList.add('hidden');
+                console.log('Controls locked');
+            });
+
+            controls.addEventListener('unlock', function() {
+                if (!isMobile) {
+                    instructions.classList.remove('hidden');
+                }
+                console.log('Controls unlocked');
+            });
+
             // Mobile controls initialization function
             function initializeMobileControls() {
-                if (!window.leftJoystick) {
-                    window.leftJoystick = nipplejs.create({
-                        zone: document.getElementById('leftJoystick'),
-                        mode: 'static',
-                        position: { left: '60px', bottom: '60px' },
-                        color: 'white',
-                        size: 120,
-                        multitouch: true
-                    });
+                console.log('Initializing mobile controls');
+                
+                // Clean up existing joysticks if they exist
+                if (window.leftJoystick) {
+                    window.leftJoystick.destroy();
+                }
+                if (window.rightJoystick) {
+                    window.rightJoystick.destroy();
+                }
 
-                    window.rightJoystick = nipplejs.create({
-                        zone: document.getElementById('rightJoystick'),
-                        mode: 'static',
-                        position: { right: '60px', bottom: '60px' },
-                        color: 'white',
-                        size: 120,
-                        multitouch: true
-                    });
+                // Create new joysticks
+                window.leftJoystick = nipplejs.create({
+                    zone: document.getElementById('leftJoystick'),
+                    mode: 'static',
+                    position: { left: '60px', bottom: '60px' },
+                    color: 'white',
+                    size: 120,
+                    multitouch: true,
+                    maxNumberOfNipples: 2,
+                    dataOnly: false
+                });
 
-                    // Movement joystick handling
-                    window.leftJoystick.on('move', (evt, data) => {
-                        const forward = data.vector.y;
-                        const right = data.vector.x;
-                        
-                        moveForward = forward > 0;
-                        moveBackward = forward < 0;
-                        moveRight = right > 0;
-                        moveLeft = right < 0;
-                    });
+                window.rightJoystick = nipplejs.create({
+                    zone: document.getElementById('rightJoystick'),
+                    mode: 'static',
+                    position: { right: '60px', bottom: '60px' },
+                    color: 'white',
+                    size: 120,
+                    multitouch: true,
+                    maxNumberOfNipples: 2,
+                    dataOnly: false
+                });
 
-                    window.leftJoystick.on('end', () => {
-                        moveForward = false;
-                        moveBackward = false;
-                        moveRight = false;
-                        moveLeft = false;
-                    });
+                // Movement joystick handling with debug logging
+                window.leftJoystick.on('start move', function(evt, data) {
+                    console.log('Left joystick move:', data.vector);
+                    if (data.vector) {
+                        moveForward = data.vector.y > 0;
+                        moveBackward = data.vector.y < 0;
+                        moveRight = data.vector.x > 0;
+                        moveLeft = data.vector.x < 0;
+                    }
+                });
 
-                    // Look joystick handling with increased sensitivity
-                    let lookSpeed = 0.005; // Increased from 0.002
-                    window.rightJoystick.on('move', (evt, data) => {
+                window.leftJoystick.on('end', function(evt) {
+                    console.log('Left joystick released');
+                    moveForward = false;
+                    moveBackward = false;
+                    moveRight = false;
+                    moveLeft = false;
+                });
+
+                // Look joystick handling with increased sensitivity
+                let lookSpeed = 0.008; // Further increased sensitivity
+                window.rightJoystick.on('start move', function(evt, data) {
+                    console.log('Right joystick move:', data.vector);
+                    if (data.vector) {
                         camera.rotation.y -= data.vector.x * lookSpeed;
                         camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
                             camera.rotation.x - data.vector.y * lookSpeed));
-                    });
+                    }
+                });
 
-                    // Fling button handling
-                    const flingButton = document.getElementById('flingButton');
-                    
-                    flingButton.addEventListener('touchstart', (e) => {
-                        e.preventDefault();
-                        showLine = true;
-                        flingButton.classList.add('active');
-                    });
+                // Fling button handling
+                const flingButton = document.getElementById('flingButton');
+                
+                flingButton.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Fling button pressed');
+                    showLine = true;
+                    this.classList.add('active');
+                }, { passive: false });
 
-                    flingButton.addEventListener('touchend', (e) => {
-                        e.preventDefault();
-                        showLine = false;
-                        flingButton.classList.remove('active');
-                    });
-                }
+                flingButton.addEventListener('touchend', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Fling button released');
+                    showLine = false;
+                    this.classList.remove('active');
+                }, { passive: false });
+
+                console.log('Mobile controls initialized');
             }
 
             // Mobile-specific touch handlers
@@ -848,55 +879,35 @@
                 document.getElementById('mobileInstructions').style.display = 'block';
                 
                 // Prevent zoom and scroll
-                document.addEventListener('touchmove', (e) => {
+                document.addEventListener('touchmove', function(e) {
                     if (e.target !== usernameInput) {
                         e.preventDefault();
+                        e.stopPropagation();
                     }
                 }, { passive: false });
 
-                document.addEventListener('touchstart', (e) => {
+                document.addEventListener('touchstart', function(e) {
                     if (e.target !== usernameInput && e.target !== startButton) {
                         e.preventDefault();
+                        e.stopPropagation();
                     }
                 }, { passive: false });
 
                 // Prevent pinch zoom
-                document.addEventListener('gesturestart', (e) => {
+                document.addEventListener('gesturestart', function(e) {
                     e.preventDefault();
                 }, { passive: false });
 
-                // Remove readonly attribute from username input
-                usernameInput.removeAttribute('readonly');
-                
-                // Improve input field behavior
-                usernameInput.addEventListener('focus', function(e) {
-                    // Scroll to input when focused
-                    setTimeout(() => {
-                        this.scrollIntoView(false);
-                    }, 200);
-                });
-
-                usernameInput.addEventListener('blur', function() {
-                    // Scroll back to center when keyboard is hidden
-                    window.scrollTo(0, 0);
-                });
-
-                // Make start button more touch-friendly
-                startButton.style.padding = '12px 24px'; // Larger touch target
-                startButton.addEventListener('touchstart', function(e) {
-                    // Don't prevent default here to allow the button to show active state
-                    if (!this.disabled) {
-                        this.style.backgroundColor = '#45a049';
+                // Prevent double tap zoom
+                let lastTapTime = 0;
+                document.addEventListener('touchend', function(e) {
+                    const currentTime = new Date().getTime();
+                    const tapLength = currentTime - lastTapTime;
+                    if (tapLength < 500 && tapLength > 0) {
+                        e.preventDefault();
                     }
-                });
-
-                startButton.addEventListener('touchend', function(e) {
-                    e.preventDefault();
-                    if (!this.disabled) {
-                        this.style.backgroundColor = '#4CAF50';
-                        this.click();
-                    }
-                });
+                    lastTapTime = currentTime;
+                }, { passive: false });
             }
 
             // Desktop controls
