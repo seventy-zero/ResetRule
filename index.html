@@ -992,11 +992,12 @@
             ]);
             const tubeGeometry = new THREE.TubeGeometry(curve, 1, 0.15, 8, false);
             const tubeMaterial = new THREE.MeshBasicMaterial({
-                color: 0x00ff00,
+                color: 0xff0000,
                 transparent: true,
                 opacity: 0.8
             });
             const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
+            tubeMesh.visible = false; // Initially hidden
             scene.add(tubeMesh);
 
             // Handle window resize
@@ -1343,8 +1344,6 @@
                         // Update line trace position
                         const cameraDirection = new THREE.Vector3();
                         camera.getWorldDirection(cameraDirection);
-                        const rightVector = new THREE.Vector3();
-                        rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
                         
                         // Update line visibility
                         tubeMesh.visible = showLine;
@@ -1393,22 +1392,9 @@
                                 // Change line color to indicate no target
                                 tubeMaterial.color.setHex(0xff0000);
                             }
-                        } else if (lineCollisionPoint) {
-                            // Initiate fling when line is released and we had a collision point
-                            const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
-                            
-                            // Increase fling strength based on distance to target
-                            const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                            const scaledStrength = Math.min(distanceToTarget * 0.1, flingStrength * 1.5);
-                            
-                            // Set velocity components
-                            flingVelocity.x = flingDirection.x * scaledStrength;
-                            flingVelocity.z = flingDirection.z * scaledStrength;
-                            verticalVelocity = flingDirection.y * scaledStrength + 0.5;
-                            
-                            isFlinging = true;
-                            isGrounded = false;
-                            lineCollisionPoint = null;
+                        } else {
+                            // Hide the line when not active
+                            tubeMesh.visible = false;
                         }
 
                         // Apply fling velocity if active
