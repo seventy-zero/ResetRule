@@ -384,6 +384,11 @@
                 console.log('Received message:', data.type);
                 
                 switch (data.type) {
+                    case 'world_data':
+                        console.log('Received world data from server');
+                        createWorldFromData(data.world);
+                        break;
+
                     case 'room_info':
                         console.log(`Joined room ${data.name} with ${data.playerCount} players`);
                         document.getElementById('roomInfo').textContent = `${data.name} - Players: ${data.playerCount}/20`;
@@ -599,51 +604,35 @@
                 return nebula;
             }
 
-            // Create multiple nebulas at different positions
-            const nebulas = [];
-            for (let i = 0; i < 12; i++) { // Increased number of nebulas
-                const angle = (i / 12) * Math.PI * 2;
-                const radius = 4500; // Tripled radius
-                const position = new THREE.Vector3(
-                    Math.cos(angle) * radius,
-                    Math.random() * 2400 - 600, // Tripled height range
-                    Math.sin(angle) * radius
-                );
-                const scale = 4 + Math.random() * 6; // Doubled scale range for larger space
-                const rotation = new THREE.Euler(
-                    Math.random() * Math.PI,
-                    Math.random() * Math.PI,
-                    Math.random() * Math.PI
-                );
-                nebulas.push(createNebula(position, scale, rotation));
-            }
+            // Function to create world from server data
+            function createWorldFromData(worldData) {
+                // Create grids
+                const gridHelper = new THREE.GridHelper(worldData.grid.size, worldData.grid.divisions);
+                gridHelper.material.opacity = worldData.grid.opacity;
+                gridHelper.material.transparent = true;
+                scene.add(gridHelper);
 
-            // Create the floor
-            const size = 6000;
-            const divisions = 300; // Increased from 200 to 300 for much denser main grid
-            const gridHelper = new THREE.GridHelper(size, divisions);
-            gridHelper.material.opacity = 0.75; // Slightly increased opacity
-            gridHelper.material.transparent = true;
-            scene.add(gridHelper);
+                const farGridHelper = new THREE.GridHelper(worldData.farGrid.size, worldData.farGrid.divisions);
+                farGridHelper.material.opacity = worldData.farGrid.opacity;
+                farGridHelper.material.transparent = true;
+                scene.add(farGridHelper);
 
-            // Add a second, larger grid with fewer divisions for distant floor effect
-            const farSize = 12000;
-            const farDivisions = 150; // Increased from 100 to 150 for denser far grid
-            const farGridHelper = new THREE.GridHelper(farSize, farDivisions);
-            farGridHelper.material.opacity = 0.3; // Slightly increased opacity
-            farGridHelper.material.transparent = true;
-            scene.add(farGridHelper);
+                const midGridHelper = new THREE.GridHelper(worldData.midGrid.size, worldData.midGrid.divisions);
+                midGridHelper.material.opacity = worldData.midGrid.opacity;
+                midGridHelper.material.transparent = true;
+                scene.add(midGridHelper);
 
-            // Add a medium grid between the main and far grid for smoother transition
-            const midSize = 9000;
-            const midDivisions = 225; // Increased from 150 to 225 for denser middle grid
-            const midGridHelper = new THREE.GridHelper(midSize, midDivisions);
-            midGridHelper.material.opacity = 0.5; // Slightly increased opacity
-            midGridHelper.material.transparent = true;
-            scene.add(midGridHelper);
+                // Create nebulas
+                worldData.nebulas.forEach(nebulaData => {
+                    const nebula = createNebula(
+                        new THREE.Vector3(nebulaData.position.x, nebulaData.position.y, nebulaData.position.z),
+                        nebulaData.scale,
+                        new THREE.Euler(nebulaData.rotation.x, nebulaData.rotation.y, nebulaData.rotation.z)
+                    );
+                    nebulas.push(nebula);
+                });
 
-            // Create star field
-            function createStars() {
+                // Create stars
                 const starsGeometry = new THREE.BufferGeometry();
                 const starsMaterial = new THREE.PointsMaterial({
                     color: 0xff6600,
@@ -651,24 +640,15 @@
                     sizeAttenuation: false
                 });
 
-                const starsVertices = [];
-                for (let i = 0; i < 30000; i++) { // Tripled number of stars
-                    const radius = 5400; // Tripled radius
-                    const theta = Math.random() * Math.PI * 2;
-                    const phi = Math.acos(Math.random() * 2 - 1);
-                    
-                    const x = radius * Math.sin(phi) * Math.cos(theta);
-                    const y = radius * Math.sin(phi) * Math.sin(theta);
-                    const z = radius * Math.cos(phi);
-                    
-                    starsVertices.push(x, y, z);
-                }
+                const starsVertices = worldData.stars.map(star => 
+                    [star.position.x, star.position.y, star.position.z]
+                ).flat();
 
                 starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
                 const starField = new THREE.Points(starsGeometry, starsMaterial);
                 scene.add(starField);
 
-                // Add some larger stars with different colors
+                // Create large stars
                 const largeStarsGeometry = new THREE.BufferGeometry();
                 const largeStarsMaterial = new THREE.PointsMaterial({
                     color: 0xff8833,
@@ -676,34 +656,37 @@
                     sizeAttenuation: false
                 });
 
-                const largeStarsVertices = [];
-                for (let i = 0; i < 1000; i++) {
-                    const radius = 1800;
-                    const theta = Math.random() * Math.PI * 2;
-                    const phi = Math.acos(Math.random() * 2 - 1);
-                    
-                    const x = radius * Math.sin(phi) * Math.cos(theta);
-                    const y = radius * Math.sin(phi) * Math.sin(theta);
-                    const z = radius * Math.cos(phi);
-                    
-                    largeStarsVertices.push(x, y, z);
-                }
+                const largeStarsVertices = worldData.largeStars.map(star => 
+                    [star.position.x, star.position.y, star.position.z]
+                ).flat();
 
                 largeStarsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(largeStarsVertices, 3));
                 const largeStarField = new THREE.Points(largeStarsGeometry, largeStarsMaterial);
                 scene.add(largeStarField);
 
-                return [starField, largeStarField];
+                // Create towers and bridges
+                worldData.towers.forEach(towerData => {
+                    if (towerData.type === 'bridge') {
+                        createBridge(
+                            new THREE.Vector3(towerData.startPos.x, towerData.startPos.y, towerData.startPos.z),
+                            new THREE.Vector3(towerData.endPos.x, towerData.endPos.y, towerData.endPos.z)
+                        );
+                    } else {
+                        createTower(
+                            towerData.type,
+                            towerData.position.x,
+                            towerData.position.z,
+                            towerData.height,
+                            towerData.isFloating,
+                            towerData.baseHeight
+                        );
+                    }
+                });
             }
 
-            const [starField, largeStarField] = createStars();
-
-            // Tower generation
-            function createTower(type, x, z) {
+            // Modified createTower function to accept height and floating parameters
+            function createTower(type, x, z, height, isFloating, baseHeight) {
                 let geometry;
-                let height = Math.random() * 300 + 150;
-                let isFloating = Math.random() < 0.15;
-                let baseHeight = isFloating ? Math.random() * 30 + 15 : 0;
                 
                 // Create materials for the tower
                 const materials = [
@@ -839,17 +822,6 @@
                 });
             }
 
-            // Place towers in a grid pattern with some randomization
-            const numTowers = 3000; // Back to original number
-            const maxRadius = 4800;
-            
-            // Create a grid of towers with some random offset
-            const gridSize = Math.sqrt(numTowers);
-            const spacing = (maxRadius * 2) / gridSize;
-            
-            // Store tower positions for bridge generation
-            const towerPositions = [];
-
             // Function to create a bridge between two towers
             function createBridge(startPos, endPos) {
                 // Calculate bridge dimensions
@@ -898,77 +870,6 @@
                     boundingBox: new THREE.Box3().setFromObject(collisionMesh)
                 });
             }
-            
-            // Place towers
-            for (let i = 0; i < gridSize; i++) {
-                for (let j = 0; j < gridSize; j++) {
-                    const x = -maxRadius + i * spacing + (Math.random() * spacing * 0.5);
-                    const z = -maxRadius + j * spacing + (Math.random() * spacing * 0.5);
-                    
-                    const offsetX = (Math.random() - 0.5) * spacing * 0.5;
-                    const offsetZ = (Math.random() - 0.5) * spacing * 0.5;
-                    
-                    const finalX = x + offsetX;
-                    const finalZ = z + offsetZ;
-                    
-                    const towerType = Math.floor(Math.random() * 12);
-                    createTower(towerType, finalX, finalZ);
-                    
-                    // Store tower position and height for bridge generation
-                    const height = Math.random() * 300 + 150;
-                    towerPositions.push({
-                        position: new THREE.Vector3(finalX, height/2, finalZ),
-                        height: height
-                    });
-                }
-            }
-            
-            // Generate bridges between nearby towers
-            const maxBridgeDistance = spacing * 2; // Maximum distance between bridged towers
-            const bridgeChance = 0.1; // 10% chance for eligible towers to have bridges
-            
-            for (let i = 0; i < towerPositions.length; i++) {
-                for (let j = i + 1; j < towerPositions.length; j++) {
-                    const tower1 = towerPositions[i];
-                    const tower2 = towerPositions[j];
-                    
-                    const distance = tower1.position.distanceTo(tower2.position);
-                    
-                    if (distance <= maxBridgeDistance && Math.random() < bridgeChance) {
-                        // Create bridge at random height between the two towers
-                        const minHeight = Math.min(tower1.height, tower2.height);
-                        const bridgeHeight = minHeight * (0.3 + Math.random() * 0.5); // Bridge between 30-80% of tower height
-                        
-                        const startPos = new THREE.Vector3(tower1.position.x, bridgeHeight, tower1.position.z);
-                        const endPos = new THREE.Vector3(tower2.position.x, bridgeHeight, tower2.position.z);
-                        
-                        createBridge(startPos, endPos);
-                    }
-                }
-            }
-
-            // Add some ambient light
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-            scene.add(ambientLight);
-
-            // Add directional light
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-            directionalLight.position.set(1, 1, 1);
-            scene.add(directionalLight);
-
-            // Create the line trace
-            const curve = new THREE.CatmullRomCurve3([
-                new THREE.Vector3(0, 0, 0),
-                new THREE.Vector3(0, 0, 1)
-            ]);
-            const tubeGeometry = new THREE.TubeGeometry(curve, 1, 0.15, 8, false);
-            const tubeMaterial = new THREE.MeshBasicMaterial({
-                color: 0x00ff00,
-                transparent: true,
-                opacity: 0.8
-            });
-            const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
-            scene.add(tubeMesh);
 
             // Handle window resize
             window.addEventListener('resize', onWindowResize, false);
