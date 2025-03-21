@@ -1508,10 +1508,47 @@
                 }
             }
 
+            // Add fling initiation function
+            function initiateFling() {
+                if (lineCollisionPoint) {
+                    tempFlingDirection.copy(lineCollisionPoint).sub(camera.position).normalize();
+                    const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                    const scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
+                    
+                    flingVelocity.x = tempFlingDirection.x * scaledStrength;
+                    flingVelocity.z = tempFlingDirection.z * scaledStrength;
+                    verticalVelocity = tempFlingDirection.y * scaledStrength + 0.5;
+                    
+                    isFlinging = true;
+                    isGrounded = false;
+                    lineCollisionPoint = null;
+                }
+            }
+
             // Optimized fling velocity application
             function applyFlingVelocity() {
                 camera.position.x += flingVelocity.x;
                 camera.position.z += flingVelocity.z;
+
+                // Update player collider position
+                playerCollider.center.copy(camera.position);
+
+                // Check collisions with all towers
+                for (const tower of towers) {
+                    if (tower.boundingBox.intersectsSphere(playerCollider)) {
+                        // Calculate push direction away from tower center
+                        tempPushDir.copy(camera.position).sub(tower.mesh.position).normalize();
+                        
+                        // Push out with a strong impulse
+                        camera.position.x += tempPushDir.x * 3;
+                        camera.position.z += tempPushDir.z * 3;
+                        
+                        // Redirect fling velocity along the push direction
+                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                        flingVelocity.x = tempPushDir.x * speed * 0.8;
+                        flingVelocity.z = tempPushDir.z * speed * 0.8;
+                    }
+                }
 
                 flingVelocity.x *= flingDamping;
                 flingVelocity.z *= flingDamping;
@@ -1526,6 +1563,23 @@
             function applyGravity() {
                 verticalVelocity -= gravity;
                 camera.position.y += verticalVelocity;
+
+                // Update player collider position
+                playerCollider.center.copy(camera.position);
+
+                // Check collisions after vertical movement
+                for (const tower of towers) {
+                    if (tower.boundingBox.intersectsSphere(playerCollider)) {
+                        // Calculate push direction away from tower center
+                        tempPushDir.copy(camera.position).sub(tower.mesh.position).normalize();
+                        
+                        // Push out horizontally
+                        camera.position.x += tempPushDir.x * 3;
+                        camera.position.z += tempPushDir.z * 3;
+                        
+                        verticalVelocity = 0;
+                    }
+                }
 
                 if (camera.position.y <= playerHeight) {
                     camera.position.y = playerHeight;
