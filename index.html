@@ -505,6 +505,8 @@
             ];
 
             let geometry, collisionGeometry;
+            let collisionBoxes = []; // Array to store multiple collision boxes for complex shapes
+            
             switch(towerData.type) {
                 case 0: // Cylindrical tower
                     geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
@@ -512,7 +514,18 @@
                     break;
                 case 1: // Tapered tower
                     geometry = new THREE.CylinderGeometry(12, 24, height, 6);
-                    collisionGeometry = new THREE.CylinderGeometry(24, 24, height, 6);
+                    // Create multiple collision boxes for better accuracy
+                    const segments = 4;
+                    for (let i = 0; i < segments; i++) {
+                        const segmentHeight = height / segments;
+                        const topRadius = 12 + (24 - 12) * (i + 1) / segments;
+                        const bottomRadius = 12 + (24 - 12) * i / segments;
+                        const collisionBox = new THREE.Box3();
+                        collisionBox.setFromObject(new THREE.Mesh(
+                            new THREE.CylinderGeometry(bottomRadius, topRadius, segmentHeight, 6)
+                        ));
+                        collisionBoxes.push(collisionBox);
+                    }
                     break;
                 case 2: // Square tower
                     geometry = new THREE.BoxGeometry(36, height, 36);
@@ -536,11 +549,23 @@
                         positions[i] = x * Math.cos(theta) - z * Math.sin(theta);
                         positions[i + 2] = x * Math.sin(theta) + z * Math.cos(theta);
                     }
-                    collisionGeometry = new THREE.CylinderGeometry(15, 15, height, 8);
+                    // Use a slightly larger cylinder for collision
+                    collisionGeometry = new THREE.CylinderGeometry(18, 18, height, 8);
                     break;
                 case 5: // Pyramid tower
                     geometry = new THREE.ConeGeometry(24, height, 4);
-                    collisionGeometry = geometry;
+                    // Create multiple collision boxes for better accuracy
+                    const pyramidSegments = 3;
+                    for (let i = 0; i < pyramidSegments; i++) {
+                        const segmentHeight = height / pyramidSegments;
+                        const topSize = 24 * (1 - (i + 1) / pyramidSegments);
+                        const bottomSize = 24 * (1 - i / pyramidSegments);
+                        const collisionBox = new THREE.Box3();
+                        collisionBox.setFromObject(new THREE.Mesh(
+                            new THREE.BoxGeometry(bottomSize, segmentHeight, bottomSize)
+                        ));
+                        collisionBoxes.push(collisionBox);
+                    }
                     break;
                 case 6: // Octagonal tower
                     geometry = new THREE.CylinderGeometry(19, 19, height, 8);
@@ -552,7 +577,18 @@
                     break;
                 case 8: // Inverse pyramid
                     geometry = new THREE.CylinderGeometry(12, 28, height, 4);
-                    collisionGeometry = new THREE.CylinderGeometry(28, 28, height, 4);
+                    // Create multiple collision boxes for better accuracy
+                    const inverseSegments = 3;
+                    for (let i = 0; i < inverseSegments; i++) {
+                        const segmentHeight = height / inverseSegments;
+                        const topRadius = 28 - (28 - 12) * (i + 1) / inverseSegments;
+                        const bottomRadius = 28 - (28 - 12) * i / inverseSegments;
+                        const collisionBox = new THREE.Box3();
+                        collisionBox.setFromObject(new THREE.Mesh(
+                            new THREE.CylinderGeometry(bottomRadius, topRadius, segmentHeight, 4)
+                        ));
+                        collisionBoxes.push(collisionBox);
+                    }
                     break;
                 case 9: // Star tower
                     geometry = new THREE.CylinderGeometry(24, 24, height, 5);
@@ -567,7 +603,19 @@
                     const topHeight = height * 0.4;
                     geometry = new THREE.BoxGeometry(38, baseHeight, 38);
                     const topGeometry = new THREE.ConeGeometry(28, topHeight, 6);
-                    collisionGeometry = new THREE.BoxGeometry(38, height, 38);
+                    
+                    // Create separate collision boxes for base and top
+                    const baseCollisionBox = new THREE.Box3();
+                    baseCollisionBox.setFromObject(new THREE.Mesh(
+                        new THREE.BoxGeometry(38, baseHeight, 38)
+                    ));
+                    
+                    const topCollisionBox = new THREE.Box3();
+                    topCollisionBox.setFromObject(new THREE.Mesh(
+                        new THREE.ConeGeometry(28, topHeight, 6)
+                    ));
+                    
+                    collisionBoxes = [baseCollisionBox, topCollisionBox];
                     
                     // Create base with edges
                     const baseMesh = new THREE.Mesh(geometry, materials[0]);
@@ -594,11 +642,13 @@
                     group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
 
                     // Add collision data
-                    const collisionMesh = new THREE.Mesh(collisionGeometry);
-                    collisionMesh.position.copy(group.position);
                     towers.push({
-                        mesh: collisionMesh,
-                        boundingBox: new THREE.Box3().setFromObject(collisionMesh)
+                        mesh: group,
+                        collisionBoxes: collisionBoxes.map(box => {
+                            const newBox = box.clone();
+                            newBox.translate(new THREE.Vector3(towerData.x, height/2 + baseHeight, towerData.z));
+                            return newBox;
+                        })
                     });
 
                     scene.add(group);
@@ -622,12 +672,25 @@
             scene.add(group);
 
             // Add collision data
-            const collisionMesh = new THREE.Mesh(collisionGeometry);
-            collisionMesh.position.copy(group.position);
-            towers.push({
-                mesh: collisionMesh,
-                boundingBox: new THREE.Box3().setFromObject(collisionMesh)
-            });
+            if (collisionBoxes.length > 0) {
+                // Use multiple collision boxes
+                towers.push({
+                    mesh: group,
+                    collisionBoxes: collisionBoxes.map(box => {
+                        const newBox = box.clone();
+                        newBox.translate(new THREE.Vector3(towerData.x, height/2 + baseHeight, towerData.z));
+                        return newBox;
+                    })
+                });
+            } else {
+                // Use single collision box
+                const collisionMesh = new THREE.Mesh(collisionGeometry);
+                collisionMesh.position.copy(group.position);
+                towers.push({
+                    mesh: group,
+                    collisionBoxes: [new THREE.Box3().setFromObject(collisionMesh)]
+                });
+            }
         }
 
         // Function to create bridge from server data
@@ -670,15 +733,42 @@
             
             scene.add(bridgeGroup);
             
-            // Create a narrower collision box for the bridge
-            const collisionGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.6);
-            const collisionMesh = new THREE.Mesh(collisionGeometry);
+            // Create a more precise collision box for the bridge
+            const collisionBox = new THREE.Box3();
+            const collisionMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.6)
+            );
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
+            collisionBox.setFromObject(collisionMesh);
+            
             towers.push({
-                mesh: collisionMesh,
-                boundingBox: new THREE.Box3().setFromObject(collisionMesh)
+                mesh: bridgeGroup,
+                collisionBoxes: [collisionBox]
             });
+        }
+
+        // Update collision check function
+        function checkCollision(position, radius) {
+            const playerCollider = new THREE.Sphere(position, radius);
+            
+            for (const tower of towers) {
+                for (const collisionBox of tower.collisionBoxes) {
+                    if (collisionBox.intersectsSphere(playerCollider)) {
+                        return {
+                            collision: true,
+                            tower: tower,
+                            collisionBox: collisionBox
+                        };
+                    }
+                }
+            }
+            
+            return {
+                collision: false,
+                tower: null,
+                collisionBox: null
+            };
         }
 
         // WebSocket setup with Railway support
@@ -1743,21 +1833,15 @@
                             playerCollider.center.copy(camera.position);
 
                             // Check collisions with all towers
-                            let collision = false;
-                            let collisionTower = null;
-                            for (const tower of towers) {
-                                if (tower.boundingBox.intersectsSphere(playerCollider)) {
-                                    collision = true;
-                                    collisionTower = tower;
-                                    break;
-                                }
-                            }
-
+                            const collisionResult = checkCollision(camera.position, playerRadius);
+                            
                             // If there's a collision during fling, push out and continue
-                            if (collision && collisionTower) {
-                                // Calculate push direction away from tower center
+                            if (collisionResult.collision) {
+                                // Calculate push direction away from collision box center
+                                const boxCenter = new THREE.Vector3();
+                                collisionResult.collisionBox.getCenter(boxCenter);
                                 const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
+                                pushDir.copy(camera.position).sub(boxCenter).normalize();
                                 
                                 // Push out with a strong impulse
                                 camera.position.x += pushDir.x * 3;
@@ -1789,21 +1873,15 @@
                             playerCollider.center.copy(camera.position);
 
                             // Check collisions after vertical movement
-                            let verticalCollision = false;
-                            let collisionTower = null;
-                            for (const tower of towers) {
-                                if (tower.boundingBox.intersectsSphere(playerCollider)) {
-                                    verticalCollision = true;
-                                    collisionTower = tower;
-                                    break;
-                                }
-                            }
-
+                            const collisionResult = checkCollision(camera.position, playerRadius);
+                            
                             // If there's a collision during vertical movement, push out
-                            if (verticalCollision && collisionTower) {
-                                // Calculate push direction away from tower center
+                            if (collisionResult.collision) {
+                                // Calculate push direction away from collision box center
+                                const boxCenter = new THREE.Vector3();
+                                collisionResult.collisionBox.getCenter(boxCenter);
                                 const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
+                                pushDir.copy(camera.position).sub(boxCenter).normalize();
                                 
                                 // Push out horizontally
                                 camera.position.x += pushDir.x * 3;
@@ -1824,22 +1902,16 @@
                         playerCollider.center.copy(camera.position);
 
                         // Check collisions for normal movement
-                        let collision = false;
-                        let collisionTower = null;
-                        for (const tower of towers) {
-                            if (tower.boundingBox.intersectsSphere(playerCollider)) {
-                                collision = true;
-                                collisionTower = tower;
-                                break;
-                            }
-                        }
-
+                        const collisionResult = checkCollision(camera.position, playerRadius);
+                        
                         // Handle normal movement collisions with push-out
-                        if (collision && collisionTower) {
+                        if (collisionResult.collision) {
                             if (isFlinging) {
                                 // During fling, push out strongly
+                                const boxCenter = new THREE.Vector3();
+                                collisionResult.collisionBox.getCenter(boxCenter);
                                 const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
+                                pushDir.copy(camera.position).sub(boxCenter).normalize();
                                 camera.position.x += pushDir.x * 3;
                                 camera.position.z += pushDir.z * 3;
                             } else {
