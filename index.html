@@ -353,6 +353,198 @@
             }
         }
 
+        // Function to create tower from server data
+        function createTowerFromData(towerData) {
+            let geometry;
+            const height = towerData.height;
+            const isFloating = towerData.isFloating;
+            const baseHeight = towerData.baseHeight;
+            
+            // Create materials for the tower
+            const materials = [
+                new THREE.MeshBasicMaterial({ color: 0x000000 }),
+                new THREE.LineBasicMaterial({ color: 0xffffff })
+            ];
+
+            // Create collision box for the tower
+            let collisionGeometry;
+
+            switch(towerData.type) {
+                case 0: // Cylindrical tower
+                    geometry = new THREE.CylinderGeometry(18, 18, height, 8);
+                    collisionGeometry = new THREE.CylinderGeometry(18, 18, height, 8);
+                    break;
+                case 1: // Tapered tower
+                    geometry = new THREE.CylinderGeometry(12, 24, height, 6);
+                    collisionGeometry = new THREE.CylinderGeometry(24, 24, height, 6);
+                    break;
+                case 2: // Square tower
+                    geometry = new THREE.BoxGeometry(36, height, 36);
+                    collisionGeometry = geometry;
+                    break;
+                case 3: // Hexagonal tower
+                    geometry = new THREE.CylinderGeometry(20, 20, height, 6);
+                    collisionGeometry = geometry;
+                    break;
+                case 4: // Twisted tower
+                    geometry = new THREE.CylinderGeometry(15, 15, height, 8, 10, true);
+                    // Add twist to vertices
+                    const twistAmount = Math.PI * 2;
+                    const positions = geometry.attributes.position.array;
+                    for (let i = 0; i < positions.length; i += 3) {
+                        const y = positions[i + 1];
+                        const progress = (y + height/2) / height;
+                        const theta = progress * twistAmount;
+                        const x = positions[i];
+                        const z = positions[i + 2];
+                        positions[i] = x * Math.cos(theta) - z * Math.sin(theta);
+                        positions[i + 2] = x * Math.sin(theta) + z * Math.cos(theta);
+                    }
+                    collisionGeometry = new THREE.CylinderGeometry(15, 15, height, 8);
+                    break;
+                case 5: // Pyramid tower
+                    geometry = new THREE.ConeGeometry(24, height, 4);
+                    collisionGeometry = geometry;
+                    break;
+                case 6: // Octagonal tower
+                    geometry = new THREE.CylinderGeometry(19, 19, height, 8);
+                    collisionGeometry = geometry;
+                    break;
+                case 7: // Double width tower
+                    geometry = new THREE.BoxGeometry(42, height, 42);
+                    collisionGeometry = geometry;
+                    break;
+                case 8: // Inverse pyramid
+                    geometry = new THREE.CylinderGeometry(12, 28, height, 4);
+                    collisionGeometry = new THREE.CylinderGeometry(28, 28, height, 4);
+                    break;
+                case 9: // Star tower
+                    geometry = new THREE.CylinderGeometry(24, 24, height, 5);
+                    collisionGeometry = geometry;
+                    break;
+                case 10: // Thin spire
+                    geometry = new THREE.CylinderGeometry(8, 16, height, 6);
+                    collisionGeometry = new THREE.CylinderGeometry(16, 16, height, 6);
+                    break;
+                case 11: // Complex tower (stacked shapes)
+                    const baseHeight = height * 0.6;
+                    const topHeight = height * 0.4;
+                    geometry = new THREE.BoxGeometry(38, baseHeight, 38);
+                    const topGeometry = new THREE.ConeGeometry(28, topHeight, 6);
+                    collisionGeometry = new THREE.BoxGeometry(38, height, 38);
+                    
+                    // Create base with edges
+                    const baseMesh = new THREE.Mesh(geometry, materials[0]);
+                    const baseEdges = new THREE.LineSegments(
+                        new THREE.EdgesGeometry(geometry),
+                        materials[1]
+                    );
+                    
+                    // Create top with edges
+                    const topMesh = new THREE.Mesh(topGeometry, materials[0]);
+                    const topEdges = new THREE.LineSegments(
+                        new THREE.EdgesGeometry(topGeometry),
+                        materials[1]
+                    );
+                    
+                    topMesh.position.y = (baseHeight + topHeight) / 2;
+                    topEdges.position.y = (baseHeight + topHeight) / 2;
+                    
+                    const group = new THREE.Group();
+                    group.add(baseMesh);
+                    group.add(baseEdges);
+                    group.add(topMesh);
+                    group.add(topEdges);
+                    group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
+
+                    // Add collision data
+                    const collisionMesh = new THREE.Mesh(collisionGeometry);
+                    collisionMesh.position.copy(group.position);
+                    towers.push({
+                        mesh: collisionMesh,
+                        boundingBox: new THREE.Box3().setFromObject(collisionMesh)
+                    });
+
+                    scene.add(group);
+                    return;
+            }
+
+            // Create the main mesh with solid faces
+            const mesh = new THREE.Mesh(geometry, materials[0]);
+            
+            // Create the edges
+            const edges = new THREE.LineSegments(
+                new THREE.EdgesGeometry(geometry),
+                materials[1]
+            );
+            
+            // Group the mesh and edges together
+            const group = new THREE.Group();
+            group.add(mesh);
+            group.add(edges);
+            group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
+            scene.add(group);
+
+            // Add collision data
+            const collisionMesh = new THREE.Mesh(collisionGeometry);
+            collisionMesh.position.copy(group.position);
+            towers.push({
+                mesh: collisionMesh,
+                boundingBox: new THREE.Box3().setFromObject(collisionMesh)
+            });
+        }
+
+        // Function to create bridge from server data
+        function createBridgeFromData(bridgeData) {
+            // Calculate bridge dimensions
+            const bridgeWidth = 8;
+            const startPos = new THREE.Vector3(bridgeData.startX, bridgeData.height, bridgeData.startZ);
+            const endPos = new THREE.Vector3(bridgeData.endX, bridgeData.height, bridgeData.endZ);
+            const distance = startPos.distanceTo(endPos);
+            
+            // Create bridge geometry
+            const bridgeGeometry = new THREE.BoxGeometry(distance, bridgeWidth, bridgeWidth);
+            
+            // Create materials for the bridge (matching tower style)
+            const bridgeMaterials = [
+                new THREE.MeshBasicMaterial({ color: 0x000000 }),
+                new THREE.LineBasicMaterial({ color: 0xffffff })
+            ];
+            
+            // Create bridge mesh and edges
+            const bridgeMesh = new THREE.Mesh(bridgeGeometry, bridgeMaterials[0]);
+            const bridgeEdges = new THREE.LineSegments(
+                new THREE.EdgesGeometry(bridgeGeometry),
+                bridgeMaterials[1]
+            );
+            
+            // Create bridge group
+            const bridgeGroup = new THREE.Group();
+            bridgeGroup.add(bridgeMesh);
+            bridgeGroup.add(bridgeEdges);
+            
+            // Position bridge
+            const midPoint = startPos.clone().add(endPos).multiplyScalar(0.5);
+            bridgeGroup.position.copy(midPoint);
+            
+            // Rotate bridge to point from start to end
+            const direction = endPos.clone().sub(startPos);
+            const angle = Math.atan2(direction.z, direction.x);
+            bridgeGroup.rotation.y = angle;
+            
+            scene.add(bridgeGroup);
+            
+            // Create a narrower collision box for the bridge
+            const collisionGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.6);
+            const collisionMesh = new THREE.Mesh(collisionGeometry);
+            collisionMesh.position.copy(bridgeGroup.position);
+            collisionMesh.rotation.copy(bridgeGroup.rotation);
+            towers.push({
+                mesh: collisionMesh,
+                boundingBox: new THREE.Box3().setFromObject(collisionMesh)
+            });
+        }
+
         // WebSocket setup with Railway support
         const getWebSocketUrl = () => {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
