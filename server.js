@@ -48,99 +48,6 @@ class GameRoom {
         this.players = new Map();
         this.isActive = true;
         this.lastActivity = Date.now();
-        this.towers = this.generateTowers();
-        this.bridges = this.generateBridges();
-    }
-
-    generateTowers() {
-        const towers = [];
-        const numTowers = 3000;
-        const maxRadius = 4800;
-        
-        // Create a grid of towers with some random offset
-        const gridSize = Math.sqrt(numTowers);
-        const spacing = (maxRadius * 2) / gridSize;
-        
-        // Store tower positions for bridge generation
-        const towerPositions = [];
-
-        // Place towers
-        for (let i = 0; i < gridSize; i++) {
-            for (let j = 0; j < gridSize; j++) {
-                const x = -maxRadius + i * spacing + (Math.random() * spacing * 0.5);
-                const z = -maxRadius + j * spacing + (Math.random() * spacing * 0.5);
-                
-                const offsetX = (Math.random() - 0.5) * spacing * 0.5;
-                const offsetZ = (Math.random() - 0.5) * spacing * 0.5;
-                
-                const finalX = x + offsetX;
-                const finalZ = z + offsetZ;
-                
-                const towerType = Math.floor(Math.random() * 12);
-                const height = Math.random() * 300 + 150;
-                const isFloating = Math.random() < 0.15;
-                const baseHeight = isFloating ? Math.random() * 30 + 15 : 0;
-
-                towers.push({
-                    type: towerType,
-                    position: { x: finalX, z: finalZ },
-                    height: height,
-                    baseHeight: baseHeight
-                });
-
-                // Store tower position for bridge generation
-                towerPositions.push({
-                    position: { x: finalX, y: height/2, z: finalZ },
-                    height: height
-                });
-            }
-        }
-
-        return towers;
-    }
-
-    generateBridges() {
-        const bridges = [];
-        const towerPositions = this.towers.map(tower => ({
-            position: { x: tower.position.x, y: tower.height/2, z: tower.position.z },
-            height: tower.height
-        }));
-
-        const spacing = (4800 * 2) / Math.sqrt(3000); // Same spacing as tower grid
-        const maxBridgeDistance = spacing * 2;
-        const bridgeChance = 0.1;
-
-        for (let i = 0; i < towerPositions.length; i++) {
-            for (let j = i + 1; j < towerPositions.length; j++) {
-                const tower1 = towerPositions[i];
-                const tower2 = towerPositions[j];
-                
-                const distance = Math.sqrt(
-                    Math.pow(tower1.position.x - tower2.position.x, 2) +
-                    Math.pow(tower1.position.z - tower2.position.z, 2)
-                );
-                
-                if (distance <= maxBridgeDistance && Math.random() < bridgeChance) {
-                    const minHeight = Math.min(tower1.height, tower2.height);
-                    const bridgeHeight = minHeight * (0.3 + Math.random() * 0.5);
-                    
-                    bridges.push({
-                        start: {
-                            x: tower1.position.x,
-                            y: bridgeHeight,
-                            z: tower1.position.z
-                        },
-                        end: {
-                            x: tower2.position.x,
-                            y: bridgeHeight,
-                            z: tower2.position.z
-                        }
-                    });
-                }
-            }
-        }
-
-        return bridges;
     }
 
     addPlayer(ws, username) {
@@ -148,17 +55,9 @@ class GameRoom {
             username: username,
             position: { x: 0, y: 10, z: 0 },
             rotation: { x: 0, y: 0, z: 0 },
-            health: 10,
             lastActivity: Date.now()
         });
         this.lastActivity = Date.now();
-        
-        // Send world data to the new player
-        ws.send(JSON.stringify({
-            type: 'world_data',
-            towers: this.towers,
-            bridges: this.bridges
-        }));
         
         // Broadcast updated player count to all players in the room
         this.broadcastRoomInfo();
@@ -299,16 +198,12 @@ wss.on('connection', (ws) => {
                         if (player) {
                             player.position = data.position;
                             player.rotation = data.rotation;
-                            if (data.health !== undefined) {
-                                player.health = data.health;
-                            }
                             
                             currentRoom.broadcast(JSON.stringify({
                                 type: 'position',
                                 username: player.username,
                                 position: data.position,
-                                rotation: data.rotation,
-                                health: player.health
+                                rotation: data.rotation
                             }), ws);
                         }
                     }

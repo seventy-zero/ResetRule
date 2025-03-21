@@ -3,7 +3,7 @@
 <head>
     <title>ResetRule</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/virtual-joystick.js/1.10.0/virtualjoystick.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
     <style>
         body { 
             margin: 0; 
@@ -67,47 +67,48 @@
         .mobile-controls {
             display: none;
             position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 200px;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            height: 120px;
             pointer-events: none;
             z-index: 1000;
         }
-        .joystick-container {
+        .joystick-zone {
             position: absolute;
             width: 120px;
             height: 120px;
-            pointer-events: auto;
             background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 60px;
+            pointer-events: auto;
+            z-index: 1000;
         }
-        #leftJoystickContainer {
-            left: 30px;
-            bottom: 30px;
+        #leftJoystick {
+            left: 0;
+            bottom: 0;
         }
-        #rightJoystickContainer {
-            right: 30px;
-            bottom: 30px;
+        #rightJoystick {
+            right: 0;
+            bottom: 0;
         }
         #flingButton {
             display: none;
             position: fixed;
-            bottom: 30px;
-            right: 170px;
-            width: 80px;
-            height: 80px;
+            bottom: 160px;
+            left: 40px;
+            width: 60px;
+            height: 60px;
             background: rgba(76, 175, 80, 0.6);
             border: 2px solid rgba(255, 255, 255, 0.8);
             border-radius: 50%;
             color: white;
-            font-size: 32px;
-            line-height: 80px;
+            font-size: 24px;
+            line-height: 60px;
             text-align: center;
             pointer-events: auto;
-            touch-action: none;
-            z-index: 1001;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            z-index: 1000;
         }
         #flingButton.active {
             background: rgba(76, 175, 80, 0.9);
@@ -145,8 +146,8 @@
     
     <!-- Mobile Controls -->
     <div class="mobile-controls">
-        <div id="leftJoystickContainer" class="joystick-container"></div>
-        <div id="rightJoystickContainer" class="joystick-container"></div>
+        <div id="leftJoystick" class="joystick-zone"></div>
+        <div id="rightJoystick" class="joystick-zone"></div>
     </div>
     <div id="flingButton">⚡</div>
 
@@ -405,36 +406,6 @@
                     case 'player_left':
                         console.log('Player left:', data.username);
                         removePlayer(data.username);
-                        break;
-
-                    case 'world_data':
-                        console.log('Received world data:', data);
-                        if (!data.towers || !Array.isArray(data.towers)) {
-                            console.error('Invalid world data format - towers array missing or invalid');
-                            return;
-                        }
-                        console.log(`Creating ${data.towers.length} towers`);
-                        
-                        // Clear existing towers
-                        towers.forEach(tower => {
-                            scene.remove(tower.mesh);
-                        });
-                        towers.length = 0;
-
-                        // Create towers from server data
-                        data.towers.forEach((towerData, index) => {
-                            console.log(`Creating tower ${index}:`, towerData);
-                            createTowerFromData(towerData);
-                        });
-
-                        // Create bridges if they exist
-                        if (data.bridges && Array.isArray(data.bridges)) {
-                            console.log(`Creating ${data.bridges.length} bridges`);
-                            data.bridges.forEach((bridgeData, index) => {
-                                console.log(`Creating bridge ${index}:`, bridgeData);
-                                createBridgeFromData(bridgeData);
-                            });
-                        }
                         break;
                 }
             };
@@ -992,12 +963,11 @@
             ]);
             const tubeGeometry = new THREE.TubeGeometry(curve, 1, 0.15, 8, false);
             const tubeMaterial = new THREE.MeshBasicMaterial({
-                color: 0xff0000,
+                color: 0x00ff00,
                 transparent: true,
                 opacity: 0.8
             });
             const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
-            tubeMesh.visible = false; // Initially hidden
             scene.add(tubeMesh);
 
             // Handle window resize
@@ -1034,101 +1004,14 @@
                         }));
                     }
                     
-                    // Show mobile controls only on mobile devices
                     if (isMobile) {
                         document.querySelector('.mobile-controls').style.display = 'block';
                         document.getElementById('flingButton').style.display = 'block';
                         initializeMobileControls();
-                    } else {
-                        // Initialize desktop controls
-                        initializeDesktopControls();
                     }
                     controls.lock();
                 }
             });
-
-            // Desktop controls initialization
-            function initializeDesktopControls() {
-                console.log('Initializing desktop controls');
-                
-                // Movement controls
-                const onKeyDown = function(event) {
-                    switch (event.code) {
-                        case 'ArrowUp':
-                        case 'KeyW':
-                            moveForward = true;
-                            break;
-                        case 'ArrowDown':
-                        case 'KeyS':
-                            moveBackward = true;
-                            break;
-                        case 'ArrowLeft':
-                        case 'KeyA':
-                            moveLeft = true;
-                            break;
-                        case 'ArrowRight':
-                        case 'KeyD':
-                            moveRight = true;
-                            break;
-                        case 'KeyE':
-                        case 'Space':
-                            showLine = true;
-                            break;
-                    }
-                };
-
-                const onKeyUp = function(event) {
-                    switch (event.code) {
-                        case 'ArrowUp':
-                        case 'KeyW':
-                            moveForward = false;
-                            break;
-                        case 'ArrowDown':
-                        case 'KeyS':
-                            moveBackward = false;
-                            break;
-                        case 'ArrowLeft':
-                        case 'KeyA':
-                            moveLeft = false;
-                            break;
-                        case 'ArrowRight':
-                        case 'KeyD':
-                            moveRight = false;
-                            break;
-                        case 'KeyE':
-                        case 'Space':
-                            showLine = false;
-                            break;
-                    }
-                };
-
-                // Mouse controls for line visibility
-                const onMouseDown = function(event) {
-                    if (event.button === 0) { // Left mouse button
-                        showLine = true;
-                    }
-                };
-
-                const onMouseUp = function(event) {
-                    if (event.button === 0) { // Left mouse button
-                        showLine = false;
-                    }
-                };
-
-                // Remove any existing event listeners
-                document.removeEventListener('keydown', onKeyDown);
-                document.removeEventListener('keyup', onKeyUp);
-                document.removeEventListener('mousedown', onMouseDown);
-                document.removeEventListener('mouseup', onMouseUp);
-
-                // Add new event listeners
-                document.addEventListener('keydown', onKeyDown);
-                document.addEventListener('keyup', onKeyUp);
-                document.addEventListener('mousedown', onMouseDown);
-                document.addEventListener('mouseup', onMouseUp);
-
-                console.log('Desktop controls initialized');
-            }
 
             // Controls lock/unlock handlers
             controls.addEventListener('lock', function() {
@@ -1148,12 +1031,15 @@
                     }));
                 }
                 
-                // Reset all game state
+                // Remove our own player model if it exists
                 removePlayer(playerUsername);
+                
+                // Clear all other player models
                 playerStates.forEach((playerState, username) => {
                     removePlayer(username);
                 });
                 
+                // Reset game state
                 gameStarted = false;
                 playerUsername = '';
                 
@@ -1182,102 +1068,209 @@
             function initializeMobileControls() {
                 console.log('Initializing mobile controls');
                 
-                // Create movement joystick
-                const leftJoystick = new VirtualJoystick({
-                    container: document.getElementById('leftJoystickContainer'),
-                    mouseSupport: false,
-                    strokeStyle: 'rgba(255, 255, 255, 0.8)',
-                    limitStickTravel: true,
-                    stickRadius: 40,
-                    baseColor: 'rgba(255, 255, 255, 0.2)',
-                    stickColor: 'rgba(255, 255, 255, 0.8)'
+                // Clean up existing joysticks if they exist
+                if (window.leftJoystick) {
+                    window.leftJoystick.destroy();
+                }
+                if (window.rightJoystick) {
+                    window.rightJoystick.destroy();
+                }
+
+                // Create new joysticks
+                window.leftJoystick = nipplejs.create({
+                    zone: document.getElementById('leftJoystick'),
+                    mode: 'static',
+                    position: { left: '60px', bottom: '60px' },
+                    color: 'white',
+                    size: 120,
+                    multitouch: true,
+                    maxNumberOfNipples: 2,
+                    dataOnly: false
                 });
 
-                // Create look joystick
-                const rightJoystick = new VirtualJoystick({
-                    container: document.getElementById('rightJoystickContainer'),
-                    mouseSupport: false,
-                    strokeStyle: 'rgba(255, 255, 255, 0.8)',
-                    limitStickTravel: true,
-                    stickRadius: 40,
-                    baseColor: 'rgba(255, 255, 255, 0.2)',
-                    stickColor: 'rgba(255, 255, 255, 0.8)'
+                window.rightJoystick = nipplejs.create({
+                    zone: document.getElementById('rightJoystick'),
+                    mode: 'static',
+                    position: { right: '60px', bottom: '60px' },
+                    color: 'white',
+                    size: 120,
+                    multitouch: true,
+                    maxNumberOfNipples: 2,
+                    dataOnly: false
                 });
 
-                // Movement controls
-                function updateMovement() {
-                    if (leftJoystick.isPressed()) {
-                        const dx = leftJoystick.deltaX();
-                        const dy = leftJoystick.deltaY();
-                        
-                        // Set movement flags based on joystick position
-                        moveForward = dy < -5;
-                        moveBackward = dy > 5;
-                        moveLeft = dx < -5;
-                        moveRight = dx > 5;
-                    } else {
-                        moveForward = false;
-                        moveBackward = false;
-                        moveLeft = false;
-                        moveRight = false;
-                    }
-                }
+                // Movement joystick handling
+                window.leftJoystick.on('move', function(evt, data) {
+                    // Get the vector data from the correct property
+                    const forward = -data.vector.y; // Invert Y for correct forward/back
+                    const right = data.vector.x;
+                    
+                    // Set movement flags
+                    moveForward = forward > 0;
+                    moveBackward = forward < 0;
+                    moveLeft = right < 0;
+                    moveRight = right > 0;
+                    
+                    // Set velocity directly based on joystick position
+                    velocity.z = forward * moveSpeed * 4;
+                    velocity.x = right * moveSpeed * 4;
+                });
 
-                // Look controls
-                function updateLook() {
-                    if (rightJoystick.isPressed()) {
-                        const dx = rightJoystick.deltaX();
-                        const dy = rightJoystick.deltaY();
-                        
-                        // Rotate camera based on joystick position
-                        controls.rotateLeft(dx * 0.003);
-                        controls.rotateUp(dy * 0.003);
-                    }
-                }
+                window.leftJoystick.on('end', function() {
+                    moveForward = false;
+                    moveBackward = false;
+                    moveLeft = false;
+                    moveRight = false;
+                    velocity.x = 0;
+                    velocity.z = 0;
+                });
 
-                // Update controls in animation loop
-                function updateControls() {
-                    updateMovement();
-                    updateLook();
-                    requestAnimationFrame(updateControls);
-                }
-                updateControls();
+                // Look joystick handling with direct rotation
+                window.rightJoystick.on('move', function(evt, data) {
+                    // Get the vector data from the correct property
+                    const lookSpeed = 0.03;
+                    camera.rotation.y -= data.vector.x * lookSpeed;
+                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+                        camera.rotation.x - data.vector.y * lookSpeed));
+                });
 
-                // Fling button
+                // Fling button handling with improved touch response
                 const flingButton = document.getElementById('flingButton');
-                flingButton.addEventListener('touchstart', handleFlingStart, { passive: false });
-                flingButton.addEventListener('touchend', handleFlingEnd, { passive: false });
                 
+                flingButton.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showLine = true;
+                    this.classList.add('active');
+                }, { passive: false });
+
+                flingButton.addEventListener('touchend', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showLine = false;
+                    this.classList.remove('active');
+                    if (lineCollisionPoint) {
+                        // Trigger fling immediately on release if we have a valid target
+                        const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
+                        const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                        const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2);
+                        
+                        flingVelocity.x = flingDirection.x * scaledStrength;
+                        flingVelocity.z = flingDirection.z * scaledStrength;
+                        verticalVelocity = flingDirection.y * scaledStrength + 0.4;
+                        
+                        isFlinging = true;
+                        isGrounded = false;
+                        lineCollisionPoint = null;
+                    }
+                }, { passive: false });
+
                 console.log('Mobile controls initialized');
             }
 
-            // Separate handlers for fling button
-            function handleFlingStart(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                showLine = true;
-                this.classList.add('active');
+            // Mobile-specific touch handlers
+            if (isMobile) {
+                // Show mobile instructions immediately
+                document.getElementById('mobileInstructions').style.display = 'block';
+                
+                // Prevent zoom and scroll
+                document.addEventListener('touchmove', function(e) {
+                    if (e.target !== usernameInput) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                }, { passive: false });
+
+                document.addEventListener('touchstart', function(e) {
+                    if (e.target !== usernameInput && e.target !== startButton) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                }, { passive: false });
+
+                // Prevent pinch zoom
+                document.addEventListener('gesturestart', function(e) {
+                    e.preventDefault();
+                }, { passive: false });
+
+                // Prevent double tap zoom
+                let lastTapTime = 0;
+                document.addEventListener('touchend', function(e) {
+                    const currentTime = new Date().getTime();
+                    const tapLength = currentTime - lastTapTime;
+                    if (tapLength < 500 && tapLength > 0) {
+                        e.preventDefault();
+                    }
+                    lastTapTime = currentTime;
+                }, { passive: false });
             }
 
-            function handleFlingEnd(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                showLine = false;
-                this.classList.remove('active');
-                if (lineCollisionPoint) {
-                    // Trigger fling immediately on release if we have a valid target
-                    const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
-                    const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                    const scaledStrength = Math.min(distanceToTarget * 0.1, flingStrength * 1.5);
-                    
-                    flingVelocity.x = flingDirection.x * scaledStrength;
-                    flingVelocity.z = flingDirection.z * scaledStrength;
-                    verticalVelocity = flingDirection.y * scaledStrength + 0.5;
-                    
-                    isFlinging = true;
-                    isGrounded = false;
-                    lineCollisionPoint = null;
-                }
+            // Desktop controls
+            if (!isMobile) {
+                // Movement controls
+                const onKeyDown = function(event) {
+                    switch (event.code) {
+                        case 'ArrowUp':
+                        case 'KeyW':
+                            moveForward = true;
+                            break;
+                        case 'ArrowDown':
+                        case 'KeyS':
+                            moveBackward = true;
+                            break;
+                        case 'ArrowLeft':
+                        case 'KeyA':
+                            moveLeft = true;
+                            break;
+                        case 'ArrowRight':
+                        case 'KeyD':
+                            moveRight = true;
+                            break;
+                        case 'KeyE':
+                            showLine = true;
+                            break;
+                    }
+                };
+
+                const onKeyUp = function(event) {
+                    switch (event.code) {
+                        case 'ArrowUp':
+                        case 'KeyW':
+                            moveForward = false;
+                            break;
+                        case 'ArrowDown':
+                        case 'KeyS':
+                            moveBackward = false;
+                            break;
+                        case 'ArrowLeft':
+                        case 'KeyA':
+                            moveLeft = false;
+                            break;
+                        case 'ArrowRight':
+                        case 'KeyD':
+                            moveRight = false;
+                            break;
+                        case 'KeyE':
+                            showLine = false;
+                            break;
+                    }
+                };
+
+                // Mouse controls for line visibility
+                document.addEventListener('mousedown', (event) => {
+                    if (event.button === 0) { // Left mouse button
+                        showLine = true;
+                    }
+                });
+
+                document.addEventListener('mouseup', (event) => {
+                    if (event.button === 0) { // Left mouse button
+                        showLine = false;
+                    }
+                });
+
+                document.addEventListener('keydown', onKeyDown);
+                document.addEventListener('keyup', onKeyUp);
             }
 
             // Animation loop with collision detection, star rotation, and nebula animation
@@ -1344,16 +1337,18 @@
                         // Update line trace position
                         const cameraDirection = new THREE.Vector3();
                         camera.getWorldDirection(cameraDirection);
+                        const rightVector = new THREE.Vector3();
+                        rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
                         
                         // Update line visibility
                         tubeMesh.visible = showLine;
                         
                         if (showLine) {
                             // Calculate start and end points
-                            const startPoint = camera.position.clone();
+                            const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
                             startPoint.y = camera.position.y;
                             
-                            const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(330));
+                            const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
                             
                             // Update curve points
                             curve.points[0].copy(startPoint);
@@ -1392,9 +1387,22 @@
                                 // Change line color to indicate no target
                                 tubeMaterial.color.setHex(0xff0000);
                             }
-                        } else {
-                            // Hide the line when not active
-                            tubeMesh.visible = false;
+                        } else if (lineCollisionPoint) {
+                            // Initiate fling when line is released and we had a collision point
+                            const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
+                            
+                            // Increase fling strength based on distance to target, but more gently
+                            const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                            const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2); // Increased scaling
+                            
+                            // Set velocity components
+                            flingVelocity.x = flingDirection.x * scaledStrength;
+                            flingVelocity.z = flingDirection.z * scaledStrength;
+                            verticalVelocity = flingDirection.y * scaledStrength + 0.4; // Increased upward boost
+                            
+                            isFlinging = true;
+                            isGrounded = false;
+                            lineCollisionPoint = null;
                         }
 
                         // Apply fling velocity if active
@@ -1500,8 +1508,16 @@
 
                         // Handle normal movement collisions with push-out
                         if (collision && collisionTower) {
-                            // During normal movement, just prevent movement
-                            camera.position.copy(oldPosition);
+                            if (isFlinging) {
+                                // During fling, push out strongly
+                                const pushDir = new THREE.Vector3();
+                                pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
+                                camera.position.x += pushDir.x * 3;
+                                camera.position.z += pushDir.z * 3;
+                            } else {
+                                // During normal movement, just prevent movement
+                                camera.position.copy(oldPosition);
+                            }
                         }
 
                         // Apply friction to normal movement
@@ -1538,31 +1554,6 @@
 
         // Initialize WebSocket connection AFTER scene is set up
         setupWebSocket();
-
-        // Add this function near other game functions
-        function updateHealthDisplay() {
-            // Health display removed
-        }
-
-        // Add this function to handle player death
-        function handlePlayerDeath() {
-            // Reset position to spawn point
-            camera.position.set(0, playerHeight, 0);
-            camera.rotation.set(0, 0, 0);
-            velocity.set(0, 0, 0);
-            flingVelocity.set(0, 0, 0);
-            verticalVelocity = 0;
-            isFlinging = false;
-            isGrounded = true;
-        }
-
-        // Add this function to create bridges from server data
-        function createBridgeFromData(bridgeData) {
-            const { start, end } = bridgeData;
-            const startPos = new THREE.Vector3(start.x, start.y, start.z);
-            const endPos = new THREE.Vector3(end.x, end.y, end.z);
-            createBridge(startPos, endPos);
-        }
     </script>
 </body>
 </html>
