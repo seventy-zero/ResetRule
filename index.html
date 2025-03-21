@@ -415,7 +415,71 @@
             }
         }
 
-        // Function to create tower from server data
+        // Add LOD settings
+        const LOD_DISTANCES = {
+            NEAR: 1000,    // High detail
+            MEDIUM: 2000,  // Medium detail
+            FAR: 3000      // Low detail
+        };
+
+        // Function to create LOD versions of a geometry
+        function createLODGeometry(baseGeometry, type) {
+            const lodLevels = [];
+            
+            // High detail (original)
+            lodLevels.push({
+                geometry: baseGeometry,
+                distance: 0
+            });
+
+            // Medium detail (reduced segments)
+            let mediumGeometry;
+            if (type === 'cylinder') {
+                mediumGeometry = new THREE.CylinderGeometry(
+                    baseGeometry.parameters.radiusTop,
+                    baseGeometry.parameters.radiusBottom,
+                    baseGeometry.parameters.height,
+                    Math.max(4, Math.floor(baseGeometry.parameters.radialSegments / 2)),
+                    Math.max(1, Math.floor(baseGeometry.parameters.heightSegments / 2))
+                );
+            } else if (type === 'box') {
+                mediumGeometry = new THREE.BoxGeometry(
+                    baseGeometry.parameters.width,
+                    baseGeometry.parameters.height,
+                    baseGeometry.parameters.depth
+                );
+            }
+            lodLevels.push({
+                geometry: mediumGeometry,
+                distance: LOD_DISTANCES.NEAR
+            });
+
+            // Low detail (minimal geometry)
+            let lowGeometry;
+            if (type === 'cylinder') {
+                lowGeometry = new THREE.CylinderGeometry(
+                    baseGeometry.parameters.radiusTop,
+                    baseGeometry.parameters.radiusBottom,
+                    baseGeometry.parameters.height,
+                    4,
+                    1
+                );
+            } else if (type === 'box') {
+                lowGeometry = new THREE.BoxGeometry(
+                    baseGeometry.parameters.width,
+                    baseGeometry.parameters.height,
+                    baseGeometry.parameters.depth
+                );
+            }
+            lodLevels.push({
+                geometry: lowGeometry,
+                distance: LOD_DISTANCES.MEDIUM
+            });
+
+            return lodLevels;
+        }
+
+        // Modified createTowerFromData function to use LOD
         function createTowerFromData(towerData) {
             let geometry;
             const height = towerData.height;
@@ -430,23 +494,28 @@
 
             // Create collision box for the tower
             let collisionGeometry;
+            let geometryType;
 
             switch(towerData.type) {
                 case 0: // Cylindrical tower
                     geometry = new THREE.CylinderGeometry(18, 18, height, 8);
                     collisionGeometry = new THREE.CylinderGeometry(18, 18, height, 8);
+                    geometryType = 'cylinder';
                     break;
                 case 1: // Tapered tower
                     geometry = new THREE.CylinderGeometry(12, 24, height, 6);
                     collisionGeometry = new THREE.CylinderGeometry(24, 24, height, 6);
+                    geometryType = 'cylinder';
                     break;
                 case 2: // Square tower
                     geometry = new THREE.BoxGeometry(36, height, 36);
                     collisionGeometry = geometry;
+                    geometryType = 'box';
                     break;
                 case 3: // Hexagonal tower
                     geometry = new THREE.CylinderGeometry(20, 20, height, 6);
                     collisionGeometry = geometry;
+                    geometryType = 'cylinder';
                     break;
                 case 4: // Twisted tower
                     geometry = new THREE.CylinderGeometry(15, 15, height, 8, 10, true);
@@ -463,30 +532,37 @@
                         positions[i + 2] = x * Math.sin(theta) + z * Math.cos(theta);
                     }
                     collisionGeometry = new THREE.CylinderGeometry(15, 15, height, 8);
+                    geometryType = 'cylinder';
                     break;
                 case 5: // Pyramid tower
                     geometry = new THREE.ConeGeometry(24, height, 4);
                     collisionGeometry = geometry;
+                    geometryType = 'cylinder';
                     break;
                 case 6: // Octagonal tower
                     geometry = new THREE.CylinderGeometry(19, 19, height, 8);
                     collisionGeometry = geometry;
+                    geometryType = 'cylinder';
                     break;
                 case 7: // Double width tower
                     geometry = new THREE.BoxGeometry(42, height, 42);
                     collisionGeometry = geometry;
+                    geometryType = 'box';
                     break;
                 case 8: // Inverse pyramid
                     geometry = new THREE.CylinderGeometry(12, 28, height, 4);
                     collisionGeometry = new THREE.CylinderGeometry(28, 28, height, 4);
+                    geometryType = 'cylinder';
                     break;
                 case 9: // Star tower
                     geometry = new THREE.CylinderGeometry(24, 24, height, 5);
                     collisionGeometry = geometry;
+                    geometryType = 'cylinder';
                     break;
                 case 10: // Thin spire
                     geometry = new THREE.CylinderGeometry(8, 16, height, 6);
                     collisionGeometry = new THREE.CylinderGeometry(16, 16, height, 6);
+                    geometryType = 'cylinder';
                     break;
                 case 11: // Complex tower (stacked shapes)
                     const baseHeight = height * 0.6;
@@ -531,79 +607,94 @@
                     return;
             }
 
-            // Create the main mesh with solid faces
-            const mesh = new THREE.Mesh(geometry, materials[0]);
+            // Create LOD levels
+            const lodLevels = createLODGeometry(geometry, geometryType);
             
-            // Create the edges
-            const edges = new THREE.LineSegments(
-                new THREE.EdgesGeometry(geometry),
-                materials[1]
-            );
+            // Create LOD group
+            const lodGroup = new THREE.LOD();
             
-            // Group the mesh and edges together
-            const group = new THREE.Group();
-            group.add(mesh);
-            group.add(edges);
-            group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
-            scene.add(group);
+            // Add each LOD level
+            lodLevels.forEach(level => {
+                const mesh = new THREE.Mesh(level.geometry, materials[0]);
+                const edges = new THREE.LineSegments(
+                    new THREE.EdgesGeometry(level.geometry),
+                    materials[1]
+                );
+                const group = new THREE.Group();
+                group.add(mesh);
+                group.add(edges);
+                lodGroup.addLevel(group, level.distance);
+            });
+
+            // Position the LOD group
+            lodGroup.position.set(towerData.x, height/2 + baseHeight, towerData.z);
+            scene.add(lodGroup);
 
             // Add collision data
             const collisionMesh = new THREE.Mesh(collisionGeometry);
-            collisionMesh.position.copy(group.position);
+            collisionMesh.position.copy(lodGroup.position);
             towers.push({
                 mesh: collisionMesh,
-                boundingBox: new THREE.Box3().setFromObject(collisionMesh)
+                boundingBox: new THREE.Box3().setFromObject(collisionMesh),
+                lodGroup: lodGroup
             });
         }
 
-        // Function to create bridge from server data
+        // Modified createBridgeFromData function to use LOD
         function createBridgeFromData(bridgeData) {
-            // Calculate bridge dimensions
             const bridgeWidth = 8;
             const startPos = new THREE.Vector3(bridgeData.startX, bridgeData.height, bridgeData.startZ);
             const endPos = new THREE.Vector3(bridgeData.endX, bridgeData.height, bridgeData.endZ);
             const distance = startPos.distanceTo(endPos);
             
-            // Create bridge geometry
+            // Create base bridge geometry
             const bridgeGeometry = new THREE.BoxGeometry(distance, bridgeWidth, bridgeWidth);
             
-            // Create materials for the bridge (matching tower style)
+            // Create materials
             const bridgeMaterials = [
                 new THREE.MeshBasicMaterial({ color: 0x000000 }),
                 new THREE.LineBasicMaterial({ color: 0xffffff })
             ];
             
-            // Create bridge mesh and edges
-            const bridgeMesh = new THREE.Mesh(bridgeGeometry, bridgeMaterials[0]);
-            const bridgeEdges = new THREE.LineSegments(
-                new THREE.EdgesGeometry(bridgeGeometry),
-                bridgeMaterials[1]
-            );
+            // Create LOD levels
+            const lodLevels = createLODGeometry(bridgeGeometry, 'box');
             
-            // Create bridge group
-            const bridgeGroup = new THREE.Group();
-            bridgeGroup.add(bridgeMesh);
-            bridgeGroup.add(bridgeEdges);
+            // Create LOD group
+            const lodGroup = new THREE.LOD();
+            
+            // Add each LOD level
+            lodLevels.forEach(level => {
+                const mesh = new THREE.Mesh(level.geometry, bridgeMaterials[0]);
+                const edges = new THREE.LineSegments(
+                    new THREE.EdgesGeometry(level.geometry),
+                    bridgeMaterials[1]
+                );
+                const group = new THREE.Group();
+                group.add(mesh);
+                group.add(edges);
+                lodGroup.addLevel(group, level.distance);
+            });
             
             // Position bridge
             const midPoint = startPos.clone().add(endPos).multiplyScalar(0.5);
-            bridgeGroup.position.copy(midPoint);
+            lodGroup.position.copy(midPoint);
             
-            // Rotate bridge to point from start to end
+            // Rotate bridge
             const direction = endPos.clone().sub(startPos);
             const angle = Math.atan2(direction.z, direction.x);
-            bridgeGroup.rotation.y = angle;
+            lodGroup.rotation.y = angle;
             
-            scene.add(bridgeGroup);
+            scene.add(lodGroup);
             
-            // Create a narrower collision box for the bridge
+            // Create collision box
             const collisionGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.6);
             const collisionMesh = new THREE.Mesh(collisionGeometry);
-            collisionMesh.position.copy(bridgeGroup.position);
-            collisionMesh.rotation.copy(bridgeGroup.rotation);
+            collisionMesh.position.copy(lodGroup.position);
+            collisionMesh.rotation.copy(lodGroup.rotation);
             towers.push({
                 mesh: collisionMesh,
-                boundingBox: new THREE.Box3().setFromObject(collisionMesh)
+                boundingBox: new THREE.Box3().setFromObject(collisionMesh),
+                lodGroup: lodGroup
             });
         }
 
