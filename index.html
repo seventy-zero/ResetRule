@@ -1,7 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <title>Endless Floor - First Person</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
     <style>
         body { margin: 0; }
         canvas { display: block; }
@@ -14,6 +16,9 @@
             color: white;
             font-family: Arial, sans-serif;
             font-size: 18px;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
             user-select: none;
             background: rgba(0, 0, 0, 0.8);
             padding: 20px;
@@ -52,6 +57,57 @@
             background: #cccccc;
             cursor: not-allowed;
         }
+        /* Mobile Controls */
+        .mobile-controls {
+            display: none;
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            height: 120px;
+            pointer-events: none;
+        }
+        .joystick-zone {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 60px;
+            pointer-events: auto;
+        }
+        #leftJoystick {
+            left: 0;
+        }
+        #rightJoystick {
+            right: 0;
+        }
+        #flingButton {
+            display: none;
+            position: fixed;
+            bottom: 160px;
+            left: 40px;
+            width: 60px;
+            height: 60px;
+            background: rgba(76, 175, 80, 0.6);
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            line-height: 60px;
+            text-align: center;
+            pointer-events: auto;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #flingButton.active {
+            background: rgba(76, 175, 80, 0.9);
+        }
+        /* Only show mobile controls on touch devices */
+        @media (hover: none) and (pointer: coarse) {
+            .mobile-controls, #flingButton {
+                display: block;
+            }
+        }
     </style>
 </head>
 <body>
@@ -60,12 +116,27 @@
         <input type="text" id="username" placeholder="Enter your username" maxlength="15">
         <button id="startButton" disabled>Start Game</button>
         <p style="margin-top: 20px;">
+            Desktop Controls:<br>
             WASD = Move<br>
             Mouse = Look around<br>
             ESC = Exit<br>
             Left Click = Aim & Release to Fling
         </p>
+        <p id="mobileInstructions" style="display: none; margin-top: 20px;">
+            Mobile Controls:<br>
+            Left Stick = Move<br>
+            Right Stick = Look around<br>
+            Fling Button = Aim & Release to Fling
+        </p>
     </div>
+    
+    <!-- Mobile Controls -->
+    <div class="mobile-controls">
+        <div id="leftJoystick" class="joystick-zone"></div>
+        <div id="rightJoystick" class="joystick-zone"></div>
+    </div>
+    <div id="flingButton">⚡</div>
+
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -661,76 +732,91 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // Movement controls
-        const onKeyDown = function(event) {
-            switch (event.code) {
-                case 'ArrowUp':
-                case 'KeyW':
-                    moveForward = true;
-                    break;
-                case 'ArrowDown':
-                case 'KeyS':
-                    moveBackward = true;
-                    break;
-                case 'ArrowLeft':
-                case 'KeyA':
-                    moveLeft = true;
-                    break;
-                case 'ArrowRight':
-                case 'KeyD':
-                    moveRight = true;
-                    break;
-                case 'KeyE':
-                    showLine = true;
-                    break;
-            }
-        };
+        // Mobile detection
+        const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        
+        if (isMobile) {
+            document.getElementById('mobileInstructions').style.display = 'block';
+            
+            // Initialize joysticks
+            const leftJoystick = nipplejs.create({
+                zone: document.getElementById('leftJoystick'),
+                mode: 'static',
+                position: { left: '60px', bottom: '60px' },
+                color: 'white',
+                size: 120
+            });
 
-        const onKeyUp = function(event) {
-            switch (event.code) {
-                case 'ArrowUp':
-                case 'KeyW':
-                    moveForward = false;
-                    break;
-                case 'ArrowDown':
-                case 'KeyS':
-                    moveBackward = false;
-                    break;
-                case 'ArrowLeft':
-                case 'KeyA':
-                    moveLeft = false;
-                    break;
-                case 'ArrowRight':
-                case 'KeyD':
-                    moveRight = false;
-                    break;
-                case 'KeyE':
-                    showLine = false;
-                    break;
-            }
-        };
+            const rightJoystick = nipplejs.create({
+                zone: document.getElementById('rightJoystick'),
+                mode: 'static',
+                position: { right: '60px', bottom: '60px' },
+                color: 'white',
+                size: 120
+            });
 
-        // Mouse controls for line visibility
-        document.addEventListener('mousedown', (event) => {
-            if (event.button === 0) { // Left mouse button
+            // Movement joystick handling
+            leftJoystick.on('move', (evt, data) => {
+                const forward = data.vector.y;
+                const right = data.vector.x;
+                
+                moveForward = forward > 0;
+                moveBackward = forward < 0;
+                moveRight = right > 0;
+                moveLeft = right < 0;
+            });
+
+            leftJoystick.on('end', () => {
+                moveForward = false;
+                moveBackward = false;
+                moveRight = false;
+                moveLeft = false;
+            });
+
+            // Look joystick handling
+            let lookSpeed = 0.002;
+            rightJoystick.on('move', (evt, data) => {
+                if (controls.isLocked) {
+                    camera.rotation.y -= data.vector.x * lookSpeed;
+                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+                        camera.rotation.x - data.vector.y * lookSpeed));
+                }
+            });
+
+            // Fling button handling
+            const flingButton = document.getElementById('flingButton');
+            
+            flingButton.addEventListener('touchstart', (e) => {
+                e.preventDefault();
                 showLine = true;
-            }
-        });
+                flingButton.classList.add('active');
+            });
 
-        document.addEventListener('mouseup', (event) => {
-            if (event.button === 0) { // Left mouse button
+            flingButton.addEventListener('touchend', (e) => {
+                e.preventDefault();
                 showLine = false;
-            }
-        });
+                flingButton.classList.remove('active');
+            });
 
-        document.addEventListener('keydown', onKeyDown);
-        document.addEventListener('keyup', onKeyUp);
+            // Prevent default touch actions
+            document.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+            }, { passive: false });
 
-        // Function to get camera direction
-        function getCameraDirection() {
-            const direction = new THREE.Vector3();
-            camera.getWorldDirection(direction);
-            return direction;
+            // Modify pointer lock for mobile
+            controls.addEventListener('lock', function() {
+                instructions.classList.add('hidden');
+                document.querySelector('.mobile-controls').style.opacity = '1';
+                flingButton.style.opacity = '1';
+            });
+
+            controls.addEventListener('unlock', function() {
+                if (gameStarted) {
+                    instructions.classList.remove('hidden');
+                    document.querySelector('.mobile-controls').style.opacity = '0.5';
+                    flingButton.style.opacity = '0.5';
+                }
+            });
         }
 
         // Animation loop with collision detection, star rotation, and nebula animation
