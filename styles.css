@@ -1,0 +1,195 @@
+body { 
+    margin: 0; 
+    background-color: #000000;
+}
+
+canvas { 
+    display: block; 
+}
+
+#instructions {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: white;
+    font-family: Arial, sans-serif;
+    font-size: 18px;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 20px;
+    border-radius: 10px;
+    border: 1px solid #333;
+    z-index: 1000;
+}
+
+#instructions.hidden {
+    display: none;
+}
+
+#username {
+    margin: 10px 0;
+    padding: 8px;
+    border: none;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.9);
+    color: #000;
+    font-size: 16px;
+    width: 200px;
+    text-align: center;
+    autocomplete: "username";
+}
+
+#startButton {
+    margin-top: 15px;
+    padding: 8px 20px;
+    border: none;
+    border-radius: 4px;
+    background: #4CAF50;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+#startButton:hover {
+    background: #45a049;
+}
+
+#startButton:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+}
+
+/* Mobile Controls */
+.mobile-controls {
+    display: none;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    height: 120px;
+    width: 120px;
+    pointer-events: auto;
+    z-index: 1000;
+}
+
+.joystick-zone {
+    position: absolute;
+    width: 120px;
+    height: 120px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 60px;
+    pointer-events: auto;
+    z-index: 1000;
+    touch-action: none;
+}
+
+.joystick {
+    position: absolute;
+    width: 50px;
+    height: 50px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 25px;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+}
+
+#flingButton {
+    display: none;
+    position: fixed;
+    bottom: 160px;
+    left: 40px;
+    width: 60px;
+    height: 60px;
+    background: rgba(76, 175, 80, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    border-radius: 50%;
+    color: white;
+    font-size: 24px;
+    line-height: 60px;
+    text-align: center;
+    pointer-events: auto;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    z-index: 1000;
+    touch-action: none;
+}
+
+#flingButton.active {
+    background: rgba(76, 175, 80, 0.9);
+}
+
+/* Show mobile controls on touch devices */
+@media (pointer: coarse) {
+    .mobile-controls {
+        display: block !important;
+    }
+    #flingButton {
+        display: block !important;
+    }
+}
+
+#roomInfo {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: #4CAF50;
+    padding: 10px;
+    border-radius: 5px;
+    z-index: 1000;
+    font-family: Arial, sans-serif;
+    font-size: 16px;
+    font-weight: bold;
+    text-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+}
+
+#playerList {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: #4CAF50;
+    padding: 10px;
+    border-radius: 5px;
+    z-index: 1000;
+    font-family: Arial, sans-serif;
+    font-size: 16px;
+    display: none;
+    min-width: 150px;
+}
+
+#playerList.visible {
+    display: block;
+}
+
+.playerListItem {
+    margin: 5px 0;
+    padding: 5px;
+    border-radius: 3px;
+    transition: background-color 0.2s;
+}
+
+.playerListItem:hover {
+    background-color: rgba(76, 175, 80, 0.2);
+}
+
+#orbCounter {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.7);
+    color: #4CAF50;
+    padding: 10px;
+    border-radius: 5px;
+    z-index: 1000;
+    font-family: Arial, sans-serif;
+    font-size: 16px;
+    font-weight: bold;
+    text-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+} 

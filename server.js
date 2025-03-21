@@ -1,6 +1,7 @@
 const express = require('express');
 const WebSocket = require('ws');
 const path = require('path');
+const helmet = require('helmet');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -131,8 +132,39 @@ function generateWorld() {
     return { towers, bridges };
 }
 
-// Serve static files
-app.use(express.static(path.join(__dirname)));
+// Security headers and cache control
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "unpkg.com", "cdnjs.cloudflare.com"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", "data:", "blob:"],
+            connectSrc: ["'self'", "wss:", "ws:"],
+            fontSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+            sandbox: ["allow-forms", "allow-scripts", "allow-same-origin"]
+        }
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
+// Set cache control headers for static files
+app.use(express.static(path.join(__dirname, 'public'), {
+    maxAge: '1y',
+    immutable: true,
+    setHeaders: (res, path) => {
+        if (path.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache');
+        }
+    }
+}));
+
+// Remove X-Powered-By header
+app.disable('x-powered-by');
 
 const server = app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
