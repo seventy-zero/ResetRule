@@ -1625,15 +1625,6 @@
                         lastCollisionCheck = currentTime;
                     }
 
-                    // Only render if in view frustum
-                    const frustum = new THREE.Frustum();
-                    frustum.setFromProjectionMatrix(
-                        new THREE.Matrix4().multiplyMatrices(
-                            camera.projectionMatrix,
-                            camera.matrixWorldInverse
-                        )
-                    );
-
                     // Update nebula animations with reduced frequency
                     if (currentTime % 2 === 0) { // Update every other frame
                         const time = currentTime * 0.001;
@@ -1880,6 +1871,9 @@
                         }
                     }
                 }
+
+                // Always render the scene
+                renderer.render(scene, camera);
             }
             animate();
 
