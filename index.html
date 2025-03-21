@@ -78,10 +78,20 @@
     <script type="module">
         import * as THREE from 'three';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+        import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+        import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+
+        // Add error handler for the whole script
+        window.addEventListener('error', function(e) {
+            console.error('Runtime error:', e);
+            document.body.innerHTML = `<div style="color: white; background: rgba(0,0,0,0.8); padding: 20px; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                An error occurred: ${e.message}<br>Please refresh the page.
+            </div>`;
+        });
 
         // Scene setup
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000); // Black background
+        scene.background = new THREE.Color(0x000000);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000);
 
         // Add WebSocket connection
@@ -145,73 +155,105 @@
             return group;
         }
 
-        // Update username display
+        // Update username display with error handling
         function updateUsernameDisplay(playerModel, username) {
-            const usernameGroup = playerModel.children[1];
-            // Remove old text if it exists
-            while(usernameGroup.children.length > 0) {
-                usernameGroup.remove(usernameGroup.children[0]);
+            try {
+                const usernameGroup = playerModel.children[1];
+                // Remove old text if it exists
+                while(usernameGroup.children.length > 0) {
+                    usernameGroup.remove(usernameGroup.children[0]);
+                }
+                
+                // Create simple text sprite instead of 3D text
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = 256;
+                canvas.height = 64;
+                context.font = '32px Arial';
+                context.fillStyle = 'white';
+                context.textAlign = 'center';
+                context.fillText(username, canvas.width/2, canvas.height/2);
+                
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                const sprite = new THREE.Sprite(spriteMaterial);
+                sprite.scale.set(5, 1.25, 1);
+                sprite.position.y = 2;
+                
+                usernameGroup.add(sprite);
+            } catch (error) {
+                console.error('Error updating username display:', error);
             }
-            
-            // Create new text
-            const loader = new THREE.FontLoader();
-            loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function(font) {
-                const textGeometry = new THREE.TextGeometry(username, {
-                    font: font,
-                    size: 1,
-                    height: 0.1
-                });
-                const textMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
-                textGeometry.computeBoundingBox();
-                const textWidth = textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x;
-                textMesh.position.x = -textWidth / 2;
-                usernameGroup.add(textMesh);
-            });
         }
 
-        // WebSocket message handling
+        // WebSocket message handling with error handling
         ws.onmessage = function(event) {
-            const message = JSON.parse(event.data);
-            
-            switch(message.type) {
-                case 'init':
-                    playerId = message.id;
-                    camera.position.copy(message.position);
-                    
-                    // Create other existing players
-                    message.players.forEach(player => {
-                        const playerModel = createPlayerModel();
-                        playerModel.position.copy(player.position);
-                        updateUsernameDisplay(playerModel, player.username);
-                        scene.add(playerModel);
-                        otherPlayers.set(player.id, playerModel);
-                    });
-                    break;
-                    
-                case 'playerJoined':
-                    const newPlayerModel = createPlayerModel();
-                    newPlayerModel.position.copy(message.position);
-                    updateUsernameDisplay(newPlayerModel, message.username);
-                    scene.add(newPlayerModel);
-                    otherPlayers.set(message.id, newPlayerModel);
-                    break;
-                    
-                case 'playerLeft':
-                    const playerToRemove = otherPlayers.get(message.id);
-                    if (playerToRemove) {
-                        scene.remove(playerToRemove);
-                        otherPlayers.delete(message.id);
-                    }
-                    break;
-                    
-                case 'playerMoved':
-                    const playerToMove = otherPlayers.get(message.id);
-                    if (playerToMove) {
-                        playerToMove.position.copy(message.position);
-                        playerToMove.rotation.copy(message.rotation);
-                    }
-                    break;
+            try {
+                const message = JSON.parse(event.data);
+                
+                switch(message.type) {
+                    case 'init':
+                        playerId = message.id;
+                        camera.position.set(
+                            message.position[0],
+                            message.position[1],
+                            message.position[2]
+                        );
+                        
+                        // Create other existing players
+                        message.players.forEach(player => {
+                            const playerModel = createPlayerModel();
+                            playerModel.position.set(
+                                player.position[0],
+                                player.position[1],
+                                player.position[2]
+                            );
+                            updateUsernameDisplay(playerModel, player.username);
+                            scene.add(playerModel);
+                            otherPlayers.set(player.id, playerModel);
+                        });
+                        break;
+                        
+                    case 'playerJoined':
+                        const newPlayerModel = createPlayerModel();
+                        newPlayerModel.position.set(
+                            message.position[0],
+                            message.position[1],
+                            message.position[2]
+                        );
+                        updateUsernameDisplay(newPlayerModel, message.username);
+                        scene.add(newPlayerModel);
+                        otherPlayers.set(message.id, newPlayerModel);
+                        break;
+                        
+                    case 'playerLeft':
+                        const playerToRemove = otherPlayers.get(message.id);
+                        if (playerToRemove) {
+                            scene.remove(playerToRemove);
+                            otherPlayers.delete(message.id);
+                        }
+                        break;
+                        
+                    case 'playerMoved':
+                        const playerToMove = otherPlayers.get(message.id);
+                        if (playerToMove) {
+                            playerToMove.position.set(
+                                message.position[0],
+                                message.position[1],
+                                message.position[2]
+                            );
+                            if (message.rotation) {
+                                playerToMove.rotation.set(
+                                    message.rotation[0],
+                                    message.rotation[1],
+                                    message.rotation[2]
+                                );
+                            }
+                        }
+                        break;
+                }
+            } catch (error) {
+                console.error('Error handling WebSocket message:', error);
             }
         };
 
