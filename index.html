@@ -1146,9 +1146,13 @@
                     
                     // Update camera rotation
                     const lookSpeed = 0.05;
+                    // Only update horizontal rotation (left/right)
                     camera.rotation.y -= (joystickX / maxDistance) * lookSpeed;
+                    // Only update vertical rotation (up/down) and clamp it
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
                         camera.rotation.x - (joystickY / maxDistance) * lookSpeed));
+                    // Force roll to always be 0 to prevent tilting
+                    camera.rotation.z = 0;
                     
                     console.log('Touch moved:', joystickX, joystickY);
                 }, { passive: false });
