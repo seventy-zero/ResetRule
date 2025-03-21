@@ -902,12 +902,17 @@
             opacity: 0.8
         });
         const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
+        tubeMesh.visible = false; // Hide initially
         scene.add(tubeMesh);
 
         // Animation loop
         let lastRenderTime = 0;
         function animate(currentTime) {
             requestAnimationFrame(animate);
+
+            // Always render the scene first
+            renderer.clear();
+            renderer.render(scene, camera);
 
             // Log first few frames after game start
             if (gameStarted && currentTime - lastRenderTime > 1000) {
@@ -922,10 +927,6 @@
                 });
                 lastRenderTime = currentTime;
             }
-
-            // Always render the scene
-            renderer.clear();
-            renderer.render(scene, camera);
 
             // Update nebula animations
             const time = performance.now() * 0.001;
@@ -963,74 +964,81 @@
                 controls.moveForward(-velocity.z);
 
                 // Update line trace position
-                const cameraDirection = new THREE.Vector3();
-                camera.getWorldDirection(cameraDirection);
-                const rightVector = new THREE.Vector3();
-                rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
-                
-                // Update line visibility
-                tubeMesh.visible = showLine;
-                
                 if (showLine) {
-                    // Calculate start and end points
-                    const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
-                    startPoint.y = camera.position.y;
-                    
-                    const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
-                    
-                    // Update curve points
-                    curve.points[0].copy(startPoint);
-                    curve.points[1].copy(endPoint);
-                    
-                    // Update the tube geometry
-                    const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
-                    tubeMesh.geometry.dispose();
-                    tubeMesh.geometry = newTubeGeometry;
-
-                    // Check for line collision with towers
-                    raycaster.set(startPoint, cameraDirection);
-                    const intersects = [];
-                    towers.forEach(tower => {
-                        const towerIntersects = raycaster.intersectObject(tower.mesh);
-                        if (towerIntersects.length > 0 && towerIntersects[0].distance <= 330) {
-                            intersects.push(towerIntersects[0]);
-                        }
-                    });
-
-                    // Sort intersections by distance and get the closest one
-                    if (intersects.length > 0) {
-                        intersects.sort((a, b) => a.distance - b.distance);
-                        lineCollisionPoint = intersects[0].point;
+                    try {
+                        const cameraDirection = new THREE.Vector3();
+                        camera.getWorldDirection(cameraDirection);
                         
-                        // Update line end point to collision point
-                        curve.points[1].copy(lineCollisionPoint);
-                        const collidedTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
+                        // Calculate start point (slightly in front of camera)
+                        const startPoint = camera.position.clone();
+                        startPoint.y -= 1; // Slightly below eye level
+                        
+                        // Calculate end point
+                        const endPoint = startPoint.clone().add(cameraDirection.multiplyScalar(50));
+                        
+                        // Update curve points
+                        curve.points[0].copy(startPoint);
+                        curve.points[1].copy(endPoint);
+                        
+                        // Update the tube geometry
+                        const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
                         tubeMesh.geometry.dispose();
-                        tubeMesh.geometry = collidedTubeGeometry;
-                        
-                        // Change line color to indicate valid target
-                        tubeMaterial.color.setHex(0x00ff00);
-                    } else {
-                        lineCollisionPoint = null;
-                        // Change line color to indicate no target
-                        tubeMaterial.color.setHex(0xff0000);
+                        tubeMesh.geometry = newTubeGeometry;
+                        tubeMesh.visible = true;
+
+                        // Check for line collision with towers
+                        raycaster.set(startPoint, cameraDirection);
+                        const intersects = [];
+                        towers.forEach(tower => {
+                            if (tower.mesh && tower.mesh.geometry) {
+                                const towerIntersects = raycaster.intersectObject(tower.mesh);
+                                if (towerIntersects.length > 0 && towerIntersects[0].distance <= 330) {
+                                    intersects.push(towerIntersects[0]);
+                                }
+                            }
+                        });
+
+                        // Sort intersections by distance and get the closest one
+                        if (intersects.length > 0) {
+                            intersects.sort((a, b) => a.distance - b.distance);
+                            lineCollisionPoint = intersects[0].point;
+                            
+                            // Update line end point to collision point
+                            curve.points[1].copy(lineCollisionPoint);
+                            const collidedTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
+                            tubeMesh.geometry.dispose();
+                            tubeMesh.geometry = collidedTubeGeometry;
+                            
+                            // Change line color to indicate valid target
+                            tubeMaterial.color.setHex(0x00ff00);
+                        } else {
+                            lineCollisionPoint = null;
+                            // Change line color to indicate no target
+                            tubeMaterial.color.setHex(0xff0000);
+                        }
+                    } catch (error) {
+                        console.error('Error updating line trace:', error);
+                        tubeMesh.visible = false;
                     }
-                } else if (lineCollisionPoint) {
-                    // Initiate fling when line is released and we had a collision point
-                    const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
-                    
-                    // Increase fling strength based on distance to target, but more gently
-                    const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                    const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2); // Increased scaling
-                    
-                    // Set velocity components
-                    flingVelocity.x = flingDirection.x * scaledStrength;
-                    flingVelocity.z = flingDirection.z * scaledStrength;
-                    verticalVelocity = flingDirection.y * scaledStrength + 0.4; // Increased upward boost
-                    
-                    isFlinging = true;
-                    isGrounded = false;
-                    lineCollisionPoint = null;
+                } else {
+                    tubeMesh.visible = false;
+                    if (lineCollisionPoint) {
+                        // Initiate fling when line is released and we had a collision point
+                        const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
+                        
+                        // Calculate fling strength
+                        const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                        const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2);
+                        
+                        // Set velocity components
+                        flingVelocity.x = flingDirection.x * scaledStrength;
+                        flingVelocity.z = flingDirection.z * scaledStrength;
+                        verticalVelocity = flingDirection.y * scaledStrength + 0.4;
+                        
+                        isFlinging = true;
+                        isGrounded = false;
+                        lineCollisionPoint = null;
+                    }
                 }
 
                 // Apply fling velocity if active
