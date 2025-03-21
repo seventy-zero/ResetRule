@@ -134,7 +134,6 @@
         </p>
         <p id="mobileInstructions" style="display: none; margin-top: 20px;">
             Mobile Controls:<br>
-            Left Stick = Move<br>
             Right Stick = Look around<br>
             Fling Button = Aim & Release to Fling
         </p>
@@ -1033,7 +1032,7 @@
                     window.rightJoystick.destroy();
                 }
 
-                // Create new joystick
+                // Create new joystick with improved configuration
                 window.rightJoystick = nipplejs.create({
                     zone: document.getElementById('rightJoystick'),
                     mode: 'static',
@@ -1042,16 +1041,25 @@
                     size: 120,
                     multitouch: true,
                     maxNumberOfNipples: 1,
-                    dataOnly: false
+                    dataOnly: false,
+                    lockX: false,
+                    lockY: false,
+                    threshold: 0.1,
+                    fadeTime: 0
                 });
 
-                // Look joystick handling with direct rotation
+                // Look joystick handling with improved sensitivity
                 window.rightJoystick.on('move', function(evt, data) {
-                    // Get the vector data from the correct property
-                    const lookSpeed = 0.03;
-                    camera.rotation.y -= data.vector.x * lookSpeed;
+                    if (!data.vector) return;
+                    
+                    const lookSpeed = 0.05; // Increased sensitivity
+                    const x = data.vector.x;
+                    const y = data.vector.y;
+                    
+                    // Apply rotation with improved sensitivity
+                    camera.rotation.y -= x * lookSpeed;
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
-                        camera.rotation.x - data.vector.y * lookSpeed));
+                        camera.rotation.x - y * lookSpeed));
                 });
 
                 // Fling button handling with improved touch response
