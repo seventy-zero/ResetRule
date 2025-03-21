@@ -68,9 +68,9 @@
             display: none;
             position: fixed;
             bottom: 20px;
-            left: 20px;
             right: 20px;
             height: 120px;
+            width: 120px;
             pointer-events: none;
             z-index: 1000;
         }
@@ -82,10 +82,6 @@
             border-radius: 60px;
             pointer-events: auto;
             z-index: 1000;
-        }
-        #leftJoystick {
-            left: 0;
-            bottom: 0;
         }
         #rightJoystick {
             right: 0;
@@ -146,7 +142,6 @@
     
     <!-- Mobile Controls -->
     <div class="mobile-controls">
-        <div id="leftJoystick" class="joystick-zone"></div>
         <div id="rightJoystick" class="joystick-zone"></div>
     </div>
     <div id="flingButton">⚡</div>
@@ -1033,26 +1028,12 @@
             function initializeMobileControls() {
                 console.log('Initializing mobile controls');
                 
-                // Clean up existing joysticks if they exist
-                if (window.leftJoystick) {
-                    window.leftJoystick.destroy();
-                }
+                // Clean up existing joystick if it exists
                 if (window.rightJoystick) {
                     window.rightJoystick.destroy();
                 }
 
-                // Create new joysticks
-                window.leftJoystick = nipplejs.create({
-                    zone: document.getElementById('leftJoystick'),
-                    mode: 'static',
-                    position: { left: '60px', bottom: '60px' },
-                    color: 'white',
-                    size: 120,
-                    multitouch: true,
-                    maxNumberOfNipples: 2,
-                    dataOnly: false
-                });
-
+                // Create new joystick
                 window.rightJoystick = nipplejs.create({
                     zone: document.getElementById('rightJoystick'),
                     mode: 'static',
@@ -1060,34 +1041,8 @@
                     color: 'white',
                     size: 120,
                     multitouch: true,
-                    maxNumberOfNipples: 2,
+                    maxNumberOfNipples: 1,
                     dataOnly: false
-                });
-
-                // Movement joystick handling
-                window.leftJoystick.on('move', function(evt, data) {
-                    // Get the vector data from the correct property
-                    const forward = -data.vector.y; // Invert Y for correct forward/back
-                    const right = data.vector.x;
-                    
-                    // Set movement flags
-                    moveForward = forward > 0;
-                    moveBackward = forward < 0;
-                    moveLeft = right < 0;
-                    moveRight = right > 0;
-                    
-                    // Set velocity directly based on joystick position
-                    velocity.z = forward * moveSpeed * 4;
-                    velocity.x = right * moveSpeed * 4;
-                });
-
-                window.leftJoystick.on('end', function() {
-                    moveForward = false;
-                    moveBackward = false;
-                    moveLeft = false;
-                    moveRight = false;
-                    velocity.x = 0;
-                    velocity.z = 0;
                 });
 
                 // Look joystick handling with direct rotation
