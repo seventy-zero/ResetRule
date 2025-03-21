@@ -72,8 +72,9 @@
             left: 20px;
             right: 20px;
             height: 120px;
-            pointer-events: none;
+            pointer-events: auto;
             z-index: 1000;
+            touch-action: none;
         }
         .joystick-zone {
             position: absolute;
@@ -83,6 +84,7 @@
             border-radius: 60px;
             pointer-events: auto;
             z-index: 1000;
+            touch-action: none;
         }
         #leftJoystick {
             left: 0;
@@ -110,6 +112,7 @@
             cursor: pointer;
             -webkit-tap-highlight-color: transparent;
             z-index: 1000;
+            touch-action: none;
         }
         #flingButton.active {
             background: rgba(76, 175, 80, 0.9);
@@ -1086,7 +1089,9 @@
                     dataOnly: false,
                     lockX: false,
                     lockY: false,
-                    fadeTime: 0
+                    fadeTime: 0,
+                    dynamicPage: true,
+                    follow: true
                 });
 
                 window.rightJoystick = nipplejs.create({
@@ -1100,7 +1105,9 @@
                     dataOnly: false,
                     lockX: false,
                     lockY: false,
-                    fadeTime: 0
+                    fadeTime: 0,
+                    dynamicPage: true,
+                    follow: true
                 });
 
                 // Movement joystick handling with improved sensitivity
@@ -1145,37 +1152,45 @@
 
                 // Fling button handling with improved touch response
                 const flingButton = document.getElementById('flingButton');
-                const hammer = new Hammer(flingButton);
                 
-                hammer.on('touchstart', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    showLine = true;
-                    flingButton.classList.add('active');
-                });
-
-                hammer.on('touchend', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    showLine = false;
-                    flingButton.classList.remove('active');
-                    if (lineCollisionPoint) {
-                        // Trigger fling immediately on release if we have a valid target
-                        const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
-                        const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                        const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2);
-                        
-                        flingVelocity.x = flingDirection.x * scaledStrength;
-                        flingVelocity.z = flingDirection.z * scaledStrength;
-                        verticalVelocity = flingDirection.y * scaledStrength + 0.4;
-                        
-                        isFlinging = true;
-                        isGrounded = false;
-                        lineCollisionPoint = null;
-                    }
-                });
-
+                // Remove any existing event listeners
+                flingButton.removeEventListener('touchstart', handleFlingStart);
+                flingButton.removeEventListener('touchend', handleFlingEnd);
+                
+                // Add new event listeners
+                flingButton.addEventListener('touchstart', handleFlingStart, { passive: false });
+                flingButton.addEventListener('touchend', handleFlingEnd, { passive: false });
+                
                 console.log('Mobile controls initialized');
+            }
+
+            // Separate handlers for fling button
+            function handleFlingStart(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                showLine = true;
+                this.classList.add('active');
+            }
+
+            function handleFlingEnd(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                showLine = false;
+                this.classList.remove('active');
+                if (lineCollisionPoint) {
+                    // Trigger fling immediately on release if we have a valid target
+                    const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
+                    const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                    const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2);
+                    
+                    flingVelocity.x = flingDirection.x * scaledStrength;
+                    flingVelocity.z = flingDirection.z * scaledStrength;
+                    verticalVelocity = flingDirection.y * scaledStrength + 0.4;
+                    
+                    isFlinging = true;
+                    isGrounded = false;
+                    lineCollisionPoint = null;
+                }
             }
 
             // Mobile-specific touch handlers
