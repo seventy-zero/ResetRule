@@ -223,6 +223,7 @@
         const flingStrength = 2.5;
         const flingDamping = 0.985;
         const clock = new THREE.Clock();
+        const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
 
         // Game state variables
         let gameStarted = false;
@@ -283,8 +284,9 @@
                 this.currentPosition = new THREE.Vector3();
                 this.currentRotation = new THREE.Vector3();
                 this.predictedPosition = new THREE.Vector3();
+                this.velocity = new THREE.Vector3(); // Initialize velocity
                 this.lastUpdateTime = Date.now();
-                this.interpolationDelay = 100; // ms
+                this.interpolationDelay = 50; // Reduced from 100ms to 50ms for smoother movement
             }
 
             update(deltaTime) {
@@ -1892,8 +1894,8 @@
                 }
             }
 
-            // Update position periodically
-            setInterval(sendPositionUpdate, 100);
+            // Update position more frequently for smoother movement
+            setInterval(sendPositionUpdate, 50); // Changed back to 50ms for better responsiveness
 
             // Add periodic player list updates
             setInterval(() => {
