@@ -150,853 +150,969 @@
         import * as THREE from 'three';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-        // Scene setup
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000); // Black background
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000); // Increased far plane for larger level
-        
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        // Scene setup with error handling
+        try {
+            // Scene initialization
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+            console.log('Scene created');
 
-        // Add error handling for WebGL context
-        if (!renderer.capabilities.isWebGL2) {
-            document.body.innerHTML = 'WebGL 2 is not available in your browser - please use a WebGL 2 enabled browser';
-            throw new Error('WebGL 2 not available');
-        }
+            // Camera setup
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000);
+            camera.position.set(0, playerHeight, 0);
+            scene.add(camera);
+            console.log('Camera initialized at height:', playerHeight);
 
-        document.body.appendChild(renderer.domElement);
-
-        // Add error event listener
-        renderer.domElement.addEventListener('webglcontextlost', function(event) {
-            event.preventDefault();
-            console.error('WebGL context lost');
-        });
-
-        renderer.domElement.addEventListener('webglcontextrestored', function() {
-            console.log('WebGL context restored');
-        });
-
-        // Nebula shader
-        const nebulaVertexShader = `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `;
-
-        const nebulaFragmentShader = `
-            uniform float time;
-            varying vec2 vUv;
+            // Renderer setup with error handling
+            const renderer = new THREE.WebGLRenderer({ 
+                antialias: true,
+                powerPreference: "high-performance",
+                alpha: false
+            });
             
-            float rand(vec2 n) { 
-                return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
+            if (!renderer.capabilities.isWebGL2) {
+                throw new Error('WebGL 2 not supported');
             }
-
-            float noise(vec2 p) {
-                vec2 ip = floor(p);
-                vec2 u = fract(p);
-                u = u*u*(3.0-2.0*u);
-                
-                float res = mix(
-                    mix(rand(ip), rand(ip+vec2(1.0,0.0)), u.x),
-                    mix(rand(ip+vec2(0.0,1.0)), rand(ip+vec2(1.0,1.0)), u.x), u.y);
-                return res*res;
-            }
-
-            vec3 getNebulaColor(float value) {
-                // Define multiple color gradients
-                vec3 deepPurple = vec3(0.3, 0.0, 0.4);
-                vec3 brightOrange = vec3(1.0, 0.4, 0.1);
-                vec3 cosmicRed = vec3(0.8, 0.1, 0.2);
-                vec3 spaceBlue = vec3(0.1, 0.3, 0.6);
-                vec3 stellarYellow = vec3(1.0, 0.8, 0.3);
-                
-                // Create dynamic color mixing based on noise value and time
-                float t1 = sin(time * 0.1) * 0.5 + 0.5;
-                float t2 = cos(time * 0.15) * 0.5 + 0.5;
-                
-                // Mix colors based on noise value
-                vec3 color;
-                if (value < 0.3) {
-                    color = mix(deepPurple, spaceBlue, value * 3.33);
-                } else if (value < 0.6) {
-                    color = mix(spaceBlue, cosmicRed, (value - 0.3) * 3.33);
-                } else if (value < 0.8) {
-                    color = mix(cosmicRed, brightOrange, (value - 0.6) * 5.0);
-                } else {
-                    color = mix(brightOrange, stellarYellow, (value - 0.8) * 5.0);
-                }
-                
-                // Add time-based color shifting
-                color = mix(color, color * vec3(t1, 1.0, t2), 0.2);
-                
-                return color;
-            }
-
-            void main() {
-                vec2 uv = vUv * 8.0;
-                
-                // Create multiple layers of noise
-                float n1 = noise(uv + time * 0.1);
-                float n2 = noise(uv * 2.0 + time * 0.05);
-                float n3 = noise(uv * 4.0 - time * 0.15);
-                
-                // Combine noise layers
-                float finalNoise = n1 * 0.5 + n2 * 0.3 + n3 * 0.2;
-                
-                // Add some swirl effect
-                float swirl = noise(uv + vec2(cos(time * 0.1), sin(time * 0.1)));
-                finalNoise = mix(finalNoise, swirl, 0.3);
-                
-                // Get complex color
-                vec3 color = getNebulaColor(finalNoise);
-                
-                // Add brightness variations
-                float brightness = 1.0 + 0.3 * sin(time * 0.2 + finalNoise * 6.28);
-                color *= brightness;
-                
-                // Calculate alpha for better cloud-like effect
-                float alpha = smoothstep(0.1, 0.9, finalNoise) * 0.6;
-                
-                // Add subtle edge glow
-                float edge = 1.0 - distance(vUv, vec2(0.5));
-                alpha *= edge * edge;
-                
-                gl_FragColor = vec4(color, alpha);
-            }
-        `;
-
-        // Create nebulas
-        function createNebula(position, scale, rotation) {
-            const geometry = new THREE.PlaneGeometry(400, 400, 1, 1);
-            const material = new THREE.ShaderMaterial({
-                vertexShader: nebulaVertexShader,
-                fragmentShader: nebulaFragmentShader,
-                uniforms: {
-                    time: { value: 0 }
-                },
-                transparent: true,
-                depthWrite: false,
-                side: THREE.DoubleSide
-            });
-
-            const nebula = new THREE.Mesh(geometry, material);
-            nebula.position.copy(position);
-            nebula.scale.set(scale, scale, scale);
-            nebula.rotation.copy(rotation);
-            scene.add(nebula);
-            return nebula;
-        }
-
-        // Create multiple nebulas at different positions
-        const nebulas = [];
-        for (let i = 0; i < 12; i++) { // Increased number of nebulas
-            const angle = (i / 12) * Math.PI * 2;
-            const radius = 4500; // Tripled radius
-            const position = new THREE.Vector3(
-                Math.cos(angle) * radius,
-                Math.random() * 2400 - 600, // Tripled height range
-                Math.sin(angle) * radius
-            );
-            const scale = 4 + Math.random() * 6; // Doubled scale range for larger space
-            const rotation = new THREE.Euler(
-                Math.random() * Math.PI,
-                Math.random() * Math.PI,
-                Math.random() * Math.PI
-            );
-            nebulas.push(createNebula(position, scale, rotation));
-        }
-
-        // Movement and collision variables
-        const moveSpeed = 0.05;
-        const velocity = new THREE.Vector3();
-        const direction = new THREE.Vector3();
-        let moveForward = false;
-        let moveBackward = false;
-        let moveLeft = false;
-        let moveRight = false;
-        let showLine = false;
-
-        // Collision detection
-        const playerRadius = 2;
-        const playerHeight = 10;
-        const towers = [];
-        const playerCollider = new THREE.Sphere(new THREE.Vector3(0, playerHeight, 0), playerRadius);
-
-        // Line trace and fling mechanics
-        let lineCollisionPoint = null;
-        let flingVelocity = new THREE.Vector3();
-        const flingStrength = 2.0;
-        const raycaster = new THREE.Raycaster();
-        const flingDamping = 0.985;
-        let isFlinging = false;
-
-        // Gravity and ground variables
-        const gravity = 0.018;
-        let verticalVelocity = 0;
-        const groundLevel = playerHeight;
-        let isGrounded = true;
-
-        // Controls setup
-        const controls = new PointerLockControls(camera, document.body);
-
-        // Click to start with username
-        const instructions = document.getElementById('instructions');
-        const usernameInput = document.getElementById('username');
-        const startButton = document.getElementById('startButton');
-        let playerUsername = '';
-        let gameStarted = false;
-
-        // Enable/disable start button based on username input
-        usernameInput.addEventListener('input', function() {
-            startButton.disabled = this.value.trim().length === 0;
-        });
-
-        startButton.addEventListener('click', function() {
-            if (usernameInput.value.trim()) {
-                playerUsername = usernameInput.value.trim();
-                gameStarted = true;
-                controls.lock();
-            }
-        });
-
-        controls.addEventListener('lock', function() {
-            instructions.classList.add('hidden');
-            console.log('Player started:', playerUsername);
-            if (isMobile) {
-                document.querySelector('.mobile-controls').style.opacity = '1';
-                document.getElementById('flingButton').style.opacity = '1';
-            }
-        });
-
-        controls.addEventListener('unlock', function() {
-            if (gameStarted) {
-                instructions.classList.remove('hidden');
-                if (isMobile) {
-                    document.querySelector('.mobile-controls').style.opacity = '0.5';
-                    document.getElementById('flingButton').style.opacity = '0.5';
-                }
-            }
-        });
-
-        // Desktop controls
-        if (!isMobile) {
-            // Movement controls
-            const onKeyDown = function(event) {
-                switch (event.code) {
-                    case 'ArrowUp':
-                    case 'KeyW':
-                        moveForward = true;
-                        break;
-                    case 'ArrowDown':
-                    case 'KeyS':
-                        moveBackward = true;
-                        break;
-                    case 'ArrowLeft':
-                    case 'KeyA':
-                        moveLeft = true;
-                        break;
-                    case 'ArrowRight':
-                    case 'KeyD':
-                        moveRight = true;
-                        break;
-                    case 'KeyE':
-                        showLine = true;
-                        break;
-                }
-            };
-
-            const onKeyUp = function(event) {
-                switch (event.code) {
-                    case 'ArrowUp':
-                    case 'KeyW':
-                        moveForward = false;
-                        break;
-                    case 'ArrowDown':
-                    case 'KeyS':
-                        moveBackward = false;
-                        break;
-                    case 'ArrowLeft':
-                    case 'KeyA':
-                        moveLeft = false;
-                        break;
-                    case 'ArrowRight':
-                    case 'KeyD':
-                        moveRight = false;
-                        break;
-                    case 'KeyE':
-                        showLine = false;
-                        break;
-                }
-            };
-
-            // Mouse controls for line visibility
-            document.addEventListener('mousedown', (event) => {
-                if (event.button === 0) { // Left mouse button
-                    showLine = true;
-                }
-            });
-
-            document.addEventListener('mouseup', (event) => {
-                if (event.button === 0) { // Left mouse button
-                    showLine = false;
-                }
-            });
-
-            document.addEventListener('keydown', onKeyDown);
-            document.addEventListener('keyup', onKeyUp);
-        }
-
-        // Mobile controls
-        if (isMobile) {
-            document.getElementById('mobileInstructions').style.display = 'block';
             
-            // Initialize joysticks
-            const leftJoystick = nipplejs.create({
-                zone: document.getElementById('leftJoystick'),
-                mode: 'static',
-                position: { left: '60px', bottom: '60px' },
-                color: 'white',
-                size: 120,
-                multitouch: true
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setClearColor(0x000000, 1);
+            document.body.appendChild(renderer.domElement);
+            console.log('Renderer initialized');
+
+            // Controls setup
+            const controls = new PointerLockControls(camera, document.body);
+            console.log('Controls initialized');
+
+            // Log scene state
+            console.log('Initial scene state:', {
+                cameraPosition: camera.position.toArray(),
+                sceneChildren: scene.children.length,
+                rendererSize: {
+                    width: renderer.domElement.width,
+                    height: renderer.domElement.height
+                }
             });
 
-            const rightJoystick = nipplejs.create({
-                zone: document.getElementById('rightJoystick'),
-                mode: 'static',
-                position: { right: '60px', bottom: '60px' },
-                color: 'white',
-                size: 120,
-                multitouch: true
-            });
+            // Nebula shader
+            const nebulaVertexShader = `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `;
 
-            // Movement joystick handling
-            leftJoystick.on('move', (evt, data) => {
-                const forward = data.vector.y;
-                const right = data.vector.x;
+            const nebulaFragmentShader = `
+                uniform float time;
+                varying vec2 vUv;
                 
-                moveForward = forward > 0;
-                moveBackward = forward < 0;
-                moveRight = right > 0;
-                moveLeft = right < 0;
-            });
-
-            leftJoystick.on('end', () => {
-                moveForward = false;
-                moveBackward = false;
-                moveRight = false;
-                moveLeft = false;
-            });
-
-            // Look joystick handling
-            let lookSpeed = 0.002;
-            rightJoystick.on('move', (evt, data) => {
-                if (controls.isLocked) {
-                    camera.rotation.y -= data.vector.x * lookSpeed;
-                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
-                        camera.rotation.x - data.vector.y * lookSpeed));
+                float rand(vec2 n) { 
+                    return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
                 }
-            });
 
-            // Fling button handling
-            const flingButton = document.getElementById('flingButton');
-            
-            flingButton.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                showLine = true;
-                flingButton.classList.add('active');
-            });
-
-            flingButton.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                showLine = false;
-                flingButton.classList.remove('active');
-            });
-
-            // Prevent default touch actions
-            document.addEventListener('touchmove', (e) => {
-                if (e.target === document.body) {
-                    e.preventDefault();
+                float noise(vec2 p) {
+                    vec2 ip = floor(p);
+                    vec2 u = fract(p);
+                    u = u*u*(3.0-2.0*u);
+                    
+                    float res = mix(
+                        mix(rand(ip), rand(ip+vec2(1.0,0.0)), u.x),
+                        mix(rand(ip+vec2(0.0,1.0)), rand(ip+vec2(1.0,1.0)), u.x), u.y);
+                    return res*res;
                 }
-            }, { passive: false });
 
-            // Handle mobile pointer lock
-            document.addEventListener('touchstart', function(e) {
-                if (!controls.isLocked && gameStarted && e.target === renderer.domElement) {
+                vec3 getNebulaColor(float value) {
+                    // Define multiple color gradients
+                    vec3 deepPurple = vec3(0.3, 0.0, 0.4);
+                    vec3 brightOrange = vec3(1.0, 0.4, 0.1);
+                    vec3 cosmicRed = vec3(0.8, 0.1, 0.2);
+                    vec3 spaceBlue = vec3(0.1, 0.3, 0.6);
+                    vec3 stellarYellow = vec3(1.0, 0.8, 0.3);
+                    
+                    // Create dynamic color mixing based on noise value and time
+                    float t1 = sin(time * 0.1) * 0.5 + 0.5;
+                    float t2 = cos(time * 0.15) * 0.5 + 0.5;
+                    
+                    // Mix colors based on noise value
+                    vec3 color;
+                    if (value < 0.3) {
+                        color = mix(deepPurple, spaceBlue, value * 3.33);
+                    } else if (value < 0.6) {
+                        color = mix(spaceBlue, cosmicRed, (value - 0.3) * 3.33);
+                    } else if (value < 0.8) {
+                        color = mix(cosmicRed, brightOrange, (value - 0.6) * 5.0);
+                    } else {
+                        color = mix(brightOrange, stellarYellow, (value - 0.8) * 5.0);
+                    }
+                    
+                    // Add time-based color shifting
+                    color = mix(color, color * vec3(t1, 1.0, t2), 0.2);
+                    
+                    return color;
+                }
+
+                void main() {
+                    vec2 uv = vUv * 8.0;
+                    
+                    // Create multiple layers of noise
+                    float n1 = noise(uv + time * 0.1);
+                    float n2 = noise(uv * 2.0 + time * 0.05);
+                    float n3 = noise(uv * 4.0 - time * 0.15);
+                    
+                    // Combine noise layers
+                    float finalNoise = n1 * 0.5 + n2 * 0.3 + n3 * 0.2;
+                    
+                    // Add some swirl effect
+                    float swirl = noise(uv + vec2(cos(time * 0.1), sin(time * 0.1)));
+                    finalNoise = mix(finalNoise, swirl, 0.3);
+                    
+                    // Get complex color
+                    vec3 color = getNebulaColor(finalNoise);
+                    
+                    // Add brightness variations
+                    float brightness = 1.0 + 0.3 * sin(time * 0.2 + finalNoise * 6.28);
+                    color *= brightness;
+                    
+                    // Calculate alpha for better cloud-like effect
+                    float alpha = smoothstep(0.1, 0.9, finalNoise) * 0.6;
+                    
+                    // Add subtle edge glow
+                    float edge = 1.0 - distance(vUv, vec2(0.5));
+                    alpha *= edge * edge;
+                    
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `;
+
+            // Create nebulas
+            function createNebula(position, scale, rotation) {
+                const geometry = new THREE.PlaneGeometry(400, 400, 1, 1);
+                const material = new THREE.ShaderMaterial({
+                    vertexShader: nebulaVertexShader,
+                    fragmentShader: nebulaFragmentShader,
+                    uniforms: {
+                        time: { value: 0 }
+                    },
+                    transparent: true,
+                    depthWrite: false,
+                    side: THREE.DoubleSide
+                });
+
+                const nebula = new THREE.Mesh(geometry, material);
+                nebula.position.copy(position);
+                nebula.scale.set(scale, scale, scale);
+                nebula.rotation.copy(rotation);
+                scene.add(nebula);
+                return nebula;
+            }
+
+            // Create multiple nebulas at different positions
+            const nebulas = [];
+            for (let i = 0; i < 12; i++) { // Increased number of nebulas
+                const angle = (i / 12) * Math.PI * 2;
+                const radius = 4500; // Tripled radius
+                const position = new THREE.Vector3(
+                    Math.cos(angle) * radius,
+                    Math.random() * 2400 - 600, // Tripled height range
+                    Math.sin(angle) * radius
+                );
+                const scale = 4 + Math.random() * 6; // Doubled scale range for larger space
+                const rotation = new THREE.Euler(
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI
+                );
+                nebulas.push(createNebula(position, scale, rotation));
+            }
+
+            // Movement and collision variables
+            const moveSpeed = 0.05;
+            const velocity = new THREE.Vector3();
+            const direction = new THREE.Vector3();
+            let moveForward = false;
+            let moveBackward = false;
+            let moveLeft = false;
+            let moveRight = false;
+            let showLine = false;
+
+            // Collision detection
+            const playerRadius = 2;
+            const playerHeight = 10;
+            const towers = [];
+            const playerCollider = new THREE.Sphere(new THREE.Vector3(0, playerHeight, 0), playerRadius);
+
+            // Line trace and fling mechanics
+            let lineCollisionPoint = null;
+            let flingVelocity = new THREE.Vector3();
+            const flingStrength = 2.0;
+            const raycaster = new THREE.Raycaster();
+            const flingDamping = 0.985;
+            let isFlinging = false;
+
+            // Gravity and ground variables
+            const gravity = 0.018;
+            let verticalVelocity = 0;
+            const groundLevel = playerHeight;
+            let isGrounded = true;
+
+            // Click to start with username
+            const instructions = document.getElementById('instructions');
+            const usernameInput = document.getElementById('username');
+            const startButton = document.getElementById('startButton');
+            let playerUsername = '';
+            let gameStarted = false;
+
+            // Enable/disable start button based on username input
+            usernameInput.addEventListener('input', function() {
+                startButton.disabled = this.value.trim().length === 0;
+            });
+
+            startButton.addEventListener('click', function() {
+                if (usernameInput.value.trim()) {
+                    playerUsername = usernameInput.value.trim();
+                    gameStarted = true;
                     controls.lock();
                 }
             });
-        }
 
-        // Create the floor
-        const size = 6000;
-        const divisions = 300; // Increased from 200 to 300 for much denser main grid
-        const gridHelper = new THREE.GridHelper(size, divisions);
-        gridHelper.material.opacity = 0.75; // Slightly increased opacity
-        gridHelper.material.transparent = true;
-        scene.add(gridHelper);
-
-        // Add a second, larger grid with fewer divisions for distant floor effect
-        const farSize = 12000;
-        const farDivisions = 150; // Increased from 100 to 150 for denser far grid
-        const farGridHelper = new THREE.GridHelper(farSize, farDivisions);
-        farGridHelper.material.opacity = 0.3; // Slightly increased opacity
-        farGridHelper.material.transparent = true;
-        scene.add(farGridHelper);
-
-        // Add a medium grid between the main and far grid for smoother transition
-        const midSize = 9000;
-        const midDivisions = 225; // Increased from 150 to 225 for denser middle grid
-        const midGridHelper = new THREE.GridHelper(midSize, midDivisions);
-        midGridHelper.material.opacity = 0.5; // Slightly increased opacity
-        midGridHelper.material.transparent = true;
-        scene.add(midGridHelper);
-
-        // Create star field
-        function createStars() {
-            const starsGeometry = new THREE.BufferGeometry();
-            const starsMaterial = new THREE.PointsMaterial({
-                color: 0xff6600,
-                size: 2,
-                sizeAttenuation: false
+            controls.addEventListener('lock', function() {
+                instructions.classList.add('hidden');
+                console.log('Player started:', playerUsername);
+                if (isMobile) {
+                    document.querySelector('.mobile-controls').style.opacity = '1';
+                    document.getElementById('flingButton').style.opacity = '1';
+                }
             });
 
-            const starsVertices = [];
-            for (let i = 0; i < 30000; i++) { // Tripled number of stars
-                const radius = 5400; // Tripled radius
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos(Math.random() * 2 - 1);
-                
-                const x = radius * Math.sin(phi) * Math.cos(theta);
-                const y = radius * Math.sin(phi) * Math.sin(theta);
-                const z = radius * Math.cos(phi);
-                
-                starsVertices.push(x, y, z);
-            }
-
-            starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
-            const starField = new THREE.Points(starsGeometry, starsMaterial);
-            scene.add(starField);
-
-            // Add some larger stars with different colors
-            const largeStarsGeometry = new THREE.BufferGeometry();
-            const largeStarsMaterial = new THREE.PointsMaterial({
-                color: 0xff8833,
-                size: 4,
-                sizeAttenuation: false
-            });
-
-            const largeStarsVertices = [];
-            for (let i = 0; i < 1000; i++) {
-                const radius = 1800;
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos(Math.random() * 2 - 1);
-                
-                const x = radius * Math.sin(phi) * Math.cos(theta);
-                const y = radius * Math.sin(phi) * Math.sin(theta);
-                const z = radius * Math.cos(phi);
-                
-                largeStarsVertices.push(x, y, z);
-            }
-
-            largeStarsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(largeStarsVertices, 3));
-            const largeStarField = new THREE.Points(largeStarsGeometry, largeStarsMaterial);
-            scene.add(largeStarField);
-
-            return [starField, largeStarField];
-        }
-
-        const [starField, largeStarField] = createStars();
-
-        // Tower generation
-        function createTower(type, x, z) {
-            let geometry;
-            let height = Math.random() * 300 + 150;
-            let isFloating = Math.random() < 0.15;
-            let baseHeight = isFloating ? Math.random() * 30 + 15 : 0;
-            
-            // Create materials for the tower
-            const materials = [
-                new THREE.MeshBasicMaterial({ color: 0x000000 }),
-                new THREE.LineBasicMaterial({ color: 0xffffff })
-            ];
-
-            // Create collision box for the tower
-            let collisionGeometry;
-
-            switch(type) {
-                case 0: // Cylindrical tower
-                    geometry = new THREE.CylinderGeometry(18, 18, height, 8);
-                    collisionGeometry = new THREE.CylinderGeometry(18, 18, height, 8);
-                    break;
-                case 1: // Tapered tower
-                    geometry = new THREE.CylinderGeometry(12, 24, height, 6);
-                    collisionGeometry = new THREE.CylinderGeometry(24, 24, height, 6);
-                    break;
-                case 2: // Square tower
-                    geometry = new THREE.BoxGeometry(36, height, 36);
-                    collisionGeometry = geometry;
-                    break;
-                case 3: // Hexagonal tower
-                    geometry = new THREE.CylinderGeometry(20, 20, height, 6);
-                    collisionGeometry = geometry;
-                    break;
-                case 4: // Twisted tower
-                    geometry = new THREE.CylinderGeometry(15, 15, height, 8, 10, true);
-                    // Add twist to vertices
-                    const twistAmount = Math.PI * 2;
-                    const positions = geometry.attributes.position.array;
-                    for (let i = 0; i < positions.length; i += 3) {
-                        const y = positions[i + 1];
-                        const progress = (y + height/2) / height;
-                        const theta = progress * twistAmount;
-                        const x = positions[i];
-                        const z = positions[i + 2];
-                        positions[i] = x * Math.cos(theta) - z * Math.sin(theta);
-                        positions[i + 2] = x * Math.sin(theta) + z * Math.cos(theta);
+            controls.addEventListener('unlock', function() {
+                if (gameStarted) {
+                    instructions.classList.remove('hidden');
+                    if (isMobile) {
+                        document.querySelector('.mobile-controls').style.opacity = '0.5';
+                        document.getElementById('flingButton').style.opacity = '0.5';
                     }
-                    collisionGeometry = new THREE.CylinderGeometry(15, 15, height, 8);
-                    break;
-                case 5: // Pyramid tower
-                    geometry = new THREE.ConeGeometry(24, height, 4);
-                    collisionGeometry = geometry;
-                    break;
-                case 6: // Octagonal tower
-                    geometry = new THREE.CylinderGeometry(19, 19, height, 8);
-                    collisionGeometry = geometry;
-                    break;
-                case 7: // Double width tower
-                    geometry = new THREE.BoxGeometry(42, height, 42);
-                    collisionGeometry = geometry;
-                    break;
-                case 8: // Inverse pyramid
-                    geometry = new THREE.CylinderGeometry(12, 28, height, 4);
-                    collisionGeometry = new THREE.CylinderGeometry(28, 28, height, 4);
-                    break;
-                case 9: // Star tower
-                    geometry = new THREE.CylinderGeometry(24, 24, height, 5);
-                    collisionGeometry = geometry;
-                    break;
-                case 10: // Thin spire
-                    geometry = new THREE.CylinderGeometry(8, 16, height, 6);
-                    collisionGeometry = new THREE.CylinderGeometry(16, 16, height, 6);
-                    break;
-                case 11: // Complex tower (stacked shapes)
-                    const baseHeight = height * 0.6;
-                    const topHeight = height * 0.4;
-                    geometry = new THREE.BoxGeometry(38, baseHeight, 38);
-                    const topGeometry = new THREE.ConeGeometry(28, topHeight, 6);
-                    collisionGeometry = new THREE.BoxGeometry(38, height, 38);
-                    
-                    // Create base with edges
-                    const baseMesh = new THREE.Mesh(geometry, materials[0]);
-                    const baseEdges = new THREE.LineSegments(
-                        new THREE.EdgesGeometry(geometry),
-                        materials[1]
-                    );
-                    
-                    // Create top with edges
-                    const topMesh = new THREE.Mesh(topGeometry, materials[0]);
-                    const topEdges = new THREE.LineSegments(
-                        new THREE.EdgesGeometry(topGeometry),
-                        materials[1]
-                    );
-                    
-                    topMesh.position.y = (baseHeight + topHeight) / 2;
-                    topEdges.position.y = (baseHeight + topHeight) / 2;
-                    
-                    const group = new THREE.Group();
-                    group.add(baseMesh);
-                    group.add(baseEdges);
-                    group.add(topMesh);
-                    group.add(topEdges);
-                    group.position.set(x, height/2 + baseHeight, z);
+                }
+            });
 
-                    // Add collision data
-                    const collisionMesh = new THREE.Mesh(collisionGeometry);
-                    collisionMesh.position.copy(group.position);
-                    towers.push({
-                        mesh: collisionMesh,
-                        boundingBox: new THREE.Box3().setFromObject(collisionMesh)
-                    });
+            // Desktop controls
+            if (!isMobile) {
+                // Movement controls
+                const onKeyDown = function(event) {
+                    switch (event.code) {
+                        case 'ArrowUp':
+                        case 'KeyW':
+                            moveForward = true;
+                            break;
+                        case 'ArrowDown':
+                        case 'KeyS':
+                            moveBackward = true;
+                            break;
+                        case 'ArrowLeft':
+                        case 'KeyA':
+                            moveLeft = true;
+                            break;
+                        case 'ArrowRight':
+                        case 'KeyD':
+                            moveRight = true;
+                            break;
+                        case 'KeyE':
+                            showLine = true;
+                            break;
+                    }
+                };
 
-                    scene.add(group);
-                    return;
+                const onKeyUp = function(event) {
+                    switch (event.code) {
+                        case 'ArrowUp':
+                        case 'KeyW':
+                            moveForward = false;
+                            break;
+                        case 'ArrowDown':
+                        case 'KeyS':
+                            moveBackward = false;
+                            break;
+                        case 'ArrowLeft':
+                        case 'KeyA':
+                            moveLeft = false;
+                            break;
+                        case 'ArrowRight':
+                        case 'KeyD':
+                            moveRight = false;
+                            break;
+                        case 'KeyE':
+                            showLine = false;
+                            break;
+                    }
+                };
+
+                // Mouse controls for line visibility
+                document.addEventListener('mousedown', (event) => {
+                    if (event.button === 0) { // Left mouse button
+                        showLine = true;
+                    }
+                });
+
+                document.addEventListener('mouseup', (event) => {
+                    if (event.button === 0) { // Left mouse button
+                        showLine = false;
+                    }
+                });
+
+                document.addEventListener('keydown', onKeyDown);
+                document.addEventListener('keyup', onKeyUp);
             }
 
-            // Create the main mesh with solid faces
-            const mesh = new THREE.Mesh(geometry, materials[0]);
-            
-            // Create the edges
-            const edges = new THREE.LineSegments(
-                new THREE.EdgesGeometry(geometry),
-                materials[1]
-            );
-            
-            // Group the mesh and edges together
-            const group = new THREE.Group();
-            group.add(mesh);
-            group.add(edges);
-            group.position.set(x, height/2 + baseHeight, z);
-            scene.add(group);
+            // Mobile controls
+            if (isMobile) {
+                document.getElementById('mobileInstructions').style.display = 'block';
+                
+                // Initialize joysticks
+                const leftJoystick = nipplejs.create({
+                    zone: document.getElementById('leftJoystick'),
+                    mode: 'static',
+                    position: { left: '60px', bottom: '60px' },
+                    color: 'white',
+                    size: 120,
+                    multitouch: true
+                });
 
-            // Add collision data
-            const collisionMesh = new THREE.Mesh(collisionGeometry);
-            collisionMesh.position.copy(group.position);
-            towers.push({
-                mesh: collisionMesh,
-                boundingBox: new THREE.Box3().setFromObject(collisionMesh)
-            });
-        }
+                const rightJoystick = nipplejs.create({
+                    zone: document.getElementById('rightJoystick'),
+                    mode: 'static',
+                    position: { right: '60px', bottom: '60px' },
+                    color: 'white',
+                    size: 120,
+                    multitouch: true
+                });
 
-        // Place towers in a grid pattern with some randomization
-        const numTowers = 3000; // Back to original number
-        const maxRadius = 4800;
-        
-        // Create a grid of towers with some random offset
-        const gridSize = Math.sqrt(numTowers);
-        const spacing = (maxRadius * 2) / gridSize;
-        
-        // Store tower positions for bridge generation
-        const towerPositions = [];
+                // Movement joystick handling
+                leftJoystick.on('move', (evt, data) => {
+                    const forward = data.vector.y;
+                    const right = data.vector.x;
+                    
+                    moveForward = forward > 0;
+                    moveBackward = forward < 0;
+                    moveRight = right > 0;
+                    moveLeft = right < 0;
+                });
 
-        // Function to create a bridge between two towers
-        function createBridge(startPos, endPos) {
-            // Calculate bridge dimensions
-            const bridgeWidth = 8;
-            const distance = startPos.distanceTo(endPos);
-            
-            // Create bridge geometry
-            const bridgeGeometry = new THREE.BoxGeometry(distance, bridgeWidth, bridgeWidth);
-            
-            // Create materials for the bridge (matching tower style)
-            const bridgeMaterials = [
-                new THREE.MeshBasicMaterial({ color: 0x000000 }),
-                new THREE.LineBasicMaterial({ color: 0xffffff })
-            ];
-            
-            // Create bridge mesh and edges
-            const bridgeMesh = new THREE.Mesh(bridgeGeometry, bridgeMaterials[0]);
-            const bridgeEdges = new THREE.LineSegments(
-                new THREE.EdgesGeometry(bridgeGeometry),
-                bridgeMaterials[1]
-            );
-            
-            // Create bridge group
-            const bridgeGroup = new THREE.Group();
-            bridgeGroup.add(bridgeMesh);
-            bridgeGroup.add(bridgeEdges);
-            
-            // Position bridge
-            const midPoint = startPos.clone().add(endPos).multiplyScalar(0.5);
-            bridgeGroup.position.copy(midPoint);
-            
-            // Rotate bridge to point from start to end
-            const direction = endPos.clone().sub(startPos);
-            const angle = Math.atan2(direction.z, direction.x);
-            bridgeGroup.rotation.y = angle;
-            
-            scene.add(bridgeGroup);
-            
-            // Create a narrower collision box for the bridge
-            const collisionGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.6);
-            const collisionMesh = new THREE.Mesh(collisionGeometry);
-            collisionMesh.position.copy(bridgeGroup.position);
-            collisionMesh.rotation.copy(bridgeGroup.rotation);
-            towers.push({
-                mesh: collisionMesh,
-                boundingBox: new THREE.Box3().setFromObject(collisionMesh)
-            });
-        }
-        
-        // Place towers
-        for (let i = 0; i < gridSize; i++) {
-            for (let j = 0; j < gridSize; j++) {
-                const x = -maxRadius + i * spacing + (Math.random() * spacing * 0.5);
-                const z = -maxRadius + j * spacing + (Math.random() * spacing * 0.5);
+                leftJoystick.on('end', () => {
+                    moveForward = false;
+                    moveBackward = false;
+                    moveRight = false;
+                    moveLeft = false;
+                });
+
+                // Look joystick handling
+                let lookSpeed = 0.002;
+                rightJoystick.on('move', (evt, data) => {
+                    if (controls.isLocked) {
+                        camera.rotation.y -= data.vector.x * lookSpeed;
+                        camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+                            camera.rotation.x - data.vector.y * lookSpeed));
+                    }
+                });
+
+                // Fling button handling
+                const flingButton = document.getElementById('flingButton');
                 
-                const offsetX = (Math.random() - 0.5) * spacing * 0.5;
-                const offsetZ = (Math.random() - 0.5) * spacing * 0.5;
-                
-                const finalX = x + offsetX;
-                const finalZ = z + offsetZ;
-                
-                const towerType = Math.floor(Math.random() * 12);
-                createTower(towerType, finalX, finalZ);
-                
-                // Store tower position and height for bridge generation
-                const height = Math.random() * 300 + 150;
-                towerPositions.push({
-                    position: new THREE.Vector3(finalX, height/2, finalZ),
-                    height: height
+                flingButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    showLine = true;
+                    flingButton.classList.add('active');
+                });
+
+                flingButton.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    showLine = false;
+                    flingButton.classList.remove('active');
+                });
+
+                // Prevent default touch actions
+                document.addEventListener('touchmove', (e) => {
+                    if (e.target === document.body) {
+                        e.preventDefault();
+                    }
+                }, { passive: false });
+
+                // Handle mobile pointer lock
+                document.addEventListener('touchstart', function(e) {
+                    if (!controls.isLocked && gameStarted && e.target === renderer.domElement) {
+                        controls.lock();
+                    }
                 });
             }
-        }
-        
-        // Generate bridges between nearby towers
-        const maxBridgeDistance = spacing * 2; // Maximum distance between bridged towers
-        const bridgeChance = 0.1; // 10% chance for eligible towers to have bridges
-        
-        for (let i = 0; i < towerPositions.length; i++) {
-            for (let j = i + 1; j < towerPositions.length; j++) {
-                const tower1 = towerPositions[i];
-                const tower2 = towerPositions[j];
-                
-                const distance = tower1.position.distanceTo(tower2.position);
-                
-                if (distance <= maxBridgeDistance && Math.random() < bridgeChance) {
-                    // Create bridge at random height between the two towers
-                    const minHeight = Math.min(tower1.height, tower2.height);
-                    const bridgeHeight = minHeight * (0.3 + Math.random() * 0.5); // Bridge between 30-80% of tower height
+
+            // Create the floor
+            const size = 6000;
+            const divisions = 300; // Increased from 200 to 300 for much denser main grid
+            const gridHelper = new THREE.GridHelper(size, divisions);
+            gridHelper.material.opacity = 0.75; // Slightly increased opacity
+            gridHelper.material.transparent = true;
+            scene.add(gridHelper);
+
+            // Add a second, larger grid with fewer divisions for distant floor effect
+            const farSize = 12000;
+            const farDivisions = 150; // Increased from 100 to 150 for denser far grid
+            const farGridHelper = new THREE.GridHelper(farSize, farDivisions);
+            farGridHelper.material.opacity = 0.3; // Slightly increased opacity
+            farGridHelper.material.transparent = true;
+            scene.add(farGridHelper);
+
+            // Add a medium grid between the main and far grid for smoother transition
+            const midSize = 9000;
+            const midDivisions = 225; // Increased from 150 to 225 for denser middle grid
+            const midGridHelper = new THREE.GridHelper(midSize, midDivisions);
+            midGridHelper.material.opacity = 0.5; // Slightly increased opacity
+            midGridHelper.material.transparent = true;
+            scene.add(midGridHelper);
+
+            // Create star field
+            function createStars() {
+                const starsGeometry = new THREE.BufferGeometry();
+                const starsMaterial = new THREE.PointsMaterial({
+                    color: 0xff6600,
+                    size: 2,
+                    sizeAttenuation: false
+                });
+
+                const starsVertices = [];
+                for (let i = 0; i < 30000; i++) { // Tripled number of stars
+                    const radius = 5400; // Tripled radius
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.acos(Math.random() * 2 - 1);
                     
-                    const startPos = new THREE.Vector3(tower1.position.x, bridgeHeight, tower1.position.z);
-                    const endPos = new THREE.Vector3(tower2.position.x, bridgeHeight, tower2.position.z);
+                    const x = radius * Math.sin(phi) * Math.cos(theta);
+                    const y = radius * Math.sin(phi) * Math.sin(theta);
+                    const z = radius * Math.cos(phi);
                     
-                    createBridge(startPos, endPos);
+                    starsVertices.push(x, y, z);
+                }
+
+                starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+                const starField = new THREE.Points(starsGeometry, starsMaterial);
+                scene.add(starField);
+
+                // Add some larger stars with different colors
+                const largeStarsGeometry = new THREE.BufferGeometry();
+                const largeStarsMaterial = new THREE.PointsMaterial({
+                    color: 0xff8833,
+                    size: 4,
+                    sizeAttenuation: false
+                });
+
+                const largeStarsVertices = [];
+                for (let i = 0; i < 1000; i++) {
+                    const radius = 1800;
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.acos(Math.random() * 2 - 1);
+                    
+                    const x = radius * Math.sin(phi) * Math.cos(theta);
+                    const y = radius * Math.sin(phi) * Math.sin(theta);
+                    const z = radius * Math.cos(phi);
+                    
+                    largeStarsVertices.push(x, y, z);
+                }
+
+                largeStarsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(largeStarsVertices, 3));
+                const largeStarField = new THREE.Points(largeStarsGeometry, largeStarsMaterial);
+                scene.add(largeStarField);
+
+                return [starField, largeStarField];
+            }
+
+            const [starField, largeStarField] = createStars();
+
+            // Tower generation
+            function createTower(type, x, z) {
+                let geometry;
+                let height = Math.random() * 300 + 150;
+                let isFloating = Math.random() < 0.15;
+                let baseHeight = isFloating ? Math.random() * 30 + 15 : 0;
+                
+                // Create materials for the tower
+                const materials = [
+                    new THREE.MeshBasicMaterial({ color: 0x000000 }),
+                    new THREE.LineBasicMaterial({ color: 0xffffff })
+                ];
+
+                // Create collision box for the tower
+                let collisionGeometry;
+
+                switch(type) {
+                    case 0: // Cylindrical tower
+                        geometry = new THREE.CylinderGeometry(18, 18, height, 8);
+                        collisionGeometry = new THREE.CylinderGeometry(18, 18, height, 8);
+                        break;
+                    case 1: // Tapered tower
+                        geometry = new THREE.CylinderGeometry(12, 24, height, 6);
+                        collisionGeometry = new THREE.CylinderGeometry(24, 24, height, 6);
+                        break;
+                    case 2: // Square tower
+                        geometry = new THREE.BoxGeometry(36, height, 36);
+                        collisionGeometry = geometry;
+                        break;
+                    case 3: // Hexagonal tower
+                        geometry = new THREE.CylinderGeometry(20, 20, height, 6);
+                        collisionGeometry = geometry;
+                        break;
+                    case 4: // Twisted tower
+                        geometry = new THREE.CylinderGeometry(15, 15, height, 8, 10, true);
+                        // Add twist to vertices
+                        const twistAmount = Math.PI * 2;
+                        const positions = geometry.attributes.position.array;
+                        for (let i = 0; i < positions.length; i += 3) {
+                            const y = positions[i + 1];
+                            const progress = (y + height/2) / height;
+                            const theta = progress * twistAmount;
+                            const x = positions[i];
+                            const z = positions[i + 2];
+                            positions[i] = x * Math.cos(theta) - z * Math.sin(theta);
+                            positions[i + 2] = x * Math.sin(theta) + z * Math.cos(theta);
+                        }
+                        collisionGeometry = new THREE.CylinderGeometry(15, 15, height, 8);
+                        break;
+                    case 5: // Pyramid tower
+                        geometry = new THREE.ConeGeometry(24, height, 4);
+                        collisionGeometry = geometry;
+                        break;
+                    case 6: // Octagonal tower
+                        geometry = new THREE.CylinderGeometry(19, 19, height, 8);
+                        collisionGeometry = geometry;
+                        break;
+                    case 7: // Double width tower
+                        geometry = new THREE.BoxGeometry(42, height, 42);
+                        collisionGeometry = geometry;
+                        break;
+                    case 8: // Inverse pyramid
+                        geometry = new THREE.CylinderGeometry(12, 28, height, 4);
+                        collisionGeometry = new THREE.CylinderGeometry(28, 28, height, 4);
+                        break;
+                    case 9: // Star tower
+                        geometry = new THREE.CylinderGeometry(24, 24, height, 5);
+                        collisionGeometry = geometry;
+                        break;
+                    case 10: // Thin spire
+                        geometry = new THREE.CylinderGeometry(8, 16, height, 6);
+                        collisionGeometry = new THREE.CylinderGeometry(16, 16, height, 6);
+                        break;
+                    case 11: // Complex tower (stacked shapes)
+                        const baseHeight = height * 0.6;
+                        const topHeight = height * 0.4;
+                        geometry = new THREE.BoxGeometry(38, baseHeight, 38);
+                        const topGeometry = new THREE.ConeGeometry(28, topHeight, 6);
+                        collisionGeometry = new THREE.BoxGeometry(38, height, 38);
+                        
+                        // Create base with edges
+                        const baseMesh = new THREE.Mesh(geometry, materials[0]);
+                        const baseEdges = new THREE.LineSegments(
+                            new THREE.EdgesGeometry(geometry),
+                            materials[1]
+                        );
+                        
+                        // Create top with edges
+                        const topMesh = new THREE.Mesh(topGeometry, materials[0]);
+                        const topEdges = new THREE.LineSegments(
+                            new THREE.EdgesGeometry(topGeometry),
+                            materials[1]
+                        );
+                        
+                        topMesh.position.y = (baseHeight + topHeight) / 2;
+                        topEdges.position.y = (baseHeight + topHeight) / 2;
+                        
+                        const group = new THREE.Group();
+                        group.add(baseMesh);
+                        group.add(baseEdges);
+                        group.add(topMesh);
+                        group.add(topEdges);
+                        group.position.set(x, height/2 + baseHeight, z);
+
+                        // Add collision data
+                        const collisionMesh = new THREE.Mesh(collisionGeometry);
+                        collisionMesh.position.copy(group.position);
+                        towers.push({
+                            mesh: collisionMesh,
+                            boundingBox: new THREE.Box3().setFromObject(collisionMesh)
+                        });
+
+                        scene.add(group);
+                        return;
+                }
+
+                // Create the main mesh with solid faces
+                const mesh = new THREE.Mesh(geometry, materials[0]);
+                
+                // Create the edges
+                const edges = new THREE.LineSegments(
+                    new THREE.EdgesGeometry(geometry),
+                    materials[1]
+                );
+                
+                // Group the mesh and edges together
+                const group = new THREE.Group();
+                group.add(mesh);
+                group.add(edges);
+                group.position.set(x, height/2 + baseHeight, z);
+                scene.add(group);
+
+                // Add collision data
+                const collisionMesh = new THREE.Mesh(collisionGeometry);
+                collisionMesh.position.copy(group.position);
+                towers.push({
+                    mesh: collisionMesh,
+                    boundingBox: new THREE.Box3().setFromObject(collisionMesh)
+                });
+            }
+
+            // Place towers in a grid pattern with some randomization
+            const numTowers = 3000; // Back to original number
+            const maxRadius = 4800;
+            
+            // Create a grid of towers with some random offset
+            const gridSize = Math.sqrt(numTowers);
+            const spacing = (maxRadius * 2) / gridSize;
+            
+            // Store tower positions for bridge generation
+            const towerPositions = [];
+
+            // Function to create a bridge between two towers
+            function createBridge(startPos, endPos) {
+                // Calculate bridge dimensions
+                const bridgeWidth = 8;
+                const distance = startPos.distanceTo(endPos);
+                
+                // Create bridge geometry
+                const bridgeGeometry = new THREE.BoxGeometry(distance, bridgeWidth, bridgeWidth);
+                
+                // Create materials for the bridge (matching tower style)
+                const bridgeMaterials = [
+                    new THREE.MeshBasicMaterial({ color: 0x000000 }),
+                    new THREE.LineBasicMaterial({ color: 0xffffff })
+                ];
+                
+                // Create bridge mesh and edges
+                const bridgeMesh = new THREE.Mesh(bridgeGeometry, bridgeMaterials[0]);
+                const bridgeEdges = new THREE.LineSegments(
+                    new THREE.EdgesGeometry(bridgeGeometry),
+                    bridgeMaterials[1]
+                );
+                
+                // Create bridge group
+                const bridgeGroup = new THREE.Group();
+                bridgeGroup.add(bridgeMesh);
+                bridgeGroup.add(bridgeEdges);
+                
+                // Position bridge
+                const midPoint = startPos.clone().add(endPos).multiplyScalar(0.5);
+                bridgeGroup.position.copy(midPoint);
+                
+                // Rotate bridge to point from start to end
+                const direction = endPos.clone().sub(startPos);
+                const angle = Math.atan2(direction.z, direction.x);
+                bridgeGroup.rotation.y = angle;
+                
+                scene.add(bridgeGroup);
+                
+                // Create a narrower collision box for the bridge
+                const collisionGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.6);
+                const collisionMesh = new THREE.Mesh(collisionGeometry);
+                collisionMesh.position.copy(bridgeGroup.position);
+                collisionMesh.rotation.copy(bridgeGroup.rotation);
+                towers.push({
+                    mesh: collisionMesh,
+                    boundingBox: new THREE.Box3().setFromObject(collisionMesh)
+                });
+            }
+            
+            // Place towers
+            for (let i = 0; i < gridSize; i++) {
+                for (let j = 0; j < gridSize; j++) {
+                    const x = -maxRadius + i * spacing + (Math.random() * spacing * 0.5);
+                    const z = -maxRadius + j * spacing + (Math.random() * spacing * 0.5);
+                    
+                    const offsetX = (Math.random() - 0.5) * spacing * 0.5;
+                    const offsetZ = (Math.random() - 0.5) * spacing * 0.5;
+                    
+                    const finalX = x + offsetX;
+                    const finalZ = z + offsetZ;
+                    
+                    const towerType = Math.floor(Math.random() * 12);
+                    createTower(towerType, finalX, finalZ);
+                    
+                    // Store tower position and height for bridge generation
+                    const height = Math.random() * 300 + 150;
+                    towerPositions.push({
+                        position: new THREE.Vector3(finalX, height/2, finalZ),
+                        height: height
+                    });
                 }
             }
-        }
-
-        // Add some ambient light
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-        scene.add(ambientLight);
-
-        // Add directional light
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-        directionalLight.position.set(1, 1, 1);
-        scene.add(directionalLight);
-
-        // Create the line trace
-        const curve = new THREE.CatmullRomCurve3([
-            new THREE.Vector3(0, 0, 0),
-            new THREE.Vector3(0, 0, 1)
-        ]);
-        const tubeGeometry = new THREE.TubeGeometry(curve, 1, 0.15, 8, false);
-        const tubeMaterial = new THREE.MeshBasicMaterial({
-            color: 0x00ff00,
-            transparent: true,
-            opacity: 0.8
-        });
-        const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
-        scene.add(tubeMesh);
-
-        // Position camera
-        camera.position.set(0, playerHeight, 0); // Set initial height to player height
-
-        // Handle window resize
-        window.addEventListener('resize', onWindowResize, false);
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        // Mobile detection
-        const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-        
-        // Animation loop with collision detection, star rotation, and nebula animation
-        function animate() {
-            requestAnimationFrame(animate);
-
-            if (controls.isLocked) {
-                // Store current position
-                const oldPosition = camera.position.clone();
-
-                // Calculate movement
-                direction.z = Number(moveForward) - Number(moveBackward);
-                direction.x = Number(moveRight) - Number(moveLeft);
-                direction.normalize();
-
-                if (moveForward || moveBackward) velocity.z -= direction.z * moveSpeed;
-                if (moveLeft || moveRight) velocity.x -= direction.x * moveSpeed;
-
-                // Apply movement
-                controls.moveRight(-velocity.x);
-                controls.moveForward(-velocity.z);
-
-                // Update line trace position
-                const cameraDirection = new THREE.Vector3();
-                camera.getWorldDirection(cameraDirection);
-                const rightVector = new THREE.Vector3();
-                rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
-                
-                // Update line visibility
-                tubeMesh.visible = showLine;
-                
-                if (showLine) {
-                    // Calculate start and end points
-                    const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
-                    startPoint.y = camera.position.y;
+            
+            // Generate bridges between nearby towers
+            const maxBridgeDistance = spacing * 2; // Maximum distance between bridged towers
+            const bridgeChance = 0.1; // 10% chance for eligible towers to have bridges
+            
+            for (let i = 0; i < towerPositions.length; i++) {
+                for (let j = i + 1; j < towerPositions.length; j++) {
+                    const tower1 = towerPositions[i];
+                    const tower2 = towerPositions[j];
                     
-                    const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
+                    const distance = tower1.position.distanceTo(tower2.position);
                     
-                    // Update curve points
-                    curve.points[0].copy(startPoint);
-                    curve.points[1].copy(endPoint);
-                    
-                    // Update the tube geometry
-                    const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
-                    tubeMesh.geometry.dispose();
-                    tubeMesh.geometry = newTubeGeometry;
-
-                    // Check for line collision with towers
-                    raycaster.set(startPoint, cameraDirection);
-                    const intersects = [];
-                    towers.forEach(tower => {
-                        const towerIntersects = raycaster.intersectObject(tower.mesh);
-                        if (towerIntersects.length > 0 && towerIntersects[0].distance <= 330) {
-                            intersects.push(towerIntersects[0]);
-                        }
-                    });
-
-                    // Sort intersections by distance and get the closest one
-                    if (intersects.length > 0) {
-                        intersects.sort((a, b) => a.distance - b.distance);
-                        lineCollisionPoint = intersects[0].point;
+                    if (distance <= maxBridgeDistance && Math.random() < bridgeChance) {
+                        // Create bridge at random height between the two towers
+                        const minHeight = Math.min(tower1.height, tower2.height);
+                        const bridgeHeight = minHeight * (0.3 + Math.random() * 0.5); // Bridge between 30-80% of tower height
                         
-                        // Update line end point to collision point
-                        curve.points[1].copy(lineCollisionPoint);
-                        const collidedTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
-                        tubeMesh.geometry.dispose();
-                        tubeMesh.geometry = collidedTubeGeometry;
+                        const startPos = new THREE.Vector3(tower1.position.x, bridgeHeight, tower1.position.z);
+                        const endPos = new THREE.Vector3(tower2.position.x, bridgeHeight, tower2.position.z);
                         
-                        // Change line color to indicate valid target
-                        tubeMaterial.color.setHex(0x00ff00);
-                    } else {
-                        lineCollisionPoint = null;
-                        // Change line color to indicate no target
-                        tubeMaterial.color.setHex(0xff0000);
+                        createBridge(startPos, endPos);
                     }
-                } else if (lineCollisionPoint) {
-                    // Initiate fling when line is released and we had a collision point
-                    const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
-                    
-                    // Increase fling strength based on distance to target, but more gently
-                    const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                    const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2); // Increased scaling
-                    
-                    // Set velocity components
-                    flingVelocity.x = flingDirection.x * scaledStrength;
-                    flingVelocity.z = flingDirection.z * scaledStrength;
-                    verticalVelocity = flingDirection.y * scaledStrength + 0.4; // Increased upward boost
-                    
-                    isFlinging = true;
-                    isGrounded = false;
-                    lineCollisionPoint = null;
+                }
+            }
+
+            // Add some ambient light
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            // Add directional light
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            // Create the line trace
+            const curve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(0, 0, 1)
+            ]);
+            const tubeGeometry = new THREE.TubeGeometry(curve, 1, 0.15, 8, false);
+            const tubeMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ff00,
+                transparent: true,
+                opacity: 0.8
+            });
+            const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
+            scene.add(tubeMesh);
+
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize, false);
+            function onWindowResize() {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
+            // Mobile detection
+            const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            
+            // Animation loop with collision detection, star rotation, and nebula animation
+            function animate() {
+                requestAnimationFrame(animate);
+
+                // Always render the scene
+                renderer.render(scene, camera);
+
+                // Update nebula animations
+                const time = performance.now() * 0.001;
+                nebulas.forEach((nebula, index) => {
+                    if (nebula && nebula.material && nebula.material.uniforms) {
+                        nebula.material.uniforms.time.value = time;
+                        nebula.rotation.y += 0.0001;
+                        nebula.rotation.x += 0.00005;
+                        
+                        // Subtle position animation
+                        nebula.position.y += Math.sin(time * 0.1 + index) * 0.05;
+                        nebula.position.x += Math.cos(time * 0.15 + index) * 0.05;
+                    }
+                });
+
+                // Rotate star fields slowly
+                if (starField && largeStarField) {
+                    starField.rotation.y += 0.0001;
+                    largeStarField.rotation.y += 0.00015;
                 }
 
-                // Apply fling velocity if active
-                if (isFlinging) {
-                    // Move in world space
-                    camera.position.x += flingVelocity.x;
-                    camera.position.z += flingVelocity.z;
+                // Only process movement and game logic if controls are locked and game is started
+                if (controls.isLocked && gameStarted) {
+                    // Store current position
+                    const oldPosition = camera.position.clone();
 
-                    // Update player collider position
+                    // Calculate movement
+                    direction.z = Number(moveForward) - Number(moveBackward);
+                    direction.x = Number(moveRight) - Number(moveLeft);
+                    direction.normalize();
+
+                    if (moveForward || moveBackward) velocity.z -= direction.z * moveSpeed;
+                    if (moveLeft || moveRight) velocity.x -= direction.x * moveSpeed;
+
+                    // Apply movement
+                    controls.moveRight(-velocity.x);
+                    controls.moveForward(-velocity.z);
+
+                    // Update line trace position
+                    const cameraDirection = new THREE.Vector3();
+                    camera.getWorldDirection(cameraDirection);
+                    const rightVector = new THREE.Vector3();
+                    rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
+                    
+                    // Update line visibility
+                    tubeMesh.visible = showLine;
+                    
+                    if (showLine) {
+                        // Calculate start and end points
+                        const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
+                        startPoint.y = camera.position.y;
+                        
+                        const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
+                        
+                        // Update curve points
+                        curve.points[0].copy(startPoint);
+                        curve.points[1].copy(endPoint);
+                        
+                        // Update the tube geometry
+                        const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
+                        tubeMesh.geometry.dispose();
+                        tubeMesh.geometry = newTubeGeometry;
+
+                        // Check for line collision with towers
+                        raycaster.set(startPoint, cameraDirection);
+                        const intersects = [];
+                        towers.forEach(tower => {
+                            const towerIntersects = raycaster.intersectObject(tower.mesh);
+                            if (towerIntersects.length > 0 && towerIntersects[0].distance <= 330) {
+                                intersects.push(towerIntersects[0]);
+                            }
+                        });
+
+                        // Sort intersections by distance and get the closest one
+                        if (intersects.length > 0) {
+                            intersects.sort((a, b) => a.distance - b.distance);
+                            lineCollisionPoint = intersects[0].point;
+                            
+                            // Update line end point to collision point
+                            curve.points[1].copy(lineCollisionPoint);
+                            const collidedTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
+                            tubeMesh.geometry.dispose();
+                            tubeMesh.geometry = collidedTubeGeometry;
+                            
+                            // Change line color to indicate valid target
+                            tubeMaterial.color.setHex(0x00ff00);
+                        } else {
+                            lineCollisionPoint = null;
+                            // Change line color to indicate no target
+                            tubeMaterial.color.setHex(0xff0000);
+                        }
+                    } else if (lineCollisionPoint) {
+                        // Initiate fling when line is released and we had a collision point
+                        const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
+                        
+                        // Increase fling strength based on distance to target, but more gently
+                        const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                        const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2); // Increased scaling
+                        
+                        // Set velocity components
+                        flingVelocity.x = flingDirection.x * scaledStrength;
+                        flingVelocity.z = flingDirection.z * scaledStrength;
+                        verticalVelocity = flingDirection.y * scaledStrength + 0.4; // Increased upward boost
+                        
+                        isFlinging = true;
+                        isGrounded = false;
+                        lineCollisionPoint = null;
+                    }
+
+                    // Apply fling velocity if active
+                    if (isFlinging) {
+                        // Move in world space
+                        camera.position.x += flingVelocity.x;
+                        camera.position.z += flingVelocity.z;
+
+                        // Update player collider position
+                        playerCollider.center.copy(camera.position);
+
+                        // Check collisions with all towers
+                        let collision = false;
+                        let collisionTower = null;
+                        for (const tower of towers) {
+                            if (tower.boundingBox.intersectsSphere(playerCollider)) {
+                                collision = true;
+                                collisionTower = tower;
+                                break;
+                            }
+                        }
+
+                        // If there's a collision during fling, push out and continue
+                        if (collision && collisionTower) {
+                            // Calculate push direction away from tower center
+                            const pushDir = new THREE.Vector3();
+                            pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
+                            
+                            // Push out with a strong impulse
+                            camera.position.x += pushDir.x * 3;
+                            camera.position.z += pushDir.z * 3;
+                            
+                            // Redirect fling velocity along the push direction
+                            const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                            flingVelocity.x = pushDir.x * speed * 0.8;
+                            flingVelocity.z = pushDir.z * speed * 0.8;
+                        }
+
+                        // Apply damping to horizontal movement
+                        flingVelocity.x *= flingDamping;
+                        flingVelocity.z *= flingDamping;
+
+                        // Stop flinging when velocity is very small
+                        if (Math.abs(flingVelocity.x) < 0.001 && Math.abs(flingVelocity.z) < 0.001) {
+                            isFlinging = false;
+                            flingVelocity.set(0, 0, 0);
+                        }
+                    }
+
+                    // Apply gravity and handle ground collision
+                    if (!isGrounded) {
+                        verticalVelocity -= gravity;
+                        camera.position.y += verticalVelocity;
+
+                        // Update player collider position
+                        playerCollider.center.copy(camera.position);
+
+                        // Check collisions after vertical movement
+                        let verticalCollision = false;
+                        let collisionTower = null;
+                        for (const tower of towers) {
+                            if (tower.boundingBox.intersectsSphere(playerCollider)) {
+                                verticalCollision = true;
+                                collisionTower = tower;
+                                break;
+                            }
+                        }
+
+                        // If there's a collision during vertical movement, push out
+                        if (verticalCollision && collisionTower) {
+                            // Calculate push direction away from tower center
+                            const pushDir = new THREE.Vector3();
+                            pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
+                            
+                            // Push out horizontally
+                            camera.position.x += pushDir.x * 3;
+                            camera.position.z += pushDir.z * 3;
+                            
+                            verticalVelocity = 0;
+                        }
+
+                        // Check for ground collision
+                        if (camera.position.y <= groundLevel) {
+                            camera.position.y = groundLevel;
+                            verticalVelocity = 0;
+                            isGrounded = true;
+                        }
+                    }
+
+                    // Update player collider position for final position
                     playerCollider.center.copy(camera.position);
 
-                    // Check collisions with all towers
+                    // Check collisions for normal movement
                     let collision = false;
                     let collisionTower = null;
                     for (const tower of towers) {
@@ -1007,253 +1123,163 @@
                         }
                     }
 
-                    // If there's a collision during fling, push out and continue
+                    // Handle normal movement collisions with push-out
                     if (collision && collisionTower) {
-                        // Calculate push direction away from tower center
-                        const pushDir = new THREE.Vector3();
-                        pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
-                        
-                        // Push out with a strong impulse
-                        camera.position.x += pushDir.x * 3;
-                        camera.position.z += pushDir.z * 3;
-                        
-                        // Redirect fling velocity along the push direction
-                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                        flingVelocity.x = pushDir.x * speed * 0.8;
-                        flingVelocity.z = pushDir.z * speed * 0.8;
+                        if (isFlinging) {
+                            // During fling, push out strongly
+                            const pushDir = new THREE.Vector3();
+                            pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
+                            camera.position.x += pushDir.x * 3;
+                            camera.position.z += pushDir.z * 3;
+                        } else {
+                            // During normal movement, just prevent movement
+                            camera.position.copy(oldPosition);
+                        }
                     }
 
-                    // Apply damping to horizontal movement
-                    flingVelocity.x *= flingDamping;
-                    flingVelocity.z *= flingDamping;
-
-                    // Stop flinging when velocity is very small
-                    if (Math.abs(flingVelocity.x) < 0.001 && Math.abs(flingVelocity.z) < 0.001) {
-                        isFlinging = false;
-                        flingVelocity.set(0, 0, 0);
-                    }
+                    // Apply friction to normal movement
+                    velocity.x *= 0.85;
+                    velocity.z *= 0.85;
                 }
+            }
+            animate();
 
-                // Apply gravity and handle ground collision
-                if (!isGrounded) {
-                    verticalVelocity -= gravity;
-                    camera.position.y += verticalVelocity;
+            // WebSocket setup
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}`;
+            const ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('Connected to server');
+            };
 
-                    // Update player collider position
-                    playerCollider.center.copy(camera.position);
+            ws.onclose = () => {
+                console.log('Disconnected from server');
+                alert('Connection to server lost. Please refresh the page.');
+            };
 
-                    // Check collisions after vertical movement
-                    let verticalCollision = false;
-                    let collisionTower = null;
-                    for (const tower of towers) {
-                        if (tower.boundingBox.intersectsSphere(playerCollider)) {
-                            verticalCollision = true;
-                            collisionTower = tower;
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            // Handle incoming messages
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    switch (data.type) {
+                        case 'players':
+                            // Initialize other players
+                            data.players.forEach(player => {
+                                if (player.username !== playerUsername) {
+                                    // Create player representation
+                                    createPlayerModel(player);
+                                }
+                            });
                             break;
-                        }
-                    }
 
-                    // If there's a collision during vertical movement, push out
-                    if (verticalCollision && collisionTower) {
-                        // Calculate push direction away from tower center
-                        const pushDir = new THREE.Vector3();
-                        pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
-                        
-                        // Push out horizontally
-                        camera.position.x += pushDir.x * 3;
-                        camera.position.z += pushDir.z * 3;
-                        
-                        verticalVelocity = 0;
-                    }
-
-                    // Check for ground collision
-                    if (camera.position.y <= groundLevel) {
-                        camera.position.y = groundLevel;
-                        verticalVelocity = 0;
-                        isGrounded = true;
-                    }
-                }
-
-                // Update player collider position for final position
-                playerCollider.center.copy(camera.position);
-
-                // Check collisions for normal movement
-                let collision = false;
-                let collisionTower = null;
-                for (const tower of towers) {
-                    if (tower.boundingBox.intersectsSphere(playerCollider)) {
-                        collision = true;
-                        collisionTower = tower;
-                        break;
-                    }
-                }
-
-                // Handle normal movement collisions with push-out
-                if (collision && collisionTower) {
-                    if (isFlinging) {
-                        // During fling, push out strongly
-                        const pushDir = new THREE.Vector3();
-                        pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
-                        camera.position.x += pushDir.x * 3;
-                        camera.position.z += pushDir.z * 3;
-                    } else {
-                        // During normal movement, just prevent movement
-                        camera.position.copy(oldPosition);
-                    }
-                }
-
-                // Apply friction to normal movement
-                velocity.x *= 0.85;
-                velocity.z *= 0.85;
-            }
-
-            // Update nebula animations
-            const time = performance.now() * 0.001;
-            nebulas.forEach((nebula, index) => {
-                nebula.material.uniforms.time.value = time;
-                nebula.rotation.y += 0.0001;
-                nebula.rotation.x += 0.00005;
-                
-                // Subtle position animation
-                const offset = Math.sin(time * 0.2 + index) * 5;
-                nebula.position.y += Math.sin(time * 0.1 + index) * 0.05;
-                nebula.position.x += Math.cos(time * 0.15 + index) * 0.05;
-            });
-
-            // Rotate star fields slowly
-            starField.rotation.y += 0.0001;
-            largeStarField.rotation.y += 0.00015;
-
-            renderer.render(scene, camera);
-        }
-        animate();
-
-        // WebSocket setup
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}`;
-        const ws = new WebSocket(wsUrl);
-        
-        ws.onopen = () => {
-            console.log('Connected to server');
-        };
-
-        ws.onclose = () => {
-            console.log('Disconnected from server');
-            alert('Connection to server lost. Please refresh the page.');
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
-
-        // Handle incoming messages
-        ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                switch (data.type) {
-                    case 'players':
-                        // Initialize other players
-                        data.players.forEach(player => {
-                            if (player.username !== playerUsername) {
-                                // Create player representation
-                                createPlayerModel(player);
+                        case 'playerJoined':
+                            if (data.player.username !== playerUsername) {
+                                // Create new player representation
+                                createPlayerModel(data.player);
                             }
-                        });
-                        break;
+                            break;
 
-                    case 'playerJoined':
-                        if (data.player.username !== playerUsername) {
-                            // Create new player representation
-                            createPlayerModel(data.player);
-                        }
-                        break;
+                        case 'playerMoved':
+                            if (data.username !== playerUsername) {
+                                // Update player position
+                                updatePlayerPosition(data);
+                            }
+                            break;
 
-                    case 'playerMoved':
-                        if (data.username !== playerUsername) {
-                            // Update player position
-                            updatePlayerPosition(data);
-                        }
-                        break;
-
-                    case 'playerLeft':
-                        // Remove player representation
-                        removePlayer(data.username);
-                        break;
+                        case 'playerLeft':
+                            // Remove player representation
+                            removePlayer(data.username);
+                            break;
+                    }
+                } catch (error) {
+                    console.error('Error processing message:', error);
                 }
-            } catch (error) {
-                console.error('Error processing message:', error);
+            };
+
+            // Function to create player model
+            function createPlayerModel(player) {
+                // Create a simple player representation
+                const geometry = new THREE.CapsuleGeometry(2, 6, 2, 8);
+                const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
+                const playerMesh = new THREE.Mesh(geometry, material);
+                
+                // Add username label
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = 256;
+                canvas.height = 64;
+                
+                context.fillStyle = '#000000';
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                
+                context.font = '32px Arial';
+                context.fillStyle = '#ffffff';
+                context.textAlign = 'center';
+                context.fillText(player.username, canvas.width / 2, canvas.height / 2);
+                
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                const sprite = new THREE.Sprite(spriteMaterial);
+                sprite.position.y = 6;
+                playerMesh.add(sprite);
+                
+                // Set initial position
+                playerMesh.position.copy(player.position);
+                scene.add(playerMesh);
+                
+                // Store reference
+                otherPlayers.set(player.username, playerMesh);
             }
-        };
 
-        // Function to create player model
-        function createPlayerModel(player) {
-            // Create a simple player representation
-            const geometry = new THREE.CapsuleGeometry(2, 6, 2, 8);
-            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
-            const playerMesh = new THREE.Mesh(geometry, material);
-            
-            // Add username label
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            canvas.width = 256;
-            canvas.height = 64;
-            
-            context.fillStyle = '#000000';
-            context.fillRect(0, 0, canvas.width, canvas.height);
-            
-            context.font = '32px Arial';
-            context.fillStyle = '#ffffff';
-            context.textAlign = 'center';
-            context.fillText(player.username, canvas.width / 2, canvas.height / 2);
-            
-            const texture = new THREE.CanvasTexture(canvas);
-            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
-            const sprite = new THREE.Sprite(spriteMaterial);
-            sprite.position.y = 6;
-            playerMesh.add(sprite);
-            
-            // Set initial position
-            playerMesh.position.copy(player.position);
-            scene.add(playerMesh);
-            
-            // Store reference
-            otherPlayers.set(player.username, playerMesh);
-        }
-
-        // Function to update player position
-        function updatePlayerPosition(data) {
-            const playerMesh = otherPlayers.get(data.username);
-            if (playerMesh) {
-                playerMesh.position.copy(data.position);
-                playerMesh.rotation.copy(data.rotation);
+            // Function to update player position
+            function updatePlayerPosition(data) {
+                const playerMesh = otherPlayers.get(data.username);
+                if (playerMesh) {
+                    playerMesh.position.copy(data.position);
+                    playerMesh.rotation.copy(data.rotation);
+                }
             }
-        }
 
-        // Function to remove player
-        function removePlayer(username) {
-            const playerMesh = otherPlayers.get(username);
-            if (playerMesh) {
-                scene.remove(playerMesh);
-                otherPlayers.delete(username);
+            // Function to remove player
+            function removePlayer(username) {
+                const playerMesh = otherPlayers.get(username);
+                if (playerMesh) {
+                    scene.remove(playerMesh);
+                    otherPlayers.delete(username);
+                }
             }
-        }
 
-        // Store other players
-        const otherPlayers = new Map();
+            // Store other players
+            const otherPlayers = new Map();
 
-        // Send position updates
-        function sendPositionUpdate() {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'position',
-                    position: camera.position.toArray(),
-                    rotation: camera.rotation.toArray()
-                }));
+            // Send position updates
+            function sendPositionUpdate() {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'position',
+                        position: camera.position.toArray(),
+                        rotation: camera.rotation.toArray()
+                    }));
+                }
             }
-        }
 
-        // Update position periodically
-        setInterval(sendPositionUpdate, 50); // 20 updates per second
+            // Update position periodically
+            setInterval(sendPositionUpdate, 50); // 20 updates per second
+        } catch (error) {
+            console.error('Error during initialization:', error);
+            document.body.innerHTML = `
+                <div style="color: white; background: rgba(0,0,0,0.8); padding: 20px; text-align: center;">
+                    An error occurred while initializing the game.<br>
+                    Please try refreshing the page or use a different browser.
+                </div>
+            `;
+            throw error;
+        }
     </script>
 </body>
 </html>
