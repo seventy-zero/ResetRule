@@ -1122,15 +1122,6 @@
                     moveBackward = forward < -deadzone;
                     moveLeft = right < -deadzone;
                     moveRight = right > deadzone;
-                    
-                    // Calculate movement direction based on camera rotation
-                    const angle = camera.rotation.y;
-                    const moveX = right * Math.cos(angle) - forward * Math.sin(angle);
-                    const moveZ = right * Math.sin(angle) + forward * Math.cos(angle);
-                    
-                    // Set velocity with increased movement speed
-                    velocity.x = moveX * moveSpeed * 12;
-                    velocity.z = moveZ * moveSpeed * 12;
                 });
 
                 window.leftJoystick.on('end', function() {
@@ -1138,8 +1129,6 @@
                     moveBackward = false;
                     moveLeft = false;
                     moveRight = false;
-                    velocity.x = 0;
-                    velocity.z = 0;
                 });
 
                 // Look joystick handling - FPS style camera control
