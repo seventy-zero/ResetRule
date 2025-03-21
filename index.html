@@ -63,6 +63,22 @@
             background: #cccccc;
             cursor: not-allowed;
         }
+        /* Health Bar Styles */
+        #healthBar {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 2px;
+            z-index: 1000;
+        }
+        
+        .healthSegment {
+            width: 20px;
+            height: 8px;
+            background-color: #00ff00;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
         /* Mobile Controls */
         .mobile-controls {
             display: none;
@@ -144,6 +160,20 @@
         </p>
     </div>
     
+    <!-- Add this before the mobile controls div -->
+    <div id="healthBar">
+        <div class="healthSegment"></div>
+        <div class="healthSegment"></div>
+        <div class="healthSegment"></div>
+        <div class="healthSegment"></div>
+        <div class="healthSegment"></div>
+        <div class="healthSegment"></div>
+        <div class="healthSegment"></div>
+        <div class="healthSegment"></div>
+        <div class="healthSegment"></div>
+        <div class="healthSegment"></div>
+    </div>
+
     <!-- Mobile Controls -->
     <div class="mobile-controls">
         <div id="leftJoystick" class="joystick-zone"></div>
@@ -400,6 +430,12 @@
                     case 'position':
                         if (data.username !== playerUsername && gameStarted) {
                             updatePlayerPosition(data.username, data.position, data.rotation);
+                            if (data.health !== undefined) {
+                                const playerState = playerStates.get(data.username);
+                                if (playerState) {
+                                    playerState.health = data.health;
+                                }
+                            }
                         }
                         break;
 
@@ -1023,7 +1059,7 @@
                     instructions.classList.remove('hidden');
                 }
                 
-                // Notify server that player is leaving
+                // Notify server that player is leaving/died
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({
                         type: 'player_left',
@@ -1031,17 +1067,16 @@
                     }));
                 }
                 
-                // Remove our own player model if it exists
+                // Reset all game state including health
                 removePlayer(playerUsername);
-                
-                // Clear all other player models
                 playerStates.forEach((playerState, username) => {
                     removePlayer(username);
                 });
                 
-                // Reset game state
                 gameStarted = false;
                 playerUsername = '';
+                playerHealth = 10; // Reset health
+                updateHealthDisplay();
                 
                 // Reset position
                 camera.position.set(0, playerHeight, 0);
@@ -1509,7 +1544,13 @@
                         // Handle normal movement collisions with push-out
                         if (collision && collisionTower) {
                             if (isFlinging) {
-                                // During fling, push out strongly
+                                // During fling, take damage and push out strongly
+                                playerHealth = Math.max(0, playerHealth - 1);
+                                updateHealthDisplay();
+                                if (playerHealth <= 0) {
+                                    handlePlayerDeath();
+                                }
+                                
                                 const pushDir = new THREE.Vector3();
                                 pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
                                 camera.position.x += pushDir.x * 3;
@@ -1534,7 +1575,8 @@
                     ws.send(JSON.stringify({
                         type: 'position',
                         position: camera.position.toArray(),
-                        rotation: camera.rotation.toArray()
+                        rotation: camera.rotation.toArray(),
+                        health: playerHealth
                     }));
                 }
             }
@@ -1554,6 +1596,32 @@
 
         // Initialize WebSocket connection AFTER scene is set up
         setupWebSocket();
+
+        // Add these with other global variables
+        let playerHealth = 10;
+        const healthSegments = [];
+
+        // Add this after document.body.appendChild(renderer.domElement);
+        // Initialize health segments array
+        document.querySelectorAll('.healthSegment').forEach(segment => {
+            healthSegments.push(segment);
+        });
+
+        // Add this function near other game functions
+        function updateHealthDisplay() {
+            healthSegments.forEach((segment, index) => {
+                segment.style.backgroundColor = index < playerHealth ? '#00ff00' : 'rgba(0, 0, 0, 0.3)';
+            });
+        }
+
+        // Add this function to handle player death
+        function handlePlayerDeath() {
+            if (controls.isLocked) {
+                controls.unlock();
+            }
+            playerHealth = 10; // Reset health for next spawn
+            updateHealthDisplay();
+        }
     </script>
 </body>
 </html>

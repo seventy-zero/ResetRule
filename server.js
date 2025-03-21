@@ -55,6 +55,7 @@ class GameRoom {
             username: username,
             position: { x: 0, y: 10, z: 0 },
             rotation: { x: 0, y: 0, z: 0 },
+            health: 10,
             lastActivity: Date.now()
         });
         this.lastActivity = Date.now();
@@ -198,12 +199,16 @@ wss.on('connection', (ws) => {
                         if (player) {
                             player.position = data.position;
                             player.rotation = data.rotation;
+                            if (data.health !== undefined) {
+                                player.health = data.health;
+                            }
                             
                             currentRoom.broadcast(JSON.stringify({
                                 type: 'position',
                                 username: player.username,
                                 position: data.position,
-                                rotation: data.rotation
+                                rotation: data.rotation,
+                                health: player.health
                             }), ws);
                         }
                     }
