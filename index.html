@@ -1267,11 +1267,11 @@
                     // Trigger fling immediately on release if we have a valid target
                     const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
                     const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                    const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2);
+                    const scaledStrength = Math.min(distanceToTarget * 0.1, flingStrength * 1.5);
                     
                     flingVelocity.x = flingDirection.x * scaledStrength;
                     flingVelocity.z = flingDirection.z * scaledStrength;
-                    verticalVelocity = flingDirection.y * scaledStrength + 0.4;
+                    verticalVelocity = flingDirection.y * scaledStrength + 0.5;
                     
                     isFlinging = true;
                     isGrounded = false;
@@ -1351,10 +1351,10 @@
                         
                         if (showLine) {
                             // Calculate start and end points
-                            const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
+                            const startPoint = camera.position.clone();
                             startPoint.y = camera.position.y;
                             
-                            const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
+                            const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(330));
                             
                             // Update curve points
                             curve.points[0].copy(startPoint);
@@ -1397,14 +1397,14 @@
                             // Initiate fling when line is released and we had a collision point
                             const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
                             
-                            // Increase fling strength based on distance to target, but more gently
+                            // Increase fling strength based on distance to target
                             const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                            const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2); // Increased scaling
+                            const scaledStrength = Math.min(distanceToTarget * 0.1, flingStrength * 1.5);
                             
                             // Set velocity components
                             flingVelocity.x = flingDirection.x * scaledStrength;
                             flingVelocity.z = flingDirection.z * scaledStrength;
-                            verticalVelocity = flingDirection.y * scaledStrength + 0.4; // Increased upward boost
+                            verticalVelocity = flingDirection.y * scaledStrength + 0.5;
                             
                             isFlinging = true;
                             isGrounded = false;
