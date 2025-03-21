@@ -780,6 +780,41 @@
                     instructions.classList.remove('hidden');
                 }
                 console.log('Controls unlocked');
+                
+                // When unlocking (pressing escape), clear the player state
+                if (gameStarted && playerUsername) {
+                    // Notify server that player is leaving
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'playerLeft',
+                            username: playerUsername
+                        }));
+                    }
+                    
+                    // Reset game state
+                    gameStarted = false;
+                    playerUsername = '';
+                    
+                    // Reset position
+                    camera.position.set(0, playerHeight, 0);
+                    camera.rotation.set(0, 0, 0);
+                    velocity.set(0, 0, 0);
+                    flingVelocity.set(0, 0, 0);
+                    verticalVelocity = 0;
+                    isFlinging = false;
+                    isGrounded = true;
+                    
+                    // Show instructions again
+                    instructions.classList.remove('hidden');
+                    usernameInput.value = '';
+                    startButton.disabled = true;
+                    
+                    // Clear any mobile controls if they exist
+                    if (isMobile) {
+                        document.querySelector('.mobile-controls').style.display = 'none';
+                        document.getElementById('flingButton').style.display = 'none';
+                    }
+                }
             });
 
             // Mobile controls initialization function
