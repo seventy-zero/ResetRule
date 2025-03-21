@@ -1146,13 +1146,20 @@
                     
                     // Update camera rotation
                     const lookSpeed = 0.05;
-                    // Only update horizontal rotation (left/right)
-                    camera.rotation.y -= (joystickX / maxDistance) * lookSpeed;
-                    // Only update vertical rotation (up/down) and clamp it
-                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
-                        camera.rotation.x - (joystickY / maxDistance) * lookSpeed));
-                    // Force roll to always be 0 to prevent tilting
-                    camera.rotation.z = 0;
+                    
+                    // Create a new Euler rotation to enforce strict two-axis system
+                    const newRotation = new THREE.Euler();
+                    newRotation.x = camera.rotation.x;
+                    newRotation.y = camera.rotation.y;
+                    newRotation.z = 0; // Force roll to always be 0
+                    
+                    // Update only horizontal and vertical rotation
+                    newRotation.y -= (joystickX / maxDistance) * lookSpeed;
+                    newRotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+                        newRotation.x - (joystickY / maxDistance) * lookSpeed));
+                    
+                    // Apply the new rotation
+                    camera.rotation.copy(newRotation);
                     
                     console.log('Touch moved:', joystickX, joystickY);
                 }, { passive: false });
