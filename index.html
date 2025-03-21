@@ -1047,6 +1047,78 @@
             }
         }
 
+        // Function to create stars
+        function createStars() {
+            const starsGeometry = new THREE.BufferGeometry();
+            const starsMaterial = new THREE.PointsMaterial({
+                color: 0xff6600,
+                size: 2,
+                sizeAttenuation: false,
+                depthWrite: false
+            });
+
+            const starsVertices = [];
+            for (let i = 0; i < PERFORMANCE_SETTINGS.STAR_COUNT; i++) {
+                const radius = 5400;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(Math.random() * 2 - 1);
+                
+                const x = radius * Math.sin(phi) * Math.cos(theta);
+                const y = radius * Math.sin(phi) * Math.sin(theta);
+                const z = radius * Math.cos(phi);
+                
+                starsVertices.push(x, y, z);
+            }
+
+            starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+            const starField = new THREE.Points(starsGeometry, starsMaterial);
+
+            // Create large stars
+            const largeStarsGeometry = new THREE.BufferGeometry();
+            const largeStarsMaterial = new THREE.PointsMaterial({
+                color: 0xff8833,
+                size: 4,
+                sizeAttenuation: false,
+                depthWrite: false
+            });
+
+            const largeStarsVertices = [];
+            for (let i = 0; i < PERFORMANCE_SETTINGS.LARGE_STAR_COUNT; i++) {
+                const radius = 1800;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(Math.random() * 2 - 1);
+                
+                const x = radius * Math.sin(phi) * Math.cos(theta);
+                const y = radius * Math.sin(phi) * Math.sin(theta);
+                const z = radius * Math.cos(phi);
+                
+                largeStarsVertices.push(x, y, z);
+            }
+
+            largeStarsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(largeStarsVertices, 3));
+            const largeStarField = new THREE.Points(largeStarsGeometry, largeStarsMaterial);
+
+            return [starField, largeStarField];
+        }
+
+        // Function to create nebula
+        function createNebula(position, scale, rotation) {
+            const geometry = new THREE.PlaneGeometry(400, 400, 1, 1);
+            const material = new THREE.MeshBasicMaterial({
+                color: 0x4a0080,
+                transparent: true,
+                opacity: 0.3,
+                depthWrite: false
+            });
+
+            const nebula = new THREE.Mesh(geometry, material);
+            nebula.position.copy(position);
+            nebula.scale.set(scale, scale, scale);
+            nebula.rotation.copy(rotation);
+            scene.add(nebula);
+            return nebula;
+        }
+
         // Scene setup with error handling
         try {
             // Scene initialization
@@ -1151,7 +1223,22 @@
                     const deltaTime = clock.getDelta();
                     
                     if (gameStarted) {
-                        // Rest of the animation code...
+                        // Update nebula animations
+                        nebulas.forEach((nebula, index) => {
+                            if (nebula) {
+                                const time = performance.now() * 0.001;
+                                nebula.rotation.y += 0.0001;
+                                nebula.rotation.x += 0.00005;
+                                nebula.position.y += Math.sin(time * 0.1 + index) * 0.05;
+                                nebula.position.x += Math.cos(time * 0.15 + index) * 0.05;
+                            }
+                        });
+
+                        // Update star field rotation
+                        if (starField && largeStarField) {
+                            starField.rotation.y += 0.0001;
+                            largeStarField.rotation.y += 0.00015;
+                        }
                     }
                 } catch (error) {
                     console.error('Error during animation:', error);
@@ -1159,32 +1246,19 @@
             }
             animate();
 
-            // Send position updates
-            function sendPositionUpdate() {
-                if (ws.readyState === WebSocket.OPEN && gameStarted) {
-                    ws.send(JSON.stringify({
-                        type: 'position',
-                        position: camera.position.toArray(),
-                        rotation: camera.rotation.toArray()
-                    }));
-                }
-            }
-
-            // Update position periodically
-            setInterval(sendPositionUpdate, 50); // 20 updates per second
+            // Initialize WebSocket connection AFTER scene is set up
+            setupWebSocket();
         } catch (error) {
             console.error('Error during initialization:', error);
             document.body.innerHTML = `
                 <div style="color: white; background: rgba(0,0,0,0.8); padding: 20px; text-align: center;">
                     An error occurred while initializing the game.<br>
-                    Please try refreshing the page or use a different browser.
+                    Please try refreshing the page or use a different browser.<br>
+                    Error: ${error.message}
                 </div>
             `;
             throw error;
         }
-
-        // Initialize WebSocket connection AFTER scene is set up
-        setupWebSocket();
     </script>
 </body>
 </html>
