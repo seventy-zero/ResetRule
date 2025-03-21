@@ -1008,61 +1008,18 @@
                         document.querySelector('.mobile-controls').style.display = 'block';
                         document.getElementById('flingButton').style.display = 'block';
                         initializeMobileControls();
+                    } else {
+                        // Initialize desktop controls
+                        initializeDesktopControls();
                     }
                     controls.lock();
                 }
             });
 
-            // Controls lock/unlock handlers
-            controls.addEventListener('lock', function() {
-                instructions.classList.add('hidden');
-            });
-
-            controls.addEventListener('unlock', function() {
-                if (!isMobile) {
-                    instructions.classList.remove('hidden');
-                }
+            // Desktop controls initialization
+            function initializeDesktopControls() {
+                console.log('Initializing desktop controls');
                 
-                // Notify server that player is leaving
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        type: 'player_left',
-                        username: playerUsername
-                    }));
-                }
-                
-                // Reset all game state
-                removePlayer(playerUsername);
-                playerStates.forEach((playerState, username) => {
-                    removePlayer(username);
-                });
-                
-                gameStarted = false;
-                playerUsername = '';
-                
-                // Reset position
-                camera.position.set(0, playerHeight, 0);
-                camera.rotation.set(0, 0, 0);
-                velocity.set(0, 0, 0);
-                flingVelocity.set(0, 0, 0);
-                verticalVelocity = 0;
-                isFlinging = false;
-                isGrounded = true;
-                
-                // Show instructions again
-                instructions.classList.remove('hidden');
-                usernameInput.value = '';
-                startButton.disabled = true;
-                
-                // Clear any mobile controls if they exist
-                if (isMobile) {
-                    document.querySelector('.mobile-controls').style.display = 'none';
-                    document.getElementById('flingButton').style.display = 'none';
-                }
-            });
-
-            // Desktop controls
-            if (!isMobile) {
                 // Movement controls
                 const onKeyDown = function(event) {
                     switch (event.code) {
@@ -1115,21 +1072,80 @@
                 };
 
                 // Mouse controls for line visibility
-                document.addEventListener('mousedown', (event) => {
+                const onMouseDown = function(event) {
                     if (event.button === 0) { // Left mouse button
                         showLine = true;
                     }
-                });
+                };
 
-                document.addEventListener('mouseup', (event) => {
+                const onMouseUp = function(event) {
                     if (event.button === 0) { // Left mouse button
                         showLine = false;
                     }
-                });
+                };
 
+                // Remove any existing event listeners
+                document.removeEventListener('keydown', onKeyDown);
+                document.removeEventListener('keyup', onKeyUp);
+                document.removeEventListener('mousedown', onMouseDown);
+                document.removeEventListener('mouseup', onMouseUp);
+
+                // Add new event listeners
                 document.addEventListener('keydown', onKeyDown);
                 document.addEventListener('keyup', onKeyUp);
+                document.addEventListener('mousedown', onMouseDown);
+                document.addEventListener('mouseup', onMouseUp);
+
+                console.log('Desktop controls initialized');
             }
+
+            // Controls lock/unlock handlers
+            controls.addEventListener('lock', function() {
+                instructions.classList.add('hidden');
+            });
+
+            controls.addEventListener('unlock', function() {
+                if (!isMobile) {
+                    instructions.classList.remove('hidden');
+                }
+                
+                // Notify server that player is leaving
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'player_left',
+                        username: playerUsername
+                    }));
+                }
+                
+                // Reset all game state
+                removePlayer(playerUsername);
+                playerStates.forEach((playerState, username) => {
+                    removePlayer(username);
+                });
+                
+                gameStarted = false;
+                playerUsername = '';
+                
+                // Reset position
+                camera.position.set(0, playerHeight, 0);
+                camera.rotation.set(0, 0, 0);
+                velocity.set(0, 0, 0);
+                flingVelocity.set(0, 0, 0);
+                verticalVelocity = 0;
+                isFlinging = false;
+                isGrounded = true;
+                
+                // Show instructions again
+                instructions.classList.remove('hidden');
+                usernameInput.value = '';
+                startButton.disabled = true;
+                
+                // Clear any mobile controls if they exist
+                if (isMobile) {
+                    document.querySelector('.mobile-controls').style.display = 'none';
+                    document.getElementById('flingButton').style.display = 'none';
+                }
+            });
 
             // Mobile controls initialization function
             function initializeMobileControls() {
