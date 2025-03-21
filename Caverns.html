@@ -82,8 +82,116 @@
         // Scene setup
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000000); // Black background
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000); // Increased far plane for larger level
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000);
+
+        // Add WebSocket connection
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${wsProtocol}//${window.location.host}`);
         
+        // Store other players
+        const otherPlayers = new Map();
+
+        // Create player model
+        function createPlayerModel(color = 0x00ff00) {
+            const group = new THREE.Group();
+            
+            // Body
+            const bodyGeometry = new THREE.CapsuleGeometry(2, 6, 2, 8);
+            const bodyMaterial = new THREE.MeshBasicMaterial({ color: color });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = 4;
+            group.add(body);
+            
+            // Username text
+            const usernameGroup = new THREE.Group();
+            usernameGroup.position.y = 8;
+            group.add(usernameGroup);
+            
+            return group;
+        }
+
+        // Update username display
+        function updateUsernameDisplay(playerModel, username) {
+            const usernameGroup = playerModel.children[1];
+            // Remove old text if it exists
+            while(usernameGroup.children.length > 0) {
+                usernameGroup.remove(usernameGroup.children[0]);
+            }
+            
+            // Create new text
+            const loader = new THREE.FontLoader();
+            loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function(font) {
+                const textGeometry = new THREE.TextGeometry(username, {
+                    font: font,
+                    size: 1,
+                    height: 0.1
+                });
+                const textMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+                textGeometry.computeBoundingBox();
+                const textWidth = textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x;
+                textMesh.position.x = -textWidth / 2;
+                usernameGroup.add(textMesh);
+            });
+        }
+
+        // WebSocket message handling
+        ws.onmessage = function(event) {
+            const message = JSON.parse(event.data);
+            
+            switch(message.type) {
+                case 'init':
+                    playerId = message.id;
+                    camera.position.copy(message.position);
+                    
+                    // Create other existing players
+                    message.players.forEach(player => {
+                        const playerModel = createPlayerModel();
+                        playerModel.position.copy(player.position);
+                        updateUsernameDisplay(playerModel, player.username);
+                        scene.add(playerModel);
+                        otherPlayers.set(player.id, playerModel);
+                    });
+                    break;
+                    
+                case 'playerJoined':
+                    const newPlayerModel = createPlayerModel();
+                    newPlayerModel.position.copy(message.position);
+                    updateUsernameDisplay(newPlayerModel, message.username);
+                    scene.add(newPlayerModel);
+                    otherPlayers.set(message.id, newPlayerModel);
+                    break;
+                    
+                case 'playerLeft':
+                    const playerToRemove = otherPlayers.get(message.id);
+                    if (playerToRemove) {
+                        scene.remove(playerToRemove);
+                        otherPlayers.delete(message.id);
+                    }
+                    break;
+                    
+                case 'playerMoved':
+                    const playerToMove = otherPlayers.get(message.id);
+                    if (playerToMove) {
+                        playerToMove.position.copy(message.position);
+                        playerToMove.rotation.copy(message.rotation);
+                    }
+                    break;
+            }
+        };
+
+        // Handle WebSocket connection error
+        ws.onerror = function(error) {
+            console.error('WebSocket error:', error);
+            alert('Failed to connect to game server. Please try again later.');
+        };
+
+        // Handle WebSocket disconnection
+        ws.onclose = function() {
+            console.log('Disconnected from server');
+            alert('Lost connection to game server. Please refresh to reconnect.');
+        };
+
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
@@ -285,6 +393,11 @@
         startButton.addEventListener('click', function() {
             if (usernameInput.value.trim()) {
                 playerUsername = usernameInput.value.trim();
+                // Join the game
+                ws.send(JSON.stringify({
+                    type: 'join',
+                    username: playerUsername
+                }));
                 controls.lock();
             }
         });
@@ -942,6 +1055,15 @@
                 // Apply friction to normal movement
                 velocity.x *= 0.85;
                 velocity.z *= 0.85;
+
+                // Send position update to server
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'update',
+                        position: camera.position.toArray(),
+                        rotation: camera.rotation.toArray()
+                    }));
+                }
             }
 
             // Update nebula animations

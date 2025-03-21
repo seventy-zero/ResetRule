@@ -1,15 +1,16 @@
 {
-  "name": "endless-floor-multiplayer",
+  "name": "resetrule-multiplayer",
   "version": "1.0.0",
-  "type": "module",
-  "description": "Multiplayer server for Endless Floor game",
+  "description": "Multiplayer first-person game",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "ws": "^8.16.0",
-    "redis": "^4.6.13",
-    "uuid": "^9.0.1"
+    "express": "^4.18.2",
+    "ws": "^8.16.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 } 
