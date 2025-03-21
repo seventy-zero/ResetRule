@@ -408,7 +408,12 @@
                         break;
 
                     case 'world_data':
-                        console.log('Received world data');
+                        console.log('Received world data:', data);
+                        if (!data.towers || !Array.isArray(data.towers)) {
+                            console.error('Invalid world data format - towers array missing or invalid');
+                            return;
+                        }
+                        console.log(`Creating ${data.towers.length} towers`);
                         // Clear existing towers
                         towers.forEach(tower => {
                             scene.remove(tower.mesh);
@@ -416,7 +421,8 @@
                         towers.length = 0;
 
                         // Create towers from server data
-                        data.towers.forEach(towerData => {
+                        data.towers.forEach((towerData, index) => {
+                            console.log(`Creating tower ${index}:`, towerData);
                             createTowerFromData(towerData);
                         });
                         break;

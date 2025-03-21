@@ -213,6 +213,20 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+
+                case 'world_data':
+                    console.log('Received world data');
+                    // Clear existing towers
+                    towers.forEach(tower => {
+                        scene.remove(tower.mesh);
+                    });
+                    towers.length = 0;
+
+                    // Create towers from server data
+                    data.towers.forEach(towerData => {
+                        createTowerFromData(towerData);
+                    });
+                    break;
             }
         } catch (error) {
             console.error('Error processing message:', error);
