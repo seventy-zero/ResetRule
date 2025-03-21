@@ -1195,19 +1195,7 @@
                     e.preventDefault();
                     showLine = false;
                     this.classList.remove('active');
-                    if (lineCollisionPoint) {
-                        const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
-                        const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                        const scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
-                        
-                        flingVelocity.x = flingDirection.x * scaledStrength;
-                        flingVelocity.z = flingDirection.z * scaledStrength;
-                        verticalVelocity = flingDirection.y * scaledStrength + 0.5;
-                        
-                        isFlinging = true;
-                        isGrounded = false;
-                        lineCollisionPoint = null;
-                    }
+                    initiateFling();
                     console.log('Fling button touch ended');
                 }, { passive: false });
 
@@ -1310,6 +1298,7 @@
                 document.addEventListener('mouseup', (event) => {
                     if (event.button === 0) { // Left mouse button
                         showLine = false;
+                        initiateFling();
                     }
                 });
 
