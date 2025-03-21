@@ -1200,6 +1200,31 @@
                     }
                     lastTapTime = currentTime;
                 }, { passive: false });
+
+                // Initialize mobile controls when the game starts
+                startButton.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    if (usernameInput.value.trim()) {
+                        playerUsername = usernameInput.value.trim();
+                        gameStarted = true;
+                        instructions.classList.add('hidden');
+                        
+                        // Send join message to server
+                        if (ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({
+                                type: 'join',
+                                username: playerUsername
+                            }));
+                        }
+                        
+                        // Show and initialize mobile controls
+                        document.querySelector('.mobile-controls').style.display = 'block';
+                        document.getElementById('flingButton').style.display = 'block';
+                        initializeMobileControls();
+                        
+                        controls.lock();
+                    }
+                });
             }
 
             // Desktop controls
