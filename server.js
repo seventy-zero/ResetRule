@@ -1,194 +1,160 @@
 const express = require('express');
-const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 
 const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ 
-    server,
-    clientTracking: true,
-    // Add error handling for connections
-    handleProtocols: (protocols, req) => {
-        return protocols[0];
+const PORT = process.env.PORT || 3000;
+
+// Serve static files
+app.use(express.static(path.join(__dirname)));
+
+const server = app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
+
+const wss = new WebSocket.Server({ server });
+
+// Room management
+class GameRoom {
+    constructor(id) {
+        this.id = id;
+        this.players = new Map();
+        this.isActive = true;
     }
-});
 
-// Serve static files from the current directory
-app.use(express.static(__dirname));
+    addPlayer(ws, username) {
+        this.players.set(ws, {
+            username: username,
+            position: { x: 0, y: 10, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 }
+        });
+    }
 
-// Add a health check endpoint for Railway
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
-});
-
-// Store connected players with last activity timestamp
-const players = new Map();
-const MAX_PLAYERS = 20;
-const INACTIVE_TIMEOUT = 10000; // 10 seconds in milliseconds
-
-// Cleanup inactive players periodically
-function cleanupInactivePlayers() {
-    const now = Date.now();
-    let cleanedCount = 0;
-    
-    players.forEach((player, username) => {
-        if (now - player.lastActivity > INACTIVE_TIMEOUT) {
-            // Player hasn't moved in 5 seconds, remove them
-            players.delete(username);
-            cleanedCount++;
-            
-            // Notify all clients about the removed player
-            broadcast({
-                type: 'playerLeft',
-                username: username
-            });
-            
-            console.log(`Removed inactive player: ${username}`);
+    removePlayer(ws) {
+        this.players.delete(ws);
+        if (this.players.size === 0) {
+            this.isActive = false;
         }
-    });
-    
-    if (cleanedCount > 0) {
-        console.log(`Cleaned up ${cleanedCount} inactive players. Active players: ${players.size}`);
+    }
+
+    isFull() {
+        return this.players.size >= 20;
+    }
+
+    broadcast(message, excludeWs = null) {
+        this.players.forEach((playerData, ws) => {
+            if (ws !== excludeWs && ws.readyState === WebSocket.OPEN) {
+                ws.send(message);
+            }
+        });
     }
 }
 
-// Run cleanup every 5 seconds
-setInterval(cleanupInactivePlayers, 5000);
+// Rooms management
+let rooms = [];
+let nextRoomId = 1;
 
-// Handle WebSocket errors
+function createNewRoom() {
+    const room = new GameRoom(nextRoomId++);
+    rooms.push(room);
+    console.log(`Created new room ${room.id}`);
+    return room;
+}
+
+function findAvailableRoom() {
+    // First, try to find an existing room that's not full
+    let room = rooms.find(r => r.isActive && !r.isFull());
+    
+    // If no available room found, create a new one
+    if (!room) {
+        room = createNewRoom();
+    }
+    
+    return room;
+}
+
+// Clean up inactive rooms periodically
+setInterval(() => {
+    rooms = rooms.filter(room => room.isActive);
+}, 60000); // Clean up every minute
+
+wss.on('connection', (ws) => {
+    let currentRoom = null;
+
+    ws.on('message', (message) => {
+        const data = JSON.parse(message);
+
+        switch (data.type) {
+            case 'join':
+                currentRoom = findAvailableRoom();
+                currentRoom.addPlayer(ws, data.username);
+                
+                // Send room information to the new player
+                ws.send(JSON.stringify({
+                    type: 'room_info',
+                    roomId: currentRoom.roomId,
+                    playerCount: currentRoom.players.size
+                }));
+
+                // Send existing players to the new player
+                currentRoom.players.forEach((playerData, playerWs) => {
+                    if (playerWs !== ws) {
+                        ws.send(JSON.stringify({
+                            type: 'player_joined',
+                            username: playerData.username,
+                            position: playerData.position,
+                            rotation: playerData.rotation
+                        }));
+                    }
+                });
+
+                // Broadcast new player to all other players in the room
+                currentRoom.broadcast(JSON.stringify({
+                    type: 'player_joined',
+                    username: data.username,
+                    position: { x: 0, y: 10, z: 0 },
+                    rotation: { x: 0, y: 0, z: 0 }
+                }), ws);
+                break;
+
+            case 'position':
+                if (currentRoom) {
+                    const player = currentRoom.players.get(ws);
+                    if (player) {
+                        player.position = data.position;
+                        player.rotation = data.rotation;
+                        
+                        currentRoom.broadcast(JSON.stringify({
+                            type: 'position',
+                            username: player.username,
+                            position: data.position,
+                            rotation: data.rotation
+                        }), ws);
+                    }
+                }
+                break;
+        }
+    });
+
+    ws.on('close', () => {
+        if (currentRoom) {
+            const player = currentRoom.players.get(ws);
+            if (player) {
+                currentRoom.broadcast(JSON.stringify({
+                    type: 'player_left',
+                    username: player.username
+                }));
+                currentRoom.removePlayer(ws);
+            }
+        }
+    });
+});
+
+// Handle errors
 wss.on('error', (error) => {
     console.error('WebSocket Server Error:', error);
 });
 
-wss.on('connection', (ws, req) => {
-    console.log('New connection from:', req.socket.remoteAddress);
-    let playerUsername = '';
-
-    ws.on('message', (message) => {
-        try {
-            const data = JSON.parse(message);
-
-            switch (data.type) {
-                case 'join':
-                    // Handle new player joining
-                    playerUsername = data.username;
-                    
-                    // Check if room is full
-                    if (players.size >= MAX_PLAYERS) {
-                        ws.send(JSON.stringify({
-                            type: 'error',
-                            message: 'Room is full (20 players maximum)'
-                        }));
-                        ws.close();
-                        return;
-                    }
-
-                    // Add new player with initial activity timestamp
-                    players.set(playerUsername, {
-                        ws,
-                        position: [0, 10, 0],
-                        rotation: [0, 0, 0],
-                        username: playerUsername,
-                        lastActivity: Date.now()
-                    });
-
-                    // Send current players to new player
-                    const existingPlayers = Array.from(players.values())
-                        .filter(p => p.username !== playerUsername)
-                        .map(p => ({
-                            username: p.username,
-                            position: p.position,
-                            rotation: p.rotation
-                        }));
-
-                    ws.send(JSON.stringify({
-                        type: 'players',
-                        players: existingPlayers
-                    }));
-
-                    // Notify others about new player
-                    broadcast({
-                        type: 'playerJoined',
-                        player: {
-                            username: playerUsername,
-                            position: [0, 10, 0],
-                            rotation: [0, 0, 0]
-                        }
-                    }, ws);
-
-                    console.log(`Player joined: ${playerUsername} (${players.size} players online)`);
-                    break;
-
-                case 'position':
-                    // Update player position and rotation
-                    if (players.has(playerUsername)) {
-                        const player = players.get(playerUsername);
-                        player.position = data.position;
-                        player.rotation = data.rotation;
-                        player.lastActivity = Date.now(); // Update last activity time
-
-                        // Broadcast position update to other players
-                        broadcast({
-                            type: 'playerMoved',
-                            username: playerUsername,
-                            position: data.position,
-                            rotation: data.rotation
-                        }, ws);
-                    }
-                    break;
-
-                case 'playerLeft':
-                    if (playerUsername && players.has(playerUsername)) {
-                        players.delete(playerUsername);
-                        
-                        // Broadcast to ALL clients, including the sender
-                        broadcast({
-                            type: 'playerLeft',
-                            username: playerUsername
-                        });
-
-                        console.log(`Player left: ${playerUsername} (${players.size} players online)`);
-                        playerUsername = ''; // Clear the username
-                    }
-                    break;
-            }
-        } catch (error) {
-            console.error('Error processing message:', error);
-        }
-    });
-
-    ws.on('error', (error) => {
-        console.error(`WebSocket Error for ${playerUsername}:`, error);
-    });
-
-    ws.on('close', () => {
-        if (playerUsername && players.has(playerUsername)) {
-            players.delete(playerUsername);
-            
-            // Broadcast to ALL clients that the player has left
-            broadcast({
-                type: 'playerLeft',
-                username: playerUsername
-            });
-
-            console.log(`Player disconnected: ${playerUsername} (${players.size} players online)`);
-        }
-    });
-});
-
-// Broadcast message to all clients except sender
-function broadcast(message, exclude = null) {
-    const messageStr = JSON.stringify(message);
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN && (exclude === null || client !== exclude)) {
-            client.send(messageStr);
-        }
-    });
-}
-
-// Start server
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
 }); 

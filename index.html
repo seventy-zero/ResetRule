@@ -337,33 +337,46 @@
         const MAX_RECONNECT_ATTEMPTS = 5;
 
         function setupWebSocket() {
-            if (ws) {
-                ws.close();
-            }
-
-            ws = new WebSocket(getWebSocketUrl());
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}`;
+            ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
                 console.log('Connected to server');
-                wsReconnectAttempts = 0;
-                
-                if (gameStarted && playerUsername) {
-                    ws.send(JSON.stringify({
-                        type: 'join',
-                        username: playerUsername
-                    }));
-                }
+                // Send join message with username
+                ws.send(JSON.stringify({
+                    type: 'join',
+                    username: playerUsername
+                }));
             };
 
-            ws.onclose = () => {
-                console.log('Disconnected from server');
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
                 
-                if (wsReconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                    wsReconnectAttempts++;
-                    console.log(`Attempting to reconnect (${wsReconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
-                    setTimeout(setupWebSocket, 3000);
-                } else {
-                    alert('Connection to server lost. Please refresh the page.');
+                switch (data.type) {
+                    case 'room_info':
+                        console.log(`Joined room ${data.roomId} with ${data.playerCount} players`);
+                        document.getElementById('roomInfo').textContent = `Room ${data.roomId} - Players: ${data.playerCount}/20`;
+                        break;
+
+                    case 'player_joined':
+                        console.log('Player joined:', data.username);
+                        if (data.username !== playerUsername) {
+                            createPlayerModel(data.username);
+                            updatePlayerPosition(data.username, data.position, data.rotation);
+                        }
+                        break;
+
+                    case 'position':
+                        if (data.username !== playerUsername) {
+                            updatePlayerPosition(data.username, data.position, data.rotation);
+                        }
+                        break;
+
+                    case 'player_left':
+                        console.log('Player left:', data.username);
+                        removePlayer(data.username);
+                        break;
                 }
             };
 
@@ -371,46 +384,25 @@
                 console.error('WebSocket error:', error);
             };
 
-            // Handle incoming messages
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    switch (data.type) {
-                        case 'error':
-                            alert(data.message);
-                            break;
-
-                        case 'players':
-                            data.players.forEach(player => {
-                                if (player.username !== playerUsername) {
-                                    createPlayerModel(player);
-                                }
-                            });
-                            break;
-
-                        case 'playerJoined':
-                            if (data.player.username !== playerUsername) {
-                                createPlayerModel(data.player);
-                                console.log(`Player joined: ${data.player.username}`);
-                            }
-                            break;
-
-                        case 'playerMoved':
-                            if (data.username !== playerUsername) {
-                                updatePlayerPosition(data);
-                            }
-                            break;
-
-                        case 'playerLeft':
-                            removePlayer(data.username);
-                            console.log(`Player left: ${data.username}`);
-                            break;
-                    }
-                } catch (error) {
-                    console.error('Error processing message:', error);
-                }
+            ws.onclose = () => {
+                console.log('Disconnected from server');
+                // Attempt to reconnect after a delay
+                setTimeout(setupWebSocket, 3000);
             };
         }
+
+        // Add room info display to the UI
+        const roomInfoDiv = document.createElement('div');
+        roomInfoDiv.id = 'roomInfo';
+        roomInfoDiv.style.position = 'fixed';
+        roomInfoDiv.style.top = '10px';
+        roomInfoDiv.style.right = '10px';
+        roomInfoDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        roomInfoDiv.style.color = 'white';
+        roomInfoDiv.style.padding = '10px';
+        roomInfoDiv.style.borderRadius = '5px';
+        roomInfoDiv.style.zIndex = '1000';
+        document.body.appendChild(roomInfoDiv);
 
         // Scene setup with error handling
         try {
