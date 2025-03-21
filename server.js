@@ -1,7 +1,6 @@
 const express = require('express');
 const WebSocket = require('ws');
 const path = require('path');
-const { generateWorld } = require('./worldGenerator');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -49,7 +48,6 @@ class GameRoom {
         this.players = new Map();
         this.isActive = true;
         this.lastActivity = Date.now();
-        this.world = generateWorld(); // Generate world for this room
     }
 
     addPlayer(ws, username) {
@@ -60,12 +58,6 @@ class GameRoom {
             lastActivity: Date.now()
         });
         this.lastActivity = Date.now();
-        
-        // Send world data to the new player
-        ws.send(JSON.stringify({
-            type: 'world_data',
-            world: this.world
-        }));
         
         // Broadcast updated player count to all players in the room
         this.broadcastRoomInfo();
@@ -157,7 +149,7 @@ setInterval(() => {
     
     // Remove inactive rooms
     rooms = rooms.filter(room => room.isActive);
-}, 10000);
+}, 10000); // Check every 10 seconds
 
 wss.on('connection', (ws) => {
     let currentRoom = null;
@@ -170,6 +162,14 @@ wss.on('connection', (ws) => {
                 case 'join':
                     currentRoom = findAvailableRoom();
                     currentRoom.addPlayer(ws, data.username);
+                    
+                    // Send initial room information to the new player
+                    ws.send(JSON.stringify({
+                        type: 'room_info',
+                        id: currentRoom.id,
+                        name: currentRoom.name,
+                        playerCount: currentRoom.players.size
+                    }));
 
                     // Send existing players to the new player
                     currentRoom.players.forEach((playerData, playerWs) => {
