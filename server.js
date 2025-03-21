@@ -48,6 +48,55 @@ class GameRoom {
         this.players = new Map();
         this.isActive = true;
         this.lastActivity = Date.now();
+        this.towers = this.generateTowers();
+    }
+
+    generateTowers() {
+        const towers = [];
+        const numTowers = 50; // Number of towers to generate
+        const minDistance = 100; // Minimum distance between towers
+        const maxDistance = 2000; // Maximum distance from center
+        const minHeight = 100; // Minimum tower height
+        const maxHeight = 400; // Maximum tower height
+
+        for (let i = 0; i < numTowers; i++) {
+            let position;
+            let attempts = 0;
+            const maxAttempts = 10;
+
+            do {
+                // Generate random position
+                const angle = Math.random() * Math.PI * 2;
+                const distance = minDistance + Math.random() * (maxDistance - minDistance);
+                position = {
+                    x: Math.cos(angle) * distance,
+                    z: Math.sin(angle) * distance
+                };
+                attempts++;
+            } while (attempts < maxAttempts && this.isPositionTooClose(position, towers, minDistance));
+
+            // Generate random height and type
+            const height = minHeight + Math.random() * (maxHeight - minHeight);
+            const type = Math.floor(Math.random() * 12); // 12 different tower types
+            const baseHeight = Math.random() * 50; // Random base height variation
+
+            towers.push({
+                type,
+                position,
+                height,
+                baseHeight
+            });
+        }
+
+        return towers;
+    }
+
+    isPositionTooClose(newPos, existingTowers, minDistance) {
+        return existingTowers.some(tower => {
+            const dx = newPos.x - tower.position.x;
+            const dz = newPos.z - tower.position.z;
+            return Math.sqrt(dx * dx + dz * dz) < minDistance;
+        });
     }
 
     addPlayer(ws, username) {
@@ -59,6 +108,12 @@ class GameRoom {
             lastActivity: Date.now()
         });
         this.lastActivity = Date.now();
+        
+        // Send world data to the new player
+        ws.send(JSON.stringify({
+            type: 'world_data',
+            towers: this.towers
+        }));
         
         // Broadcast updated player count to all players in the room
         this.broadcastRoomInfo();
