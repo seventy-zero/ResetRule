@@ -769,18 +769,24 @@
 
         // Function to find valid tower position for item
         function findValidTowerPosition() {
+            console.log('Finding valid tower position...');
             const validTowers = towers.filter(tower => {
                 // Check if tower is tall enough
                 const towerHeight = tower.mesh.geometry.parameters.height;
                 return towerHeight > 20; // Minimum tower height for item placement
             });
+            console.log(`Found ${validTowers.length} valid towers (height > 20)`);
 
-            if (validTowers.length === 0) return null;
+            if (validTowers.length === 0) {
+                console.warn('No valid towers found for item placement');
+                return null;
+            }
 
             // Try each tower until we find a valid position
             for (const tower of validTowers) {
                 const towerHeight = tower.mesh.geometry.parameters.height;
                 const towerPosition = tower.mesh.position;
+                console.log(`Trying tower at position (${towerPosition.x}, ${towerPosition.y}, ${towerPosition.z}) with height ${towerHeight}`);
                 
                 // Try different heights on the tower
                 for (let height = 10; height < towerHeight - 10; height += 20) {
@@ -793,23 +799,28 @@
                     // Check if position is valid (not too close to other items)
                     let isValid = true;
                     for (const item of collectibles.values()) {
-                        if (position.distanceTo(item.position) < MIN_DISTANCE_BETWEEN_ITEMS) {
+                        const distance = position.distanceTo(item.position);
+                        if (distance < MIN_DISTANCE_BETWEEN_ITEMS) {
+                            console.log(`Position too close to existing item (distance: ${distance})`);
                             isValid = false;
                             break;
                         }
                     }
 
                     if (isValid) {
+                        console.log(`Found valid position at (${position.x}, ${position.y}, ${position.z})`);
                         return position;
                     }
                 }
             }
 
+            console.warn('No valid positions found for item placement');
             return null;
         }
 
         // Function to create collectible item
         function createCollectible(id, position, color) {
+            console.log(`Creating collectible ${id} at position (${position.x}, ${position.y}, ${position.z}) with color ${color}`);
             const geometry = new THREE.SphereGeometry(ITEM_RADIUS, 8, 8);
             const material = new THREE.MeshBasicMaterial({ 
                 color: color,
@@ -840,13 +851,16 @@
                 position: position.clone(),
                 color: color
             });
+            console.log(`Collectible ${id} created successfully`);
         }
 
         // Function to initialize collectibles
         function initializeCollectibles() {
             console.log('Initializing collectibles...');
+            console.log(`Total towers: ${towers.length}`);
             let attempts = 0;
             const maxAttempts = 100;
+            let successfulPlacements = 0;
             
             for (let i = 0; i < ITEM_COUNT; i++) {
                 let position;
@@ -857,13 +871,14 @@
                 
                 if (position) {
                     createCollectible(i, position, ITEM_COLORS[i]);
-                    console.log(`Created collectible ${i} at position:`, position);
+                    successfulPlacements++;
+                    console.log(`Successfully placed collectible ${i} (${successfulPlacements}/${ITEM_COUNT})`);
                 } else {
                     console.warn(`Failed to find valid position for collectible ${i} after ${maxAttempts} attempts`);
                 }
             }
             
-            console.log(`Initialized ${collectibles.size} collectibles`);
+            console.log(`Initialized ${successfulPlacements} collectibles out of ${ITEM_COUNT} total`);
             updateOrbCounter();
         }
 
