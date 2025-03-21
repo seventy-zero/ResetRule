@@ -215,30 +215,40 @@
                 this.mesh = mesh;
                 this.targetPosition = new THREE.Vector3();
                 this.targetRotation = new THREE.Vector3();
+                this.currentPosition = new THREE.Vector3();
+                this.currentRotation = new THREE.Vector3();
                 this.lastUpdateTime = Date.now();
+                this.interpolationSpeed = 0.15; // Base interpolation speed
+                this.positionThreshold = 10; // Distance threshold for position snapping
             }
 
             update(deltaTime) {
                 if (!this.mesh) return;
+
+                const timeSinceUpdate = (Date.now() - this.lastUpdateTime) / 1000; // Convert to seconds
                 
-                // Smoothly interpolate position
-                this.mesh.position.lerp(this.targetPosition, INTERPOLATION_SPEED);
+                // Adjust interpolation speed based on update frequency and distance
+                const distanceToTarget = this.currentPosition.distanceTo(this.targetPosition);
+                let currentSpeed = this.interpolationSpeed;
                 
-                // Smoothly interpolate rotation
-                this.mesh.rotation.x = THREE.MathUtils.lerp(
-                    this.mesh.rotation.x,
-                    this.targetRotation.x,
-                    INTERPOLATION_SPEED
-                );
-                this.mesh.rotation.y = THREE.MathUtils.lerp(
-                    this.mesh.rotation.y,
-                    this.targetRotation.y,
-                    INTERPOLATION_SPEED
-                );
-                this.mesh.rotation.z = THREE.MathUtils.lerp(
-                    this.mesh.rotation.z,
-                    this.targetRotation.z,
-                    INTERPOLATION_SPEED
+                // Snap to position if too far away or haven't received updates in a while
+                if (distanceToTarget > this.positionThreshold || timeSinceUpdate > 1) {
+                    this.currentPosition.copy(this.targetPosition);
+                    this.currentRotation.copy(this.targetRotation);
+                } else {
+                    // Smoothly interpolate position with dynamic speed
+                    currentSpeed = Math.min(deltaTime * 10, 1); // Limit maximum speed
+                    
+                    this.currentPosition.lerp(this.targetPosition, currentSpeed);
+                    this.currentRotation.lerp(this.targetRotation, currentSpeed);
+                }
+                
+                // Update mesh position and rotation
+                this.mesh.position.copy(this.currentPosition);
+                this.mesh.rotation.set(
+                    this.currentRotation.x,
+                    this.currentRotation.y,
+                    this.currentRotation.z
                 );
             }
         }
@@ -305,6 +315,11 @@
                     } else {
                         playerState.targetPosition.set(position.x, position.y, position.z);
                     }
+                    
+                    // Initialize current position if it's the first update
+                    if (playerState.currentPosition.lengthSq() === 0) {
+                        playerState.currentPosition.copy(playerState.targetPosition);
+                    }
                 }
                 
                 // Update target rotation
@@ -314,15 +329,12 @@
                     } else {
                         playerState.targetRotation.set(rotation.x, rotation.y, rotation.z);
                     }
+                    
+                    // Initialize current rotation if it's the first update
+                    if (playerState.currentRotation.lengthSq() === 0) {
+                        playerState.currentRotation.copy(playerState.targetRotation);
+                    }
                 }
-                
-                // Update mesh position and rotation immediately
-                playerState.mesh.position.copy(playerState.targetPosition);
-                playerState.mesh.rotation.set(
-                    playerState.targetRotation.x,
-                    playerState.targetRotation.y,
-                    playerState.targetRotation.z
-                );
                 
                 playerState.lastUpdateTime = Date.now();
             } else {
@@ -379,14 +391,14 @@
 
                     case 'player_joined':
                         console.log('Player joined:', data.username);
-                        if (data.username !== playerUsername) {
+                        if (data.username !== playerUsername && gameStarted) {
                             createPlayerModel(data.username);
                             updatePlayerPosition(data.username, data.position, data.rotation);
                         }
                         break;
 
                     case 'position':
-                        if (data.username !== playerUsername) {
+                        if (data.username !== playerUsername && gameStarted) {
                             updatePlayerPosition(data.username, data.position, data.rotation);
                         }
                         break;
@@ -1011,47 +1023,44 @@
                     instructions.classList.remove('hidden');
                 }
                 
-                // When unlocking (pressing escape), clear the player state
-                if (gameStarted && playerUsername) {
-                    // Notify server that player is leaving
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'playerLeft',
-                            username: playerUsername
-                        }));
-                    }
-                    
-                    // Remove our own player model if it exists
-                    removePlayer(playerUsername);
-                    
-                    // Clear all other player models
-                    playerStates.forEach((playerState, username) => {
-                        removePlayer(username);
-                    });
-                    
-                    // Reset game state
-                    gameStarted = false;
-                    playerUsername = '';
-                    
-                    // Reset position
-                    camera.position.set(0, playerHeight, 0);
-                    camera.rotation.set(0, 0, 0);
-                    velocity.set(0, 0, 0);
-                    flingVelocity.set(0, 0, 0);
-                    verticalVelocity = 0;
-                    isFlinging = false;
-                    isGrounded = true;
-                    
-                    // Show instructions again
-                    instructions.classList.remove('hidden');
-                    usernameInput.value = '';
-                    startButton.disabled = true;
-                    
-                    // Clear any mobile controls if they exist
-                    if (isMobile) {
-                        document.querySelector('.mobile-controls').style.display = 'none';
-                        document.getElementById('flingButton').style.display = 'none';
-                    }
+                // Notify server that player is leaving
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'player_left',
+                        username: playerUsername
+                    }));
+                }
+                
+                // Remove our own player model if it exists
+                removePlayer(playerUsername);
+                
+                // Clear all other player models
+                playerStates.forEach((playerState, username) => {
+                    removePlayer(username);
+                });
+                
+                // Reset game state
+                gameStarted = false;
+                playerUsername = '';
+                
+                // Reset position
+                camera.position.set(0, playerHeight, 0);
+                camera.rotation.set(0, 0, 0);
+                velocity.set(0, 0, 0);
+                flingVelocity.set(0, 0, 0);
+                verticalVelocity = 0;
+                isFlinging = false;
+                isGrounded = true;
+                
+                // Show instructions again
+                instructions.classList.remove('hidden');
+                usernameInput.value = '';
+                startButton.disabled = true;
+                
+                // Clear any mobile controls if they exist
+                if (isMobile) {
+                    document.querySelector('.mobile-controls').style.display = 'none';
+                    document.getElementById('flingButton').style.display = 'none';
                 }
             });
 
