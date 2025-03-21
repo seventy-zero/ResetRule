@@ -347,6 +347,7 @@
         const usernameInput = document.getElementById('username');
         const startButton = document.getElementById('startButton');
         let playerUsername = '';
+        let gameStarted = false;
 
         // Enable/disable start button based on username input
         usernameInput.addEventListener('input', function() {
@@ -356,18 +357,178 @@
         startButton.addEventListener('click', function() {
             if (usernameInput.value.trim()) {
                 playerUsername = usernameInput.value.trim();
+                gameStarted = true;
                 controls.lock();
             }
         });
 
         controls.addEventListener('lock', function() {
             instructions.classList.add('hidden');
-            console.log('Player started:', playerUsername); // For debugging
+            console.log('Player started:', playerUsername);
+            if (isMobile) {
+                document.querySelector('.mobile-controls').style.opacity = '1';
+                document.getElementById('flingButton').style.opacity = '1';
+            }
         });
 
         controls.addEventListener('unlock', function() {
-            instructions.classList.remove('hidden');
+            if (gameStarted) {
+                instructions.classList.remove('hidden');
+                if (isMobile) {
+                    document.querySelector('.mobile-controls').style.opacity = '0.5';
+                    document.getElementById('flingButton').style.opacity = '0.5';
+                }
+            }
         });
+
+        // Desktop controls
+        if (!isMobile) {
+            // Movement controls
+            const onKeyDown = function(event) {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW':
+                        moveForward = true;
+                        break;
+                    case 'ArrowDown':
+                    case 'KeyS':
+                        moveBackward = true;
+                        break;
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        moveLeft = true;
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        moveRight = true;
+                        break;
+                    case 'KeyE':
+                        showLine = true;
+                        break;
+                }
+            };
+
+            const onKeyUp = function(event) {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW':
+                        moveForward = false;
+                        break;
+                    case 'ArrowDown':
+                    case 'KeyS':
+                        moveBackward = false;
+                        break;
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        moveLeft = false;
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        moveRight = false;
+                        break;
+                    case 'KeyE':
+                        showLine = false;
+                        break;
+                }
+            };
+
+            // Mouse controls for line visibility
+            document.addEventListener('mousedown', (event) => {
+                if (event.button === 0) { // Left mouse button
+                    showLine = true;
+                }
+            });
+
+            document.addEventListener('mouseup', (event) => {
+                if (event.button === 0) { // Left mouse button
+                    showLine = false;
+                }
+            });
+
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+        }
+
+        // Mobile controls
+        if (isMobile) {
+            document.getElementById('mobileInstructions').style.display = 'block';
+            
+            // Initialize joysticks
+            const leftJoystick = nipplejs.create({
+                zone: document.getElementById('leftJoystick'),
+                mode: 'static',
+                position: { left: '60px', bottom: '60px' },
+                color: 'white',
+                size: 120,
+                multitouch: true
+            });
+
+            const rightJoystick = nipplejs.create({
+                zone: document.getElementById('rightJoystick'),
+                mode: 'static',
+                position: { right: '60px', bottom: '60px' },
+                color: 'white',
+                size: 120,
+                multitouch: true
+            });
+
+            // Movement joystick handling
+            leftJoystick.on('move', (evt, data) => {
+                const forward = data.vector.y;
+                const right = data.vector.x;
+                
+                moveForward = forward > 0;
+                moveBackward = forward < 0;
+                moveRight = right > 0;
+                moveLeft = right < 0;
+            });
+
+            leftJoystick.on('end', () => {
+                moveForward = false;
+                moveBackward = false;
+                moveRight = false;
+                moveLeft = false;
+            });
+
+            // Look joystick handling
+            let lookSpeed = 0.002;
+            rightJoystick.on('move', (evt, data) => {
+                if (controls.isLocked) {
+                    camera.rotation.y -= data.vector.x * lookSpeed;
+                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+                        camera.rotation.x - data.vector.y * lookSpeed));
+                }
+            });
+
+            // Fling button handling
+            const flingButton = document.getElementById('flingButton');
+            
+            flingButton.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                showLine = true;
+                flingButton.classList.add('active');
+            });
+
+            flingButton.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                showLine = false;
+                flingButton.classList.remove('active');
+            });
+
+            // Prevent default touch actions
+            document.addEventListener('touchmove', (e) => {
+                if (e.target === document.body) {
+                    e.preventDefault();
+                }
+            }, { passive: false });
+
+            // Handle mobile pointer lock
+            document.addEventListener('touchstart', function(e) {
+                if (!controls.isLocked && gameStarted && e.target === renderer.domElement) {
+                    controls.lock();
+                }
+            });
+        }
 
         // Create the floor
         const size = 6000;
@@ -735,90 +896,6 @@
         // Mobile detection
         const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
         
-        if (isMobile) {
-            document.getElementById('mobileInstructions').style.display = 'block';
-            
-            // Initialize joysticks
-            const leftJoystick = nipplejs.create({
-                zone: document.getElementById('leftJoystick'),
-                mode: 'static',
-                position: { left: '60px', bottom: '60px' },
-                color: 'white',
-                size: 120
-            });
-
-            const rightJoystick = nipplejs.create({
-                zone: document.getElementById('rightJoystick'),
-                mode: 'static',
-                position: { right: '60px', bottom: '60px' },
-                color: 'white',
-                size: 120
-            });
-
-            // Movement joystick handling
-            leftJoystick.on('move', (evt, data) => {
-                const forward = data.vector.y;
-                const right = data.vector.x;
-                
-                moveForward = forward > 0;
-                moveBackward = forward < 0;
-                moveRight = right > 0;
-                moveLeft = right < 0;
-            });
-
-            leftJoystick.on('end', () => {
-                moveForward = false;
-                moveBackward = false;
-                moveRight = false;
-                moveLeft = false;
-            });
-
-            // Look joystick handling
-            let lookSpeed = 0.002;
-            rightJoystick.on('move', (evt, data) => {
-                if (controls.isLocked) {
-                    camera.rotation.y -= data.vector.x * lookSpeed;
-                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
-                        camera.rotation.x - data.vector.y * lookSpeed));
-                }
-            });
-
-            // Fling button handling
-            const flingButton = document.getElementById('flingButton');
-            
-            flingButton.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                showLine = true;
-                flingButton.classList.add('active');
-            });
-
-            flingButton.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                showLine = false;
-                flingButton.classList.remove('active');
-            });
-
-            // Prevent default touch actions
-            document.addEventListener('touchmove', (e) => {
-                e.preventDefault();
-            }, { passive: false });
-
-            // Modify pointer lock for mobile
-            controls.addEventListener('lock', function() {
-                instructions.classList.add('hidden');
-                document.querySelector('.mobile-controls').style.opacity = '1';
-                flingButton.style.opacity = '1';
-            });
-
-            controls.addEventListener('unlock', function() {
-                if (gameStarted) {
-                    instructions.classList.remove('hidden');
-                    document.querySelector('.mobile-controls').style.opacity = '0.5';
-                    flingButton.style.opacity = '0.5';
-                }
-            });
-        }
-
         // Animation loop with collision detection, star rotation, and nebula animation
         function animate() {
             requestAnimationFrame(animate);
