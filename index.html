@@ -1147,33 +1147,13 @@
                     // Update camera rotation
                     const lookSpeed = 0.05;
                     
-                    // Create a quaternion for the current rotation
-                    const quaternion = new THREE.Quaternion();
-                    quaternion.setFromEuler(camera.rotation);
-                    
-                    // Create rotation quaternions for horizontal and vertical movement
-                    const horizontalQuat = new THREE.Quaternion();
-                    horizontalQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -(joystickX / maxDistance) * lookSpeed);
-                    
-                    const verticalQuat = new THREE.Quaternion();
-                    verticalQuat.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -(joystickY / maxDistance) * lookSpeed);
-                    
-                    // Apply rotations in sequence
-                    quaternion.multiply(horizontalQuat);
-                    quaternion.multiply(verticalQuat);
-                    
-                    // Convert back to Euler angles
-                    const newRotation = new THREE.Euler();
-                    newRotation.setFromQuaternion(quaternion);
-                    
-                    // Clamp vertical rotation
-                    newRotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, newRotation.x));
+                    // Direct mapping of joystick to camera rotation
+                    camera.rotation.y -= (joystickX / maxDistance) * lookSpeed;
+                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+                        camera.rotation.x - (joystickY / maxDistance) * lookSpeed));
                     
                     // Force roll to 0
-                    newRotation.z = 0;
-                    
-                    // Apply the new rotation
-                    camera.rotation.copy(newRotation);
+                    camera.rotation.z = 0;
                     
                     console.log('Touch moved:', joystickX, joystickY);
                 }, { passive: false });
