@@ -1,126 +1,99 @@
 const express = require('express');
-const http = require('http');
-const WebSocket = require('ws');
+const { WebSocketServer } = require('ws');
 const path = require('path');
-
 const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const port = process.env.PORT || 3000;
 
-// Serve static files from the current directory
+// Serve static files from the root directory
 app.use(express.static(__dirname));
 
-// Explicitly handle the root route
+// Serve index.html for the root route
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Handle 404 errors
-app.use((req, res) => {
-    res.status(404).sendFile(path.join(__dirname, 'index.html'));
+// Start the server
+const server = app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
 });
+
+// Create WebSocket server
+const wss = new WebSocketServer({ server });
 
 // Store connected players
 const players = new Map();
 
-// Generate random spawn position
-function getRandomSpawnPosition() {
-    const radius = 2000; // Smaller than the map size to ensure spawning in playable area
-    const angle = Math.random() * Math.PI * 2;
-    return {
-        x: Math.cos(angle) * radius,
-        y: 10, // Starting height
-        z: Math.sin(angle) * radius
-    };
-}
-
-// Handle WebSocket connections
+// WebSocket connection handling
 wss.on('connection', (ws) => {
-    let playerId = null;
+    console.log('New client connected');
+    let playerData = null;
 
     ws.on('message', (message) => {
-        const data = JSON.parse(message);
-
-        switch (data.type) {
-            case 'join':
-                // Generate unique player ID and initial position
-                playerId = Math.random().toString(36).substr(2, 9);
-                const spawnPosition = getRandomSpawnPosition();
-                
-                // Store player data
-                players.set(playerId, {
-                    id: playerId,
-                    username: data.username,
-                    position: spawnPosition,
-                    rotation: { x: 0, y: 0, z: 0 },
-                    ws: ws
-                });
-
-                // Send initial state to new player
-                ws.send(JSON.stringify({
-                    type: 'init',
-                    id: playerId,
-                    position: spawnPosition,
-                    players: Array.from(players.entries())
-                        .filter(([id]) => id !== playerId)
-                        .map(([_, player]) => ({
-                            id: player.id,
-                            username: player.username,
-                            position: player.position,
-                            rotation: player.rotation
-                        }))
-                }));
-
-                // Broadcast new player to others
-                broadcast({
-                    type: 'playerJoined',
-                    id: playerId,
-                    username: data.username,
-                    position: spawnPosition
-                }, playerId);
-                break;
-
-            case 'update':
-                if (playerId && players.has(playerId)) {
-                    const player = players.get(playerId);
-                    player.position = data.position;
-                    player.rotation = data.rotation;
-
-                    // Broadcast position update to other players
+        try {
+            const data = JSON.parse(message);
+            
+            switch (data.type) {
+                case 'join':
+                    // Store player data
+                    playerData = {
+                        username: data.username,
+                        position: { x: 0, y: 10, z: 0 },
+                        rotation: { x: 0, y: 0, z: 0 }
+                    };
+                    players.set(ws, playerData);
+                    
+                    // Send current players to new player
+                    const existingPlayers = Array.from(players.values());
+                    ws.send(JSON.stringify({
+                        type: 'players',
+                        players: existingPlayers
+                    }));
+                    
+                    // Broadcast new player to others
                     broadcast({
-                        type: 'playerMoved',
-                        id: playerId,
-                        position: data.position,
-                        rotation: data.rotation
-                    }, playerId);
-                }
-                break;
+                        type: 'playerJoined',
+                        player: playerData
+                    }, ws);
+                    break;
+
+                case 'position':
+                    if (playerData) {
+                        playerData.position = data.position;
+                        playerData.rotation = data.rotation;
+                        
+                        // Broadcast position update
+                        broadcast({
+                            type: 'playerMoved',
+                            username: playerData.username,
+                            position: data.position,
+                            rotation: data.rotation
+                        }, ws);
+                    }
+                    break;
+            }
+        } catch (error) {
+            console.error('Error processing message:', error);
         }
     });
 
     ws.on('close', () => {
-        if (playerId) {
-            // Remove player and notify others
-            players.delete(playerId);
+        if (playerData) {
+            // Broadcast player left
             broadcast({
                 type: 'playerLeft',
-                id: playerId
+                username: playerData.username
             });
+            players.delete(ws);
         }
+        console.log('Client disconnected');
     });
 });
 
-// Broadcast message to all clients except sender
-function broadcast(message, excludeId = null) {
-    players.forEach((player, id) => {
-        if (id !== excludeId && player.ws.readyState === WebSocket.OPEN) {
-            player.ws.send(JSON.stringify(message));
+// Broadcast to all clients except sender
+function broadcast(message, sender = null) {
+    wss.clients.forEach((client) => {
+        if (client !== sender && client.readyState === 1) {
+            client.send(JSON.stringify(message));
         }
     });
-}
-
-// Start server
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-}); 
+} 
