@@ -5,16 +5,34 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ 
+    server,
+    clientTracking: true,
+    // Add error handling for connections
+    handleProtocols: (protocols, req) => {
+        return protocols[0];
+    }
+});
 
 // Serve static files from the current directory
 app.use(express.static(__dirname));
+
+// Add a health check endpoint for Railway
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
 
 // Store connected players
 const players = new Map();
 const MAX_PLAYERS = 20;
 
-wss.on('connection', (ws) => {
+// Handle WebSocket errors
+wss.on('error', (error) => {
+    console.error('WebSocket Server Error:', error);
+});
+
+wss.on('connection', (ws, req) => {
+    console.log('New connection from:', req.socket.remoteAddress);
     let playerUsername = '';
 
     ws.on('message', (message) => {
@@ -93,6 +111,10 @@ wss.on('connection', (ws) => {
         }
     });
 
+    ws.on('error', (error) => {
+        console.error(`WebSocket Error for ${playerUsername}:`, error);
+    });
+
     ws.on('close', () => {
         if (playerUsername && players.has(playerUsername)) {
             players.delete(playerUsername);
@@ -120,7 +142,6 @@ function broadcast(message, exclude) {
 
 // Start server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
 }); 
-} 

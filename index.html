@@ -1228,23 +1228,58 @@
             }
             animate();
 
-            // WebSocket setup
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}`;
-            const ws = new WebSocket(wsUrl);
-            
-            ws.onopen = () => {
-                console.log('Connected to server');
+            // WebSocket setup with Railway support
+            const getWebSocketUrl = () => {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                // Check if we're running on Railway
+                if (window.location.hostname.includes('.railway.app')) {
+                    return `${protocol}//${window.location.host}`;
+                }
+                // Local development
+                return 'ws://localhost:3000';
             };
 
-            ws.onclose = () => {
-                console.log('Disconnected from server');
-                alert('Connection to server lost. Please refresh the page.');
-            };
+            const ws = new WebSocket(getWebSocketUrl());
 
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
+            let wsReconnectAttempts = 0;
+            const MAX_RECONNECT_ATTEMPTS = 5;
+
+            function setupWebSocket() {
+                ws.onopen = () => {
+                    console.log('Connected to server');
+                    wsReconnectAttempts = 0;
+                    
+                    // If game is already started, rejoin
+                    if (gameStarted && playerUsername) {
+                        ws.send(JSON.stringify({
+                            type: 'join',
+                            username: playerUsername
+                        }));
+                    }
+                };
+
+                ws.onclose = () => {
+                    console.log('Disconnected from server');
+                    
+                    // Attempt to reconnect
+                    if (wsReconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                        wsReconnectAttempts++;
+                        console.log(`Attempting to reconnect (${wsReconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+                        setTimeout(() => {
+                            ws = new WebSocket(getWebSocketUrl());
+                            setupWebSocket();
+                        }, 3000);
+                    } else {
+                        alert('Connection to server lost. Please refresh the page.');
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                };
+            }
+
+            setupWebSocket();
 
             // Handle incoming messages
             ws.onmessage = (event) => {
