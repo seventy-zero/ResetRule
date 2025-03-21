@@ -68,51 +68,49 @@
         .mobile-controls {
             display: none;
             position: fixed;
-            bottom: 20px;
-            left: 20px;
-            right: 20px;
-            height: 120px;
-            pointer-events: auto;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 200px;
+            pointer-events: none;
             z-index: 1000;
-            touch-action: none;
         }
-        .joystick-zone {
+        .touch-area {
             position: absolute;
-            width: 120px;
-            height: 120px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 60px;
+            width: 100%;
+            height: 100%;
             pointer-events: auto;
-            z-index: 1000;
             touch-action: none;
         }
-        #leftJoystick {
+        #leftTouchArea {
             left: 0;
             bottom: 0;
+            width: 50%;
+            height: 100%;
         }
-        #rightJoystick {
+        #rightTouchArea {
             right: 0;
             bottom: 0;
+            width: 50%;
+            height: 100%;
         }
         #flingButton {
             display: none;
             position: fixed;
-            bottom: 160px;
-            left: 40px;
-            width: 60px;
-            height: 60px;
+            bottom: 20px;
+            left: 20px;
+            width: 80px;
+            height: 80px;
             background: rgba(76, 175, 80, 0.6);
             border: 2px solid rgba(255, 255, 255, 0.8);
             border-radius: 50%;
             color: white;
-            font-size: 24px;
-            line-height: 60px;
+            font-size: 32px;
+            line-height: 80px;
             text-align: center;
             pointer-events: auto;
-            cursor: pointer;
-            -webkit-tap-highlight-color: transparent;
-            z-index: 1000;
             touch-action: none;
+            z-index: 1001;
         }
         #flingButton.active {
             background: rgba(76, 175, 80, 0.9);
@@ -150,8 +148,8 @@
     
     <!-- Mobile Controls -->
     <div class="mobile-controls">
-        <div id="leftJoystick" class="joystick-zone"></div>
-        <div id="rightJoystick" class="joystick-zone"></div>
+        <div id="leftTouchArea" class="touch-area"></div>
+        <div id="rightTouchArea" class="touch-area"></div>
     </div>
     <div id="flingButton">⚡</div>
 
@@ -1069,190 +1067,110 @@
             function initializeMobileControls() {
                 console.log('Initializing mobile controls');
                 
-                // Clean up existing joysticks if they exist
-                if (window.leftJoystick) {
-                    window.leftJoystick.destroy();
-                }
-                if (window.rightJoystick) {
-                    window.rightJoystick.destroy();
-                }
-
-                // Create new joysticks with improved settings
-                window.leftJoystick = nipplejs.create({
-                    zone: document.getElementById('leftJoystick'),
-                    mode: 'static',
-                    position: { left: '60px', bottom: '60px' },
-                    color: 'white',
-                    size: 120,
-                    multitouch: true,
-                    maxNumberOfNipples: 2,
-                    dataOnly: false,
-                    lockX: false,
-                    lockY: false,
-                    fadeTime: 0,
-                    dynamicPage: true,
-                    follow: true
-                });
-
-                window.rightJoystick = nipplejs.create({
-                    zone: document.getElementById('rightJoystick'),
-                    mode: 'static',
-                    position: { right: '60px', bottom: '60px' },
-                    color: 'white',
-                    size: 120,
-                    multitouch: true,
-                    maxNumberOfNipples: 2,
-                    dataOnly: false,
-                    lockX: false,
-                    lockY: false,
-                    fadeTime: 0,
-                    dynamicPage: true,
-                    follow: true
-                });
-
-                // Movement joystick handling with improved sensitivity
-                window.leftJoystick.on('move', function(evt, data) {
-                    if (!data.vector) return;
-                    
-                    // Get the vector data from the correct property
-                    const forward = -data.vector.y; // Invert Y for correct forward/back
-                    const right = data.vector.x;
-                    
-                    // Set movement flags with deadzone
-                    const deadzone = 0.1;
-                    moveForward = forward > deadzone;
-                    moveBackward = forward < -deadzone;
-                    moveLeft = right < -deadzone;
-                    moveRight = right > deadzone;
-                    
-                    // Set velocity directly based on joystick position with increased sensitivity
-                    velocity.z = forward * moveSpeed * 6;
-                    velocity.x = right * moveSpeed * 6;
-                });
-
-                window.leftJoystick.on('end', function() {
+                const leftTouchArea = document.getElementById('leftTouchArea');
+                const rightTouchArea = document.getElementById('rightTouchArea');
+                const flingButton = document.getElementById('flingButton');
+                
+                // Movement controls (left side)
+                let leftTouchStart = null;
+                let leftTouchCurrent = null;
+                
+                leftTouchArea.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    leftTouchStart = e.touches[0];
+                    leftTouchCurrent = e.touches[0];
+                }, { passive: false });
+                
+                leftTouchArea.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    leftTouchCurrent = e.touches[0];
+                    if (leftTouchStart) {
+                        const dx = leftTouchCurrent.clientX - leftTouchStart.clientX;
+                        const dy = leftTouchCurrent.clientY - leftTouchStart.clientY;
+                        
+                        // Calculate movement direction
+                        const angle = Math.atan2(dy, dx);
+                        const magnitude = Math.min(Math.sqrt(dx * dx + dy * dy) / 50, 1);
+                        
+                        // Set movement based on touch direction
+                        moveForward = Math.sin(angle) < -0.5 && magnitude > 0.3;
+                        moveBackward = Math.sin(angle) > 0.5 && magnitude > 0.3;
+                        moveLeft = Math.cos(angle) < -0.5 && magnitude > 0.3;
+                        moveRight = Math.cos(angle) > 0.5 && magnitude > 0.3;
+                        
+                        // Set velocity based on magnitude
+                        velocity.x = Math.cos(angle) * magnitude * moveSpeed * 6;
+                        velocity.z = Math.sin(angle) * magnitude * moveSpeed * 6;
+                    }
+                }, { passive: false });
+                
+                leftTouchArea.addEventListener('touchend', () => {
+                    leftTouchStart = null;
+                    leftTouchCurrent = null;
                     moveForward = false;
                     moveBackward = false;
                     moveLeft = false;
                     moveRight = false;
                     velocity.x = 0;
                     velocity.z = 0;
-                });
-
-                // Look joystick handling with improved sensitivity
-                window.rightJoystick.on('move', function(evt, data) {
-                    if (!data.vector) return;
-                    
-                    // Get the vector data from the correct property
-                    const lookSpeed = 0.05; // Increased sensitivity
-                    camera.rotation.y -= data.vector.x * lookSpeed;
-                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
-                        camera.rotation.x - data.vector.y * lookSpeed));
-                });
-
-                // Fling button handling with improved touch response
-                const flingButton = document.getElementById('flingButton');
+                }, { passive: false });
                 
-                // Remove any existing event listeners
-                flingButton.removeEventListener('touchstart', handleFlingStart);
-                flingButton.removeEventListener('touchend', handleFlingEnd);
+                // Look controls (right side)
+                let rightTouchStart = null;
+                let rightTouchCurrent = null;
                 
-                // Add new event listeners
-                flingButton.addEventListener('touchstart', handleFlingStart, { passive: false });
-                flingButton.addEventListener('touchend', handleFlingEnd, { passive: false });
+                rightTouchArea.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    rightTouchStart = e.touches[0];
+                    rightTouchCurrent = e.touches[0];
+                }, { passive: false });
+                
+                rightTouchArea.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    rightTouchCurrent = e.touches[0];
+                    if (rightTouchStart) {
+                        const dx = rightTouchCurrent.clientX - rightTouchStart.clientX;
+                        const dy = rightTouchCurrent.clientY - rightTouchStart.clientY;
+                        
+                        // Update camera rotation
+                        camera.rotation.y -= dx * 0.005;
+                        camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+                            camera.rotation.x - dy * 0.005));
+                    }
+                }, { passive: false });
+                
+                rightTouchArea.addEventListener('touchend', () => {
+                    rightTouchStart = null;
+                    rightTouchCurrent = null;
+                }, { passive: false });
+                
+                // Fling button
+                flingButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    showLine = true;
+                    flingButton.classList.add('active');
+                }, { passive: false });
+                
+                flingButton.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    showLine = false;
+                    flingButton.classList.remove('active');
+                    if (lineCollisionPoint) {
+                        const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
+                        const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                        const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2);
+                        
+                        flingVelocity.x = flingDirection.x * scaledStrength;
+                        flingVelocity.z = flingDirection.z * scaledStrength;
+                        verticalVelocity = flingDirection.y * scaledStrength + 0.4;
+                        
+                        isFlinging = true;
+                        isGrounded = false;
+                        lineCollisionPoint = null;
+                    }
+                }, { passive: false });
                 
                 console.log('Mobile controls initialized');
-            }
-
-            // Separate handlers for fling button
-            function handleFlingStart(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                showLine = true;
-                this.classList.add('active');
-            }
-
-            function handleFlingEnd(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                showLine = false;
-                this.classList.remove('active');
-                if (lineCollisionPoint) {
-                    // Trigger fling immediately on release if we have a valid target
-                    const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
-                    const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                    const scaledStrength = Math.min(distanceToTarget * 0.07, flingStrength * 1.2);
-                    
-                    flingVelocity.x = flingDirection.x * scaledStrength;
-                    flingVelocity.z = flingDirection.z * scaledStrength;
-                    verticalVelocity = flingDirection.y * scaledStrength + 0.4;
-                    
-                    isFlinging = true;
-                    isGrounded = false;
-                    lineCollisionPoint = null;
-                }
-            }
-
-            // Mobile-specific touch handlers
-            if (isMobile) {
-                // Show mobile instructions immediately
-                document.getElementById('mobileInstructions').style.display = 'block';
-                
-                // Prevent zoom and scroll
-                document.addEventListener('touchmove', function(e) {
-                    if (e.target !== usernameInput) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                    }
-                }, { passive: false });
-
-                document.addEventListener('touchstart', function(e) {
-                    if (e.target !== usernameInput && e.target !== startButton) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                    }
-                }, { passive: false });
-
-                // Prevent pinch zoom
-                document.addEventListener('gesturestart', function(e) {
-                    e.preventDefault();
-                }, { passive: false });
-
-                // Prevent double tap zoom
-                let lastTapTime = 0;
-                document.addEventListener('touchend', function(e) {
-                    const currentTime = new Date().getTime();
-                    const tapLength = currentTime - lastTapTime;
-                    if (tapLength < 500 && tapLength > 0) {
-                        e.preventDefault();
-                    }
-                    lastTapTime = currentTime;
-                }, { passive: false });
-
-                // Initialize mobile controls when the game starts
-                startButton.addEventListener('click', function(event) {
-                    event.preventDefault();
-                    if (usernameInput.value.trim()) {
-                        playerUsername = usernameInput.value.trim();
-                        gameStarted = true;
-                        instructions.classList.add('hidden');
-                        
-                        // Send join message to server
-                        if (ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({
-                                type: 'join',
-                                username: playerUsername
-                            }));
-                        }
-                        
-                        // Show and initialize mobile controls
-                        document.querySelector('.mobile-controls').style.display = 'block';
-                        document.getElementById('flingButton').style.display = 'block';
-                        initializeMobileControls();
-                        
-                        controls.lock();
-                    }
-                });
             }
 
             // Desktop controls
