@@ -270,6 +270,33 @@
         // Add interpolation settings
         const INTERPOLATION_SPEED = 0.15;
 
+        // Add performance optimization settings
+        const PERFORMANCE_SETTINGS = {
+            LOD_DISTANCES: {
+                NEAR: 800,     // Reduced from 1000
+                MEDIUM: 1500,  // Reduced from 2000
+                FAR: 2000      // Reduced from 3000
+            },
+            MAX_VISIBLE_TOWERS: 50,  // Maximum number of towers to render at once
+            STAR_COUNT: 15000,       // Reduced from 30000
+            LARGE_STAR_COUNT: 500,   // Reduced from 1000
+            GRID_DIVISIONS: 200,     // Reduced from 300
+            FAR_GRID_DIVISIONS: 100, // Reduced from 150
+            MID_GRID_DIVISIONS: 150  // Reduced from 225
+        };
+
+        // Add frustum culling
+        const frustum = new THREE.Frustum();
+        const projScreenMatrix = new THREE.Matrix4();
+
+        // Function to check if object is in view
+        function isInView(object) {
+            if (!object) return false;
+            projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+            frustum.setFromProjectionMatrix(projScreenMatrix);
+            return frustum.containsObject(object);
+        }
+
         // Store player states for interpolation
         class PlayerState {
             constructor(username, mesh) {
@@ -1035,9 +1062,10 @@
 
             // Renderer setup
             renderer = new THREE.WebGLRenderer({ 
-                antialias: true,
+                antialias: false,  // Disable antialiasing for better performance
                 powerPreference: "high-performance",
-                alpha: false
+                alpha: false,
+                precision: "mediump"  // Use medium precision for better performance
             });
             
             if (!renderer.capabilities.isWebGL2) {
@@ -1200,42 +1228,43 @@
                 nebulas.push(createNebula(position, scale, rotation));
             }
 
-            // Create the floor
+            // Optimize grid creation
             const size = 6000;
-            const divisions = 300; // Increased from 200 to 300 for much denser main grid
-            const gridHelper = new THREE.GridHelper(size, divisions);
-            gridHelper.material.opacity = 0.75; // Slightly increased opacity
+            const gridHelper = new THREE.GridHelper(size, PERFORMANCE_SETTINGS.GRID_DIVISIONS);
+            gridHelper.material.opacity = 0.75;
             gridHelper.material.transparent = true;
+            gridHelper.material.depthWrite = false;  // Prevent depth writing for better performance
             scene.add(gridHelper);
 
-            // Add a second, larger grid with fewer divisions for distant floor effect
+            // Optimize far grid
             const farSize = 12000;
-            const farDivisions = 150; // Increased from 100 to 150 for denser far grid
-            const farGridHelper = new THREE.GridHelper(farSize, farDivisions);
-            farGridHelper.material.opacity = 0.3; // Slightly increased opacity
+            const farGridHelper = new THREE.GridHelper(farSize, PERFORMANCE_SETTINGS.FAR_GRID_DIVISIONS);
+            farGridHelper.material.opacity = 0.3;
             farGridHelper.material.transparent = true;
+            farGridHelper.material.depthWrite = false;
             scene.add(farGridHelper);
 
-            // Add a medium grid between the main and far grid for smoother transition
+            // Optimize mid grid
             const midSize = 9000;
-            const midDivisions = 225; // Increased from 150 to 225 for denser middle grid
-            const midGridHelper = new THREE.GridHelper(midSize, midDivisions);
-            midGridHelper.material.opacity = 0.5; // Slightly increased opacity
+            const midGridHelper = new THREE.GridHelper(midSize, PERFORMANCE_SETTINGS.MID_GRID_DIVISIONS);
+            midGridHelper.material.opacity = 0.5;
             midGridHelper.material.transparent = true;
+            midGridHelper.material.depthWrite = false;
             scene.add(midGridHelper);
 
-            // Create star field
+            // Optimize star field creation
             function createStars() {
                 const starsGeometry = new THREE.BufferGeometry();
                 const starsMaterial = new THREE.PointsMaterial({
                     color: 0xff6600,
                     size: 2,
-                    sizeAttenuation: false
+                    sizeAttenuation: false,
+                    depthWrite: false  // Prevent depth writing for better performance
                 });
 
                 const starsVertices = [];
-                for (let i = 0; i < 30000; i++) { // Tripled number of stars
-                    const radius = 5400; // Tripled radius
+                for (let i = 0; i < PERFORMANCE_SETTINGS.STAR_COUNT; i++) {
+                    const radius = 5400;
                     const theta = Math.random() * Math.PI * 2;
                     const phi = Math.acos(Math.random() * 2 - 1);
                     
@@ -1250,16 +1279,17 @@
                 const starField = new THREE.Points(starsGeometry, starsMaterial);
                 scene.add(starField);
 
-                // Add some larger stars with different colors
+                // Optimize large stars
                 const largeStarsGeometry = new THREE.BufferGeometry();
                 const largeStarsMaterial = new THREE.PointsMaterial({
                     color: 0xff8833,
                     size: 4,
-                    sizeAttenuation: false
+                    sizeAttenuation: false,
+                    depthWrite: false
                 });
 
                 const largeStarsVertices = [];
-                for (let i = 0; i < 1000; i++) {
+                for (let i = 0; i < PERFORMANCE_SETTINGS.LARGE_STAR_COUNT; i++) {
                     const radius = 1800;
                     const theta = Math.random() * Math.PI * 2;
                     const phi = Math.acos(Math.random() * 2 - 1);
@@ -1624,10 +1654,8 @@
                     // Update other players' positions
                     playerStates.forEach((playerState, username) => {
                         if (username !== playerUsername) {
-                            // Check if player hasn't been updated recently
                             const timeSinceUpdate = Date.now() - playerState.lastUpdateTime;
-                            if (timeSinceUpdate > 5000) { // 5 seconds
-                                console.log('Removing inactive player:', username);
+                            if (timeSinceUpdate > 5000) {
                                 removePlayer(username);
                             } else {
                                 playerState.update(deltaTime);
@@ -1635,18 +1663,29 @@
                         }
                     });
 
-                    // Always render the scene
-                    renderer.render(scene, camera);
+                    // Update LOD and visibility for towers
+                    let visibleTowerCount = 0;
+                    towers.forEach(tower => {
+                        if (tower.lodGroup) {
+                            const distance = camera.position.distanceTo(tower.lodGroup.position);
+                            const isVisible = isInView(tower.lodGroup);
+                            
+                            if (isVisible && visibleTowerCount < PERFORMANCE_SETTINGS.MAX_VISIBLE_TOWERS) {
+                                tower.lodGroup.update(camera);
+                                visibleTowerCount++;
+                            } else {
+                                tower.lodGroup.visible = false;
+                            }
+                        }
+                    });
 
-                    // Update nebula animations
+                    // Update nebula animations only for visible nebulas
                     const time = performance.now() * 0.001;
                     nebulas.forEach((nebula, index) => {
-                        if (nebula && nebula.material && nebula.material.uniforms) {
+                        if (nebula && nebula.material && nebula.material.uniforms && isInView(nebula)) {
                             nebula.material.uniforms.time.value = time;
                             nebula.rotation.y += 0.0001;
                             nebula.rotation.x += 0.00005;
-                            
-                            // Subtle position animation
                             nebula.position.y += Math.sin(time * 0.1 + index) * 0.05;
                             nebula.position.x += Math.cos(time * 0.15 + index) * 0.05;
                         }
