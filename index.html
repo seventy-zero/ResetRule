@@ -736,14 +736,34 @@
                 startButton.disabled = this.value.trim().length === 0;
             });
 
-            startButton.addEventListener('click', function() {
+            // Modified start button handler for both desktop and mobile
+            startButton.addEventListener('click', function(event) {
+                event.preventDefault(); // Prevent any default button behavior
                 if (usernameInput.value.trim()) {
                     playerUsername = usernameInput.value.trim();
                     gameStarted = true;
-                    controls.lock();
+                    
+                    if (isMobile) {
+                        // On mobile, we need to handle the start differently
+                        instructions.classList.add('hidden');
+                        document.querySelector('.mobile-controls').style.opacity = '1';
+                        document.getElementById('flingButton').style.opacity = '1';
+                        
+                        // Force the controls to be enabled without requiring pointer lock on mobile
+                        controls.isLocked = true;
+                        controls.enabled = true;
+                        
+                        // Dispatch the lock event manually for mobile
+                        const event = new Event('lock');
+                        controls.dispatchEvent(event);
+                    } else {
+                        // On desktop, use normal pointer lock
+                        controls.lock();
+                    }
                 }
             });
 
+            // Modified pointer lock handlers
             controls.addEventListener('lock', function() {
                 instructions.classList.add('hidden');
                 console.log('Player started:', playerUsername);
@@ -754,14 +774,56 @@
             });
 
             controls.addEventListener('unlock', function() {
-                if (gameStarted) {
+                if (gameStarted && !isMobile) {
+                    // Only show instructions on unlock for desktop
                     instructions.classList.remove('hidden');
-                    if (isMobile) {
-                        document.querySelector('.mobile-controls').style.opacity = '0.5';
-                        document.getElementById('flingButton').style.opacity = '0.5';
-                    }
+                }
+                if (isMobile && gameStarted) {
+                    // Keep controls visible on mobile even when "unlocked"
+                    document.querySelector('.mobile-controls').style.opacity = '1';
+                    document.getElementById('flingButton').style.opacity = '1';
                 }
             });
+
+            // Mobile-specific touch handlers
+            if (isMobile) {
+                // Prevent default touch actions on the canvas
+                renderer.domElement.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                }, { passive: false });
+
+                renderer.domElement.addEventListener('touchmove', function(e) {
+                    e.preventDefault();
+                }, { passive: false });
+
+                renderer.domElement.addEventListener('touchend', function(e) {
+                    e.preventDefault();
+                }, { passive: false });
+
+                // Prevent zoom gesture
+                document.addEventListener('gesturestart', function(e) {
+                    e.preventDefault();
+                }, { passive: false });
+
+                // Handle mobile input focus
+                usernameInput.addEventListener('focus', function() {
+                    // Allow keyboard to show up on mobile
+                    this.setAttribute('readonly', false);
+                });
+
+                usernameInput.addEventListener('blur', function() {
+                    // Hide keyboard when done
+                    this.setAttribute('readonly', true);
+                });
+
+                // Make start button touch-friendly
+                startButton.addEventListener('touchend', function(e) {
+                    e.preventDefault();
+                    if (!this.disabled) {
+                        this.click();
+                    }
+                });
+            }
 
             // Desktop controls
             if (!isMobile) {
