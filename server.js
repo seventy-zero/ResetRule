@@ -49,74 +49,98 @@ class GameRoom {
         this.isActive = true;
         this.lastActivity = Date.now();
         this.towers = this.generateTowers();
+        this.bridges = this.generateBridges();
     }
 
     generateTowers() {
         const towers = [];
-        const numTowers = 100; // Increased number of towers
-        const minDistance = 50; // Reduced minimum distance for more challenging gameplay
-        const maxDistance = 2500; // Increased max distance for larger play area
-        const minHeight = 150; // Increased minimum height
-        const maxHeight = 600; // Increased maximum height for more dramatic towers
+        const numTowers = 3000;
+        const maxRadius = 4800;
+        
+        // Create a grid of towers with some random offset
+        const gridSize = Math.sqrt(numTowers);
+        const spacing = (maxRadius * 2) / gridSize;
+        
+        // Store tower positions for bridge generation
+        const towerPositions = [];
 
-        // Create a central cluster of towers
-        for (let i = 0; i < 20; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const distance = 50 + Math.random() * 300; // Closer to center
-            const position = {
-                x: Math.cos(angle) * distance,
-                z: Math.sin(angle) * distance
-            };
-            
-            const height = 200 + Math.random() * 400; // Taller central towers
-            const type = Math.floor(Math.random() * 12);
-            const baseHeight = Math.random() * 30;
+        // Place towers
+        for (let i = 0; i < gridSize; i++) {
+            for (let j = 0; j < gridSize; j++) {
+                const x = -maxRadius + i * spacing + (Math.random() * spacing * 0.5);
+                const z = -maxRadius + j * spacing + (Math.random() * spacing * 0.5);
+                
+                const offsetX = (Math.random() - 0.5) * spacing * 0.5;
+                const offsetZ = (Math.random() - 0.5) * spacing * 0.5;
+                
+                const finalX = x + offsetX;
+                const finalZ = z + offsetZ;
+                
+                const towerType = Math.floor(Math.random() * 12);
+                const height = Math.random() * 300 + 150;
+                const isFloating = Math.random() < 0.15;
+                const baseHeight = isFloating ? Math.random() * 30 + 15 : 0;
 
-            towers.push({
-                type,
-                position,
-                height,
-                baseHeight
-            });
-        }
+                towers.push({
+                    type: towerType,
+                    position: { x: finalX, z: finalZ },
+                    height: height,
+                    baseHeight: baseHeight
+                });
 
-        // Create outer ring of towers
-        for (let i = 0; i < 80; i++) {
-            let position;
-            let attempts = 0;
-            const maxAttempts = 10;
-
-            do {
-                const angle = Math.random() * Math.PI * 2;
-                const distance = 800 + Math.random() * (maxDistance - 800);
-                position = {
-                    x: Math.cos(angle) * distance,
-                    z: Math.sin(angle) * distance
-                };
-                attempts++;
-            } while (attempts < maxAttempts && this.isPositionTooClose(position, towers, minDistance));
-
-            const height = minHeight + Math.random() * (maxHeight - minHeight);
-            const type = Math.floor(Math.random() * 12);
-            const baseHeight = Math.random() * 50;
-
-            towers.push({
-                type,
-                position,
-                height,
-                baseHeight
-            });
+                // Store tower position for bridge generation
+                towerPositions.push({
+                    position: { x: finalX, y: height/2, z: finalZ },
+                    height: height
+                });
+            }
         }
 
         return towers;
     }
 
-    isPositionTooClose(newPos, existingTowers, minDistance) {
-        return existingTowers.some(tower => {
-            const dx = newPos.x - tower.position.x;
-            const dz = newPos.z - tower.position.z;
-            return Math.sqrt(dx * dx + dz * dz) < minDistance;
-        });
+    generateBridges() {
+        const bridges = [];
+        const towerPositions = this.towers.map(tower => ({
+            position: { x: tower.position.x, y: tower.height/2, z: tower.position.z },
+            height: tower.height
+        }));
+
+        const spacing = (4800 * 2) / Math.sqrt(3000); // Same spacing as tower grid
+        const maxBridgeDistance = spacing * 2;
+        const bridgeChance = 0.1;
+
+        for (let i = 0; i < towerPositions.length; i++) {
+            for (let j = i + 1; j < towerPositions.length; j++) {
+                const tower1 = towerPositions[i];
+                const tower2 = towerPositions[j];
+                
+                const distance = Math.sqrt(
+                    Math.pow(tower1.position.x - tower2.position.x, 2) +
+                    Math.pow(tower1.position.z - tower2.position.z, 2)
+                );
+                
+                if (distance <= maxBridgeDistance && Math.random() < bridgeChance) {
+                    const minHeight = Math.min(tower1.height, tower2.height);
+                    const bridgeHeight = minHeight * (0.3 + Math.random() * 0.5);
+                    
+                    bridges.push({
+                        start: {
+                            x: tower1.position.x,
+                            y: bridgeHeight,
+                            z: tower1.position.z
+                        },
+                        end: {
+                            x: tower2.position.x,
+                            y: bridgeHeight,
+                            z: tower2.position.z
+                        }
+                    });
+                }
+            }
+        }
+
+        return bridges;
     }
 
     addPlayer(ws, username) {
@@ -132,7 +156,8 @@ class GameRoom {
         // Send world data to the new player
         ws.send(JSON.stringify({
             type: 'world_data',
-            towers: this.towers
+            towers: this.towers,
+            bridges: this.bridges
         }));
         
         // Broadcast updated player count to all players in the room
@@ -287,20 +312,6 @@ wss.on('connection', (ws) => {
                             }), ws);
                         }
                     }
-                    break;
-
-                case 'world_data':
-                    console.log('Received world data');
-                    // Clear existing towers
-                    towers.forEach(tower => {
-                        scene.remove(tower.mesh);
-                    });
-                    towers.length = 0;
-
-                    // Create towers from server data
-                    data.towers.forEach(towerData => {
-                        createTowerFromData(towerData);
-                    });
                     break;
             }
         } catch (error) {
