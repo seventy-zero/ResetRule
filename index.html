@@ -415,26 +415,105 @@
             }
         }
 
-        // Function to create tower from server data
+        // Add after the global variables section
+        const geometryCache = new Map();
+        const materialCache = new Map();
+        const COLLISION_CHECK_INTERVAL = 100; // ms
+        let lastCollisionCheck = 0;
+        const spatialGrid = {
+            cellSize: 100,
+            cells: new Map(),
+            getKey: function(x, z) {
+                return `${Math.floor(x / this.cellSize)},${Math.floor(z / this.cellSize)}`;
+            },
+            add: function(object) {
+                const key = this.getKey(object.position.x, object.position.z);
+                if (!this.cells.has(key)) {
+                    this.cells.set(key, new Set());
+                }
+                this.cells.get(key).add(object);
+            },
+            remove: function(object) {
+                const key = this.getKey(object.position.x, object.position.z);
+                if (this.cells.has(key)) {
+                    this.cells.get(key).delete(object);
+                }
+            },
+            getNearbyObjects: function(position, radius) {
+                const nearbyObjects = new Set();
+                const minX = Math.floor((position.x - radius) / this.cellSize);
+                const maxX = Math.floor((position.x + radius) / this.cellSize);
+                const minZ = Math.floor((position.z - radius) / this.cellSize);
+                const maxZ = Math.floor((position.z + radius) / this.cellSize);
+                
+                for (let x = minX; x <= maxX; x++) {
+                    for (let z = minZ; z <= maxZ; z++) {
+                        const key = `${x},${z}`;
+                        if (this.cells.has(key)) {
+                            this.cells.get(key).forEach(obj => nearbyObjects.add(obj));
+                        }
+                    }
+                }
+                return nearbyObjects;
+            }
+        };
+
+        // Add after the createTowerFromData function
+        function getGeometryFromCache(type, params) {
+            const key = `${type}-${JSON.stringify(params)}`;
+            if (!geometryCache.has(key)) {
+                let geometry;
+                switch(type) {
+                    case 'cylinder':
+                        geometry = new THREE.CylinderGeometry(params.radius, params.radius, params.height, params.segments);
+                        break;
+                    case 'box':
+                        geometry = new THREE.BoxGeometry(params.width, params.height, params.depth);
+                        break;
+                    case 'cone':
+                        geometry = new THREE.ConeGeometry(params.radius, params.height, params.segments);
+                        break;
+                    // Add more cases as needed
+                }
+                geometryCache.set(key, geometry);
+            }
+            return geometryCache.get(key);
+        }
+
+        function getMaterialFromCache(type, params) {
+            const key = `${type}-${JSON.stringify(params)}`;
+            if (!materialCache.has(key)) {
+                let material;
+                switch(type) {
+                    case 'basic':
+                        material = new THREE.MeshBasicMaterial(params);
+                        break;
+                    case 'line':
+                        material = new THREE.LineBasicMaterial(params);
+                        break;
+                    // Add more cases as needed
+                }
+                materialCache.set(key, material);
+            }
+            return materialCache.get(key);
+        }
+
+        // Modify the createTowerFromData function to use cached geometries and materials
         function createTowerFromData(towerData) {
-            let geometry;
             const height = towerData.height;
-            const isFloating = towerData.isFloating;
             const baseHeight = towerData.baseHeight;
             
-            // Create materials for the tower
+            // Use cached materials
             const materials = [
-                new THREE.MeshBasicMaterial({ color: 0x000000 }),
-                new THREE.LineBasicMaterial({ color: 0xffffff })
+                getMaterialFromCache('basic', { color: 0x000000 }),
+                getMaterialFromCache('line', { color: 0xffffff })
             ];
 
-            // Create collision box for the tower
-            let collisionGeometry;
-
+            let geometry, collisionGeometry;
             switch(towerData.type) {
                 case 0: // Cylindrical tower
-                    geometry = new THREE.CylinderGeometry(18, 18, height, 8);
-                    collisionGeometry = new THREE.CylinderGeometry(18, 18, height, 8);
+                    geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
+                    collisionGeometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
                     break;
                 case 1: // Tapered tower
                     geometry = new THREE.CylinderGeometry(12, 24, height, 6);
@@ -1528,43 +1607,53 @@
                 requestAnimationFrame(animate);
                 
                 const deltaTime = clock.getDelta();
+                const currentTime = performance.now();
                 
                 if (gameStarted) {
-                    // Update other players' positions
-                    playerStates.forEach((playerState, username) => {
-                        if (username !== playerUsername) {
-                            // Check if player hasn't been updated recently
-                            const timeSinceUpdate = Date.now() - playerState.lastUpdateTime;
-                            if (timeSinceUpdate > 5000) { // 5 seconds
-                                console.log('Removing inactive player:', username);
-                                removePlayer(username);
-                            } else {
-                                playerState.update(deltaTime);
+                    // Update other players' positions with throttling
+                    if (currentTime - lastCollisionCheck > COLLISION_CHECK_INTERVAL) {
+                        playerStates.forEach((playerState, username) => {
+                            if (username !== playerUsername) {
+                                const timeSinceUpdate = Date.now() - playerState.lastUpdateTime;
+                                if (timeSinceUpdate > 5000) {
+                                    removePlayer(username);
+                                } else {
+                                    playerState.update(deltaTime);
+                                }
                             }
+                        });
+                        lastCollisionCheck = currentTime;
+                    }
+
+                    // Only render if in view frustum
+                    const frustum = new THREE.Frustum();
+                    frustum.setFromProjectionMatrix(
+                        new THREE.Matrix4().multiplyMatrices(
+                            camera.projectionMatrix,
+                            camera.matrixWorldInverse
+                        )
+                    );
+
+                    // Update nebula animations with reduced frequency
+                    if (currentTime % 2 === 0) { // Update every other frame
+                        const time = currentTime * 0.001;
+                        nebulas.forEach((nebula, index) => {
+                            if (nebula && nebula.material && nebula.material.uniforms) {
+                                nebula.material.uniforms.time.value = time;
+                                nebula.rotation.y += 0.0001;
+                                nebula.rotation.x += 0.00005;
+                                nebula.position.y += Math.sin(time * 0.1 + index) * 0.05;
+                                nebula.position.x += Math.cos(time * 0.15 + index) * 0.05;
+                            }
+                        });
+                    }
+
+                    // Rotate star fields with reduced frequency
+                    if (currentTime % 3 === 0) { // Update every third frame
+                        if (starField && largeStarField) {
+                            starField.rotation.y += 0.0001;
+                            largeStarField.rotation.y += 0.00015;
                         }
-                    });
-
-                    // Always render the scene
-                    renderer.render(scene, camera);
-
-                    // Update nebula animations
-                    const time = performance.now() * 0.001;
-                    nebulas.forEach((nebula, index) => {
-                        if (nebula && nebula.material && nebula.material.uniforms) {
-                            nebula.material.uniforms.time.value = time;
-                            nebula.rotation.y += 0.0001;
-                            nebula.rotation.x += 0.00005;
-                            
-                            // Subtle position animation
-                            nebula.position.y += Math.sin(time * 0.1 + index) * 0.05;
-                            nebula.position.x += Math.cos(time * 0.15 + index) * 0.05;
-                        }
-                    });
-
-                    // Rotate star fields slowly
-                    if (starField && largeStarField) {
-                        starField.rotation.y += 0.0001;
-                        largeStarField.rotation.y += 0.00015;
                     }
 
                     // Only process movement and game logic if controls are locked and game is started
@@ -1774,17 +1863,15 @@
                         velocity.x *= 0.85;
                         velocity.z *= 0.85;
 
-                        // Check for item collection
-                        if (controls.isLocked && gameStarted) {
-                            const playerCollider = new THREE.Sphere(camera.position, playerRadius);
-                            
-                            collectibles.forEach((item, itemId) => {
+                        // Optimize item collection checks
+                        if (currentTime % 2 === 0) { // Check every other frame
+                            const nearbyItems = spatialGrid.getNearbyObjects(camera.position, ITEM_RADIUS + playerRadius);
+                            nearbyItems.forEach(item => {
                                 if (item.mesh.position.distanceTo(camera.position) < ITEM_RADIUS + playerRadius) {
-                                    // Send item collection to server
                                     if (ws.readyState === WebSocket.OPEN) {
                                         ws.send(JSON.stringify({
                                             type: 'item_collected',
-                                            itemId: itemId,
+                                            itemId: item.mesh.userData.id,
                                             username: playerUsername
                                         }));
                                     }

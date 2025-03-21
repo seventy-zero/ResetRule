@@ -343,4 +343,19 @@ wss.on('error', (error) => {
 
 process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
-}); 
+});
+
+// Create an object pool for frequently created/destroyed objects
+const objectPool = {
+    pool: [],
+    get: function() {
+        return this.pool.pop() || this.createNew();
+    },
+    release: function(obj) {
+        this.pool.push(obj);
+    }
+};
+
+// Add to renderer setup
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1)); // Limit pixel ratio
+renderer.shadowMap.enabled = false; // Disable shadows if not needed 
