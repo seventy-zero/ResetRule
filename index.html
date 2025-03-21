@@ -244,11 +244,25 @@
         const towers = [];
         const nebulas = [];
         const playerStates = new Map();
+        const collectibles = new Map(); // Store collectible items
+        const playerItems = new Map(); // Store items collected by each player
 
         // Vectors and other THREE.js objects
         const velocity = new THREE.Vector3();
         const flingVelocity = new THREE.Vector3();
         const direction = new THREE.Vector3();
+
+        // Collectible item properties
+        const ITEM_COUNT = 20;
+        const ITEM_RADIUS = 3;
+        const ITEM_HEIGHT = 2;
+        const MIN_DISTANCE_BETWEEN_ITEMS = 100;
+        const ITEM_COLORS = [
+            0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff,
+            0x00ffff, 0xff8800, 0x8800ff, 0x00ff88, 0xff0088,
+            0x88ff00, 0x0088ff, 0xff8800, 0x8800ff, 0x00ff88,
+            0xff0088, 0x88ff00, 0x0088ff, 0xff8800, 0x8800ff
+        ];
 
         // Mobile detection
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -626,11 +640,16 @@
                 switch (data.type) {
                     case 'world_data':
                         console.log('Received world data');
-                        // Clear existing towers
+                        // Clear existing towers and collectibles
                         towers.forEach(tower => {
                             scene.remove(tower.mesh);
                         });
                         towers.length = 0;
+                        
+                        collectibles.forEach(item => {
+                            scene.remove(item.mesh);
+                        });
+                        collectibles.clear();
                         
                         // Create towers from server data
                         data.towers.forEach(towerData => {
@@ -641,6 +660,9 @@
                         data.bridges.forEach(bridgeData => {
                             createBridgeFromData(bridgeData);
                         });
+
+                        // Initialize collectibles
+                        initializeCollectibles();
                         break;
 
                     case 'room_info':
@@ -661,7 +683,12 @@
 
                     case 'player_left':
                         console.log('Player left:', data.username);
+                        handlePlayerDisconnection(data.username);
                         handlePlayerLeft(data.username);
+                        break;
+
+                    case 'item_collected':
+                        handleItemCollection(data.itemId, data.username);
                         break;
                 }
             };
@@ -685,7 +712,8 @@
             // Add current player first
             const currentPlayerItem = document.createElement('div');
             currentPlayerItem.className = 'playerListItem';
-            currentPlayerItem.textContent = `${playerUsername} (You)`;
+            const currentItems = playerItems.get(playerUsername) || new Set();
+            currentPlayerItem.textContent = `${playerUsername} (You) - Items: ${currentItems.size}/${ITEM_COUNT}`;
             playerList.appendChild(currentPlayerItem);
             
             // Add other players
@@ -693,7 +721,8 @@
                 if (username !== playerUsername) {
                     const playerItem = document.createElement('div');
                     playerItem.className = 'playerListItem';
-                    playerItem.textContent = username;
+                    const items = playerItems.get(username) || new Set();
+                    playerItem.textContent = `${username} - Items: ${items.size}/${ITEM_COUNT}`;
                     playerList.appendChild(playerItem);
                 }
             });
@@ -711,6 +740,40 @@
         function handlePlayerLeft(username) {
             removePlayer(username);
             updatePlayerList();
+        }
+
+        // Function to handle item collection
+        function handleItemCollection(itemId, playerUsername) {
+            const item = collectibles.get(itemId);
+            if (item) {
+                scene.remove(item.mesh);
+                collectibles.delete(itemId);
+                
+                // Update player's collected items
+                if (!playerItems.has(playerUsername)) {
+                    playerItems.set(playerUsername, new Set());
+                }
+                playerItems.get(playerUsername).add(itemId);
+                
+                // Update UI to show collected items
+                updatePlayerList();
+            }
+        }
+
+        // Function to handle player disconnection
+        function handlePlayerDisconnection(username) {
+            const items = playerItems.get(username);
+            if (items) {
+                // Drop all items at player's last position
+                const playerState = playerStates.get(username);
+                if (playerState) {
+                    items.forEach(itemId => {
+                        const color = ITEM_COLORS[itemId];
+                        createCollectible(itemId, playerState.mesh.position.clone(), color);
+                    });
+                }
+                playerItems.delete(username);
+            }
         }
 
         // Scene setup with error handling
@@ -1557,6 +1620,24 @@
                         // Apply friction to normal movement
                         velocity.x *= 0.85;
                         velocity.z *= 0.85;
+
+                        // Check for item collection
+                        if (controls.isLocked && gameStarted) {
+                            const playerCollider = new THREE.Sphere(camera.position, playerRadius);
+                            
+                            collectibles.forEach((item, itemId) => {
+                                if (item.mesh.position.distanceTo(camera.position) < ITEM_RADIUS + playerRadius) {
+                                    // Send item collection to server
+                                    if (ws.readyState === WebSocket.OPEN) {
+                                        ws.send(JSON.stringify({
+                                            type: 'item_collected',
+                                            itemId: itemId,
+                                            username: playerUsername
+                                        }));
+                                    }
+                                }
+                            });
+                        }
                     }
                 }
             }
