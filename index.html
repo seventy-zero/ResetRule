@@ -1553,10 +1553,15 @@
                         if (collision && collisionTower) {
                             if (isFlinging) {
                                 // During fling, take damage and push out strongly
+                                const oldHealth = playerHealth;
                                 playerHealth = Math.max(0, playerHealth - 1);
-                                updateHealthDisplay();
-                                if (playerHealth <= 0) {
-                                    handlePlayerDeath();
+                                
+                                // Only update display and handle death if health actually changed
+                                if (oldHealth !== playerHealth) {
+                                    updateHealthDisplay();
+                                    if (playerHealth <= 0) {
+                                        handlePlayerDeath();
+                                    }
                                 }
                                 
                                 const pushDir = new THREE.Vector3();
@@ -1580,11 +1585,13 @@
             // Send position updates
             function sendPositionUpdate() {
                 if (ws.readyState === WebSocket.OPEN && gameStarted) {
+                    // Only send health updates if health has changed
+                    const currentHealth = playerHealth;
                     ws.send(JSON.stringify({
                         type: 'position',
                         position: camera.position.toArray(),
                         rotation: camera.rotation.toArray(),
-                        health: playerHealth
+                        health: currentHealth
                     }));
                 }
             }
