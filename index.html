@@ -5,8 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
     <style>
-        body { margin: 0; }
-        canvas { display: block; }
+        body { 
+            margin: 0; 
+            background-color: #000000;
+        }
+        canvas { 
+            display: block; 
+        }
         #instructions {
             position: absolute;
             top: 50%;
@@ -24,6 +29,7 @@
             padding: 20px;
             border-radius: 10px;
             border: 1px solid #333;
+            z-index: 1000;
         }
         #instructions.hidden {
             display: none;
@@ -231,6 +237,87 @@
                     this.targetRotation.z,
                     INTERPOLATION_SPEED
                 );
+            }
+        }
+
+        // Function to create player model
+        function createPlayerModel(player) {
+            const geometry = new THREE.CapsuleGeometry(2, 6, 2, 8);
+            const material = new THREE.MeshBasicMaterial({ 
+                color: 0x00ff00, 
+                wireframe: true 
+            });
+            const playerMesh = new THREE.Mesh(geometry, material);
+            
+            // Add username label
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 256;
+            canvas.height = 64;
+            
+            context.fillStyle = '#000000';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            
+            context.font = '32px Arial';
+            context.fillStyle = '#ffffff';
+            context.textAlign = 'center';
+            context.fillText(player.username, canvas.width / 2, canvas.height / 2);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(10, 2.5, 1);
+            sprite.position.y = 6;
+            playerMesh.add(sprite);
+            
+            // Set initial position
+            if (Array.isArray(player.position)) {
+                playerMesh.position.fromArray(player.position);
+            }
+            if (Array.isArray(player.rotation)) {
+                playerMesh.rotation.fromArray(player.rotation);
+            }
+            
+            scene.add(playerMesh);
+            
+            // Create and store player state
+            const playerState = new PlayerState(player.username, playerMesh);
+            playerState.targetPosition.copy(playerMesh.position);
+            playerState.targetRotation.copy(playerMesh.rotation);
+            playerStates.set(player.username, playerState);
+            
+            console.log(`Created player model for ${player.username}`);
+        }
+
+        // Function to update player position
+        function updatePlayerPosition(data) {
+            const playerState = playerStates.get(data.username);
+            if (playerState) {
+                // Update target position and rotation
+                if (Array.isArray(data.position)) {
+                    playerState.targetPosition.fromArray(data.position);
+                }
+                if (Array.isArray(data.rotation)) {
+                    playerState.targetRotation.fromArray(data.rotation);
+                }
+                playerState.lastUpdateTime = Date.now();
+            }
+        }
+
+        // Function to remove player
+        function removePlayer(username) {
+            const playerState = playerStates.get(username);
+            if (playerState) {
+                // Remove all children (like username sprite) first
+                while(playerState.mesh.children.length > 0) {
+                    playerState.mesh.remove(playerState.mesh.children[0]);
+                }
+                // Remove from scene and dispose geometries/materials
+                scene.remove(playerState.mesh);
+                if (playerState.mesh.geometry) playerState.mesh.geometry.dispose();
+                if (playerState.mesh.material) playerState.mesh.material.dispose();
+                playerStates.delete(username);
+                console.log(`Removed player model for ${username}`);
             }
         }
 
@@ -1410,87 +1497,6 @@
                 }
             }
             animate();
-
-            // Function to create player model
-            function createPlayerModel(player) {
-                const geometry = new THREE.CapsuleGeometry(2, 6, 2, 8);
-                const material = new THREE.MeshBasicMaterial({ 
-                    color: 0x00ff00, 
-                    wireframe: true 
-                });
-                const playerMesh = new THREE.Mesh(geometry, material);
-                
-                // Add username label
-                const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d');
-                canvas.width = 256;
-                canvas.height = 64;
-                
-                context.fillStyle = '#000000';
-                context.fillRect(0, 0, canvas.width, canvas.height);
-                
-                context.font = '32px Arial';
-                context.fillStyle = '#ffffff';
-                context.textAlign = 'center';
-                context.fillText(player.username, canvas.width / 2, canvas.height / 2);
-                
-                const texture = new THREE.CanvasTexture(canvas);
-                const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
-                const sprite = new THREE.Sprite(spriteMaterial);
-                sprite.scale.set(10, 2.5, 1);
-                sprite.position.y = 6;
-                playerMesh.add(sprite);
-                
-                // Set initial position
-                if (Array.isArray(player.position)) {
-                    playerMesh.position.fromArray(player.position);
-                }
-                if (Array.isArray(player.rotation)) {
-                    playerMesh.rotation.fromArray(player.rotation);
-                }
-                
-                scene.add(playerMesh);
-                
-                // Create and store player state
-                const playerState = new PlayerState(player.username, playerMesh);
-                playerState.targetPosition.copy(playerMesh.position);
-                playerState.targetRotation.copy(playerMesh.rotation);
-                playerStates.set(player.username, playerState);
-                
-                console.log(`Created player model for ${player.username}`);
-            }
-
-            // Function to update player position
-            function updatePlayerPosition(data) {
-                const playerState = playerStates.get(data.username);
-                if (playerState) {
-                    // Update target position and rotation
-                    if (Array.isArray(data.position)) {
-                        playerState.targetPosition.fromArray(data.position);
-                    }
-                    if (Array.isArray(data.rotation)) {
-                        playerState.targetRotation.fromArray(data.rotation);
-                    }
-                    playerState.lastUpdateTime = Date.now();
-                }
-            }
-
-            // Function to remove player
-            function removePlayer(username) {
-                const playerState = playerStates.get(username);
-                if (playerState) {
-                    // Remove all children (like username sprite) first
-                    while(playerState.mesh.children.length > 0) {
-                        playerState.mesh.remove(playerState.mesh.children[0]);
-                    }
-                    // Remove from scene and dispose geometries/materials
-                    scene.remove(playerState.mesh);
-                    if (playerState.mesh.geometry) playerState.mesh.geometry.dispose();
-                    if (playerState.mesh.material) playerState.mesh.material.dispose();
-                    playerStates.delete(username);
-                    console.log(`Removed player model for ${username}`);
-                }
-            }
 
             // Send position updates
             function sendPositionUpdate() {
