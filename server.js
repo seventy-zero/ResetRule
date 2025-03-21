@@ -5,6 +5,32 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Word lists for room names
+const adjectives = [
+    'Cosmic', 'Stellar', 'Lunar', 'Solar', 'Astral',
+    'Nebula', 'Quantum', 'Galactic', 'Celestial', 'Orbital',
+    'Crystal', 'Aurora', 'Nova', 'Plasma', 'Photon',
+    'Meteor', 'Comet', 'Star', 'Void', 'Zenith',
+    'Echo', 'Pulse', 'Wave', 'Flux', 'Prism',
+    'Azure', 'Crimson', 'Emerald', 'Golden', 'Silver'
+];
+
+const nouns = [
+    'Horizon', 'Nexus', 'Portal', 'Gateway', 'Station',
+    'Outpost', 'Haven', 'Sanctuary', 'Beacon', 'Core',
+    'Matrix', 'Vertex', 'Domain', 'Realm', 'Zone',
+    'Sector', 'Field', 'Grid', 'Sphere', 'Chamber',
+    'Circuit', 'Network', 'System', 'Array', 'Node',
+    'Orbit', 'Path', 'Stream', 'Channel', 'Link'
+];
+
+// Function to generate a random room name
+function generateRoomName() {
+    const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const noun = nouns[Math.floor(Math.random() * nouns.length)];
+    return `${adjective}-${noun}`;
+}
+
 // Serve static files
 app.use(express.static(path.join(__dirname)));
 
@@ -18,6 +44,7 @@ const wss = new WebSocket.Server({ server });
 class GameRoom {
     constructor(id) {
         this.id = id;
+        this.name = generateRoomName();
         this.players = new Map();
         this.isActive = true;
     }
@@ -57,7 +84,7 @@ let nextRoomId = 1;
 function createNewRoom() {
     const room = new GameRoom(nextRoomId++);
     rooms.push(room);
-    console.log(`Created new room ${room.id}`);
+    console.log(`Created new room: ${room.name} (ID: ${room.id})`);
     return room;
 }
 
@@ -92,7 +119,8 @@ wss.on('connection', (ws) => {
                 // Send room information to the new player
                 ws.send(JSON.stringify({
                     type: 'room_info',
-                    roomId: currentRoom.roomId,
+                    id: currentRoom.id,
+                    name: currentRoom.name,
                     playerCount: currentRoom.players.size
                 }));
 

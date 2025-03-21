@@ -244,7 +244,7 @@
         }
 
         // Function to create player model
-        function createPlayerModel(player) {
+        function createPlayerModel(username) {
             const geometry = new THREE.CapsuleGeometry(2, 6, 2, 8);
             const material = new THREE.MeshBasicMaterial({ 
                 color: 0x00ff00, 
@@ -264,7 +264,7 @@
             context.font = '32px Arial';
             context.fillStyle = '#ffffff';
             context.textAlign = 'center';
-            context.fillText(player.username, canvas.width / 2, canvas.height / 2);
+            context.fillText(username, canvas.width / 2, canvas.height / 2);
             
             const texture = new THREE.CanvasTexture(canvas);
             const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
@@ -273,35 +273,36 @@
             sprite.position.y = 6;
             playerMesh.add(sprite);
             
-            // Set initial position
-            if (Array.isArray(player.position)) {
-                playerMesh.position.fromArray(player.position);
-            }
-            if (Array.isArray(player.rotation)) {
-                playerMesh.rotation.fromArray(player.rotation);
-            }
-            
             scene.add(playerMesh);
             
             // Create and store player state
-            const playerState = new PlayerState(player.username, playerMesh);
-            playerState.targetPosition.copy(playerMesh.position);
-            playerState.targetRotation.copy(playerMesh.rotation);
-            playerStates.set(player.username, playerState);
+            const playerState = new PlayerState(username, playerMesh);
+            playerState.targetPosition.set(0, playerHeight, 0);
+            playerState.targetRotation.set(0, 0, 0);
+            playerStates.set(username, playerState);
             
-            console.log(`Created player model for ${player.username}`);
+            console.log(`Created player model for ${username}`);
+            return playerMesh;
         }
 
         // Function to update player position
-        function updatePlayerPosition(data) {
-            const playerState = playerStates.get(data.username);
+        function updatePlayerPosition(username, position, rotation) {
+            const playerState = playerStates.get(username);
             if (playerState) {
                 // Update target position and rotation
-                if (Array.isArray(data.position)) {
-                    playerState.targetPosition.fromArray(data.position);
+                if (position) {
+                    if (Array.isArray(position)) {
+                        playerState.targetPosition.fromArray(position);
+                    } else {
+                        playerState.targetPosition.copy(position);
+                    }
                 }
-                if (Array.isArray(data.rotation)) {
-                    playerState.targetRotation.fromArray(data.rotation);
+                if (rotation) {
+                    if (Array.isArray(rotation)) {
+                        playerState.targetRotation.fromArray(rotation);
+                    } else {
+                        playerState.targetRotation.copy(rotation);
+                    }
                 }
                 playerState.lastUpdateTime = Date.now();
             }
@@ -355,15 +356,17 @@
                 
                 switch (data.type) {
                     case 'room_info':
-                        console.log(`Joined room ${data.roomId} with ${data.playerCount} players`);
-                        document.getElementById('roomInfo').textContent = `Room ${data.roomId} - Players: ${data.playerCount}/20`;
+                        console.log(`Joined room ${data.name} with ${data.playerCount} players`);
+                        document.getElementById('roomInfo').textContent = `${data.name} - Players: ${data.playerCount}/20`;
                         break;
 
                     case 'player_joined':
                         console.log('Player joined:', data.username);
                         if (data.username !== playerUsername) {
                             createPlayerModel(data.username);
-                            updatePlayerPosition(data.username, data.position, data.rotation);
+                            if (data.position && data.rotation) {
+                                updatePlayerPosition(data.username, data.position, data.rotation);
+                            }
                         }
                         break;
 
@@ -391,17 +394,21 @@
             };
         }
 
-        // Add room info display to the UI
+        // Update room info display styling
         const roomInfoDiv = document.createElement('div');
         roomInfoDiv.id = 'roomInfo';
         roomInfoDiv.style.position = 'fixed';
         roomInfoDiv.style.top = '10px';
         roomInfoDiv.style.right = '10px';
         roomInfoDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-        roomInfoDiv.style.color = 'white';
+        roomInfoDiv.style.color = '#4CAF50';
         roomInfoDiv.style.padding = '10px';
         roomInfoDiv.style.borderRadius = '5px';
         roomInfoDiv.style.zIndex = '1000';
+        roomInfoDiv.style.fontFamily = 'Arial, sans-serif';
+        roomInfoDiv.style.fontSize = '16px';
+        roomInfoDiv.style.fontWeight = 'bold';
+        roomInfoDiv.style.textShadow = '0 0 5px rgba(76, 175, 80, 0.5)';
         document.body.appendChild(roomInfoDiv);
 
         // Scene setup with error handling
