@@ -221,6 +221,24 @@
         const flingDamping = 0.985;
         const clock = new THREE.Clock();
 
+        // Performance optimization constants
+        const POSITION_UPDATE_INTERVAL = 50; // 20 updates per second
+        const INACTIVE_PLAYER_TIMEOUT = 5000; // 5 seconds
+        const COLLISION_CHECK_INTERVAL = 100; // Check collisions every 100ms
+        const MAX_COLLISION_DISTANCE = 330;
+        const POSITION_THRESHOLD = 10;
+        const INTERPOLATION_SPEED = 0.15;
+
+        // Cache frequently used objects
+        const tempVector = new THREE.Vector3();
+        const tempDirection = new THREE.Vector3();
+        const tempPushDir = new THREE.Vector3();
+        const tempCameraDirection = new THREE.Vector3();
+        const tempRightVector = new THREE.Vector3();
+        const tempStartPoint = new THREE.Vector3();
+        const tempEndPoint = new THREE.Vector3();
+        const tempFlingDirection = new THREE.Vector3();
+
         // Game state variables
         let gameStarted = false;
         let playerUsername = '';
@@ -230,6 +248,8 @@
         let lineCollisionPoint = null;
         let verticalVelocity = 0;
         let ws = null;
+        let lastCollisionCheck = 0;
+        let lastPositionUpdate = 0;
 
         // Movement state variables
         let moveForward = false;
@@ -253,9 +273,6 @@
         // Mobile detection
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-        // Add interpolation settings
-        const INTERPOLATION_SPEED = 0.15;
-
         // Store player states for interpolation
         class PlayerState {
             constructor(username, mesh) {
@@ -266,32 +283,25 @@
                 this.currentPosition = new THREE.Vector3();
                 this.currentRotation = new THREE.Vector3();
                 this.lastUpdateTime = Date.now();
-                this.interpolationSpeed = 0.15; // Base interpolation speed
-                this.positionThreshold = 10; // Distance threshold for position snapping
+                this.interpolationSpeed = INTERPOLATION_SPEED;
+                this.positionThreshold = POSITION_THRESHOLD;
             }
 
             update(deltaTime) {
                 if (!this.mesh) return;
 
-                const timeSinceUpdate = (Date.now() - this.lastUpdateTime) / 1000; // Convert to seconds
-                
-                // Adjust interpolation speed based on update frequency and distance
+                const timeSinceUpdate = (Date.now() - this.lastUpdateTime) / 1000;
                 const distanceToTarget = this.currentPosition.distanceTo(this.targetPosition);
-                let currentSpeed = this.interpolationSpeed;
                 
-                // Snap to position if too far away or haven't received updates in a while
                 if (distanceToTarget > this.positionThreshold || timeSinceUpdate > 1) {
                     this.currentPosition.copy(this.targetPosition);
                     this.currentRotation.copy(this.targetRotation);
                 } else {
-                    // Smoothly interpolate position with dynamic speed
-                    currentSpeed = Math.min(deltaTime * 10, 1); // Limit maximum speed
-                    
+                    const currentSpeed = Math.min(deltaTime * 10, 1);
                     this.currentPosition.lerp(this.targetPosition, currentSpeed);
                     this.currentRotation.lerp(this.targetRotation, currentSpeed);
                 }
                 
-                // Update mesh position and rotation
                 this.mesh.position.copy(this.currentPosition);
                 this.mesh.rotation.set(
                     this.currentRotation.x,
@@ -1314,12 +1324,12 @@
                 const deltaTime = clock.getDelta();
                 
                 if (gameStarted) {
-                    // Update other players' positions
+                    // Update other players' positions with timeout check
+                    const currentTime = Date.now();
                     playerStates.forEach((playerState, username) => {
                         if (username !== playerUsername) {
-                            // Check if player hasn't been updated recently
-                            const timeSinceUpdate = Date.now() - playerState.lastUpdateTime;
-                            if (timeSinceUpdate > 5000) { // 5 seconds
+                            const timeSinceUpdate = currentTime - playerState.lastUpdateTime;
+                            if (timeSinceUpdate > INACTIVE_PLAYER_TIMEOUT) {
                                 console.log('Removing inactive player:', username);
                                 removePlayer(username);
                             } else {
@@ -1328,243 +1338,81 @@
                         }
                     });
 
-                    // Always render the scene
+                    // Render scene
                     renderer.render(scene, camera);
 
-                    // Update nebula animations
-                    const time = performance.now() * 0.001;
-                    nebulas.forEach((nebula, index) => {
-                        if (nebula && nebula.material && nebula.material.uniforms) {
-                            nebula.material.uniforms.time.value = time;
-                            nebula.rotation.y += 0.0001;
-                            nebula.rotation.x += 0.00005;
-                            
-                            // Subtle position animation
-                            nebula.position.y += Math.sin(time * 0.1 + index) * 0.05;
-                            nebula.position.x += Math.cos(time * 0.15 + index) * 0.05;
-                        }
-                    });
-
-                    // Rotate star fields slowly
-                    if (starField && largeStarField) {
-                        starField.rotation.y += 0.0001;
-                        largeStarField.rotation.y += 0.00015;
+                    // Update nebula animations with throttling
+                    if (currentTime % 16 < 8) { // Update every other frame
+                        const time = performance.now() * 0.001;
+                        nebulas.forEach((nebula, index) => {
+                            if (nebula?.material?.uniforms) {
+                                nebula.material.uniforms.time.value = time;
+                                nebula.rotation.y += 0.0001;
+                                nebula.rotation.x += 0.00005;
+                                nebula.position.y += Math.sin(time * 0.1 + index) * 0.05;
+                                nebula.position.x += Math.cos(time * 0.15 + index) * 0.05;
+                            }
+                        });
                     }
 
-                    // Only process movement and game logic if controls are locked and game is started
+                    // Rotate star fields with throttling
+                    if (currentTime % 32 < 16) { // Update every 4th frame
+                        if (starField && largeStarField) {
+                            starField.rotation.y += 0.0001;
+                            largeStarField.rotation.y += 0.00015;
+                        }
+                    }
+
+                    // Process game logic
                     if (controls.isLocked && gameStarted) {
-                        // Store current position
-                        const oldPosition = camera.position.clone();
-
-                        // Calculate movement
-                        direction.z = Number(moveForward) - Number(moveBackward);
-                        direction.x = Number(moveRight) - Number(moveLeft);
-                        direction.normalize();
-
-                        if (moveForward || moveBackward) velocity.z -= direction.z * moveSpeed;
-                        if (moveLeft || moveRight) velocity.x -= direction.x * moveSpeed;
-
-                        // Apply movement
-                        controls.moveRight(-velocity.x);
-                        controls.moveForward(-velocity.z);
-
-                        // Update line trace position
-                        const cameraDirection = new THREE.Vector3();
-                        camera.getWorldDirection(cameraDirection);
-                        const rightVector = new THREE.Vector3();
-                        rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
-                        
-                        // Update line visibility
-                        tubeMesh.visible = showLine;
-                        
-                        if (showLine) {
-                            // Calculate start and end points
-                            const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
-                            startPoint.y = camera.position.y;
-                            
-                            const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
-                            
-                            // Update curve points
-                            curve.points[0].copy(startPoint);
-                            curve.points[1].copy(endPoint);
-                            
-                            // Update the tube geometry
-                            const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
-                            tubeMesh.geometry.dispose();
-                            tubeMesh.geometry = newTubeGeometry;
-
-                            // Check for line collision with towers
-                            raycaster.set(startPoint, cameraDirection);
-                            const intersects = [];
-                            towers.forEach(tower => {
-                                const towerIntersects = raycaster.intersectObject(tower.mesh);
-                                if (towerIntersects.length > 0 && towerIntersects[0].distance <= 330) {
-                                    intersects.push(towerIntersects[0]);
-                                }
-                            });
-
-                            // Sort intersections by distance and get the closest one
-                            if (intersects.length > 0) {
-                                intersects.sort((a, b) => a.distance - b.distance);
-                                lineCollisionPoint = intersects[0].point;
-                                
-                                // Update line end point to collision point
-                                curve.points[1].copy(lineCollisionPoint);
-                                const collidedTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
-                                tubeMesh.geometry.dispose();
-                                tubeMesh.geometry = collidedTubeGeometry;
-                                
-                                // Change line color to indicate valid target
-                                tubeMaterial.color.setHex(0x00ff00);
-                            } else {
-                                lineCollisionPoint = null;
-                                // Change line color to indicate no target
-                                tubeMaterial.color.setHex(0xff0000);
-                            }
-                        } else if (lineCollisionPoint) {
-                            // Initiate fling when line is released and we had a collision point
-                            const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
-                            
-                            // Increase fling strength based on distance to target, but more gently
-                            const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                            const scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
-                            
-                            // Set velocity components
-                            flingVelocity.x = flingDirection.x * scaledStrength;
-                            flingVelocity.z = flingDirection.z * scaledStrength;
-                            verticalVelocity = flingDirection.y * scaledStrength + 0.5;
-                            
-                            isFlinging = true;
-                            isGrounded = false;
-                            lineCollisionPoint = null;
-                        }
-
-                        // Apply fling velocity if active
-                        if (isFlinging) {
-                            // Move in world space
-                            camera.position.x += flingVelocity.x;
-                            camera.position.z += flingVelocity.z;
-
-                            // Update player collider position
-                            playerCollider.center.copy(camera.position);
-
-                            // Check collisions with all towers
-                            let collision = false;
-                            let collisionTower = null;
-                            for (const tower of towers) {
-                                if (tower.boundingBox.intersectsSphere(playerCollider)) {
-                                    collision = true;
-                                    collisionTower = tower;
-                                    break;
-                                }
-                            }
-
-                            // If there's a collision during fling, push out and continue
-                            if (collision && collisionTower) {
-                                // Calculate push direction away from tower center
-                                const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
-                                
-                                // Push out with a strong impulse
-                                camera.position.x += pushDir.x * 3;
-                                camera.position.z += pushDir.z * 3;
-                                
-                                // Redirect fling velocity along the push direction
-                                const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                flingVelocity.x = pushDir.x * speed * 0.8;
-                                flingVelocity.z = pushDir.z * speed * 0.8;
-                            }
-
-                            // Apply damping to horizontal movement
-                            flingVelocity.x *= flingDamping;
-                            flingVelocity.z *= flingDamping;
-
-                            // Stop flinging when velocity is very small
-                            if (Math.abs(flingVelocity.x) < 0.001 && Math.abs(flingVelocity.z) < 0.001) {
-                                isFlinging = false;
-                                flingVelocity.set(0, 0, 0);
-                            }
-                        }
-
-                        // Apply gravity and handle ground collision
-                        if (!isGrounded) {
-                            verticalVelocity -= gravity;
-                            camera.position.y += verticalVelocity;
-
-                            // Update player collider position
-                            playerCollider.center.copy(camera.position);
-
-                            // Check collisions after vertical movement
-                            let verticalCollision = false;
-                            let collisionTower = null;
-                            for (const tower of towers) {
-                                if (tower.boundingBox.intersectsSphere(playerCollider)) {
-                                    verticalCollision = true;
-                                    collisionTower = tower;
-                                    break;
-                                }
-                            }
-
-                            // If there's a collision during vertical movement, push out
-                            if (verticalCollision && collisionTower) {
-                                // Calculate push direction away from tower center
-                                const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
-                                
-                                // Push out horizontally
-                                camera.position.x += pushDir.x * 3;
-                                camera.position.z += pushDir.z * 3;
-                                
-                                verticalVelocity = 0;
-                            }
-
-                            // Check for ground collision
-                            if (camera.position.y <= playerHeight) {
-                                camera.position.y = playerHeight;
-                                verticalVelocity = 0;
-                                isGrounded = true;
-                            }
-                        }
-
-                        // Update player collider position for final position
-                        playerCollider.center.copy(camera.position);
-
-                        // Check collisions for normal movement
-                        let collision = false;
-                        let collisionTower = null;
-                        for (const tower of towers) {
-                            if (tower.boundingBox.intersectsSphere(playerCollider)) {
-                                collision = true;
-                                collisionTower = tower;
-                                break;
-                            }
-                        }
-
-                        // Handle normal movement collisions with push-out
-                        if (collision && collisionTower) {
-                            if (isFlinging) {
-                                // During fling, push out strongly
-                                const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
-                                camera.position.x += pushDir.x * 3;
-                                camera.position.z += pushDir.z * 3;
-                            } else {
-                                // During normal movement, just prevent movement
-                                camera.position.copy(oldPosition);
-                            }
-                        }
-
-                        // Apply friction to normal movement
-                        velocity.x *= 0.85;
-                        velocity.z *= 0.85;
+                        processGameLogic(deltaTime);
                     }
                 }
             }
             animate();
 
-            // Send position updates
+            // Optimized collision checking
+            function checkCollisions() {
+                const currentTime = Date.now();
+                if (currentTime - lastCollisionCheck < COLLISION_CHECK_INTERVAL) {
+                    return;
+                }
+                lastCollisionCheck = currentTime;
+
+                playerCollider.center.copy(camera.position);
+                
+                for (const tower of towers) {
+                    if (tower.boundingBox.intersectsSphere(playerCollider)) {
+                        handleCollision(tower);
+                    }
+                }
+            }
+
+            // Optimized collision handling
+            function handleCollision(collisionTower) {
+                tempPushDir.copy(camera.position).sub(collisionTower.mesh.position).normalize();
+                
+                if (isFlinging) {
+                    camera.position.x += tempPushDir.x * 3;
+                    camera.position.z += tempPushDir.z * 3;
+                    
+                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                    flingVelocity.x = tempPushDir.x * speed * 0.8;
+                    flingVelocity.z = tempPushDir.z * speed * 0.8;
+                } else {
+                    camera.position.copy(oldPosition);
+                }
+            }
+
+            // Optimized position updates
             function sendPositionUpdate() {
-                if (ws.readyState === WebSocket.OPEN && gameStarted) {
+                const currentTime = Date.now();
+                if (currentTime - lastPositionUpdate < POSITION_UPDATE_INTERVAL) {
+                    return;
+                }
+                lastPositionUpdate = currentTime;
+
+                if (ws?.readyState === WebSocket.OPEN && gameStarted) {
                     ws.send(JSON.stringify({
                         type: 'position',
                         position: camera.position.toArray(),
@@ -1573,8 +1421,118 @@
                 }
             }
 
-            // Update position periodically
-            setInterval(sendPositionUpdate, 50); // 20 updates per second
+            // Optimized game logic processing
+            function processGameLogic(deltaTime) {
+                const oldPosition = camera.position.clone();
+                
+                // Calculate movement
+                direction.z = Number(moveForward) - Number(moveBackward);
+                direction.x = Number(moveRight) - Number(moveLeft);
+                direction.normalize();
+
+                if (moveForward || moveBackward) velocity.z -= direction.z * moveSpeed;
+                if (moveLeft || moveRight) velocity.x -= direction.x * moveSpeed;
+
+                // Apply movement
+                controls.moveRight(-velocity.x);
+                controls.moveForward(-velocity.z);
+
+                // Update line trace if needed
+                if (showLine) {
+                    updateLineTrace();
+                }
+
+                // Apply fling velocity if active
+                if (isFlinging) {
+                    applyFlingVelocity();
+                }
+
+                // Apply gravity and handle ground collision
+                if (!isGrounded) {
+                    applyGravity();
+                }
+
+                // Check collisions
+                checkCollisions();
+
+                // Apply friction
+                velocity.x *= 0.85;
+                velocity.z *= 0.85;
+            }
+
+            // Optimized line trace update
+            function updateLineTrace() {
+                camera.getWorldDirection(tempCameraDirection);
+                tempRightVector.crossVectors(tempCameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
+                
+                tempStartPoint.copy(camera.position).add(tempRightVector.multiplyScalar(2));
+                tempStartPoint.y = camera.position.y;
+                
+                tempEndPoint.copy(camera.position).add(tempCameraDirection.multiplyScalar(50));
+                
+                curve.points[0].copy(tempStartPoint);
+                curve.points[1].copy(tempEndPoint);
+                
+                const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
+                tubeMesh.geometry.dispose();
+                tubeMesh.geometry = newTubeGeometry;
+
+                checkLineCollisions();
+            }
+
+            // Optimized line collision checking
+            function checkLineCollisions() {
+                raycaster.set(tempStartPoint, tempCameraDirection);
+                const intersects = [];
+                
+                for (const tower of towers) {
+                    const towerIntersects = raycaster.intersectObject(tower.mesh);
+                    if (towerIntersects.length > 0 && towerIntersects[0].distance <= MAX_COLLISION_DISTANCE) {
+                        intersects.push(towerIntersects[0]);
+                    }
+                }
+
+                if (intersects.length > 0) {
+                    intersects.sort((a, b) => a.distance - b.distance);
+                    lineCollisionPoint = intersects[0].point;
+                    
+                    curve.points[1].copy(lineCollisionPoint);
+                    const collidedTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
+                    tubeMesh.geometry.dispose();
+                    tubeMesh.geometry = collidedTubeGeometry;
+                    
+                    tubeMaterial.color.setHex(0x00ff00);
+                } else {
+                    lineCollisionPoint = null;
+                    tubeMaterial.color.setHex(0xff0000);
+                }
+            }
+
+            // Optimized fling velocity application
+            function applyFlingVelocity() {
+                camera.position.x += flingVelocity.x;
+                camera.position.z += flingVelocity.z;
+
+                flingVelocity.x *= flingDamping;
+                flingVelocity.z *= flingDamping;
+
+                if (Math.abs(flingVelocity.x) < 0.001 && Math.abs(flingVelocity.z) < 0.001) {
+                    isFlinging = false;
+                    flingVelocity.set(0, 0, 0);
+                }
+            }
+
+            // Optimized gravity application
+            function applyGravity() {
+                verticalVelocity -= gravity;
+                camera.position.y += verticalVelocity;
+
+                if (camera.position.y <= playerHeight) {
+                    camera.position.y = playerHeight;
+                    verticalVelocity = 0;
+                    isGrounded = true;
+                }
+            }
         } catch (error) {
             console.error('Error during initialization:', error);
             document.body.innerHTML = `
