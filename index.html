@@ -606,6 +606,29 @@
 
             // Function to create world from server data
             function createWorldFromData(worldData) {
+                // Add ambient light
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                scene.add(ambientLight);
+
+                // Add directional light
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+                directionalLight.position.set(1, 1, 1);
+                scene.add(directionalLight);
+
+                // Create the line trace
+                const curve = new THREE.CatmullRomCurve3([
+                    new THREE.Vector3(0, 0, 0),
+                    new THREE.Vector3(0, 0, 1)
+                ]);
+                const tubeGeometry = new THREE.TubeGeometry(curve, 1, 0.15, 8, false);
+                const tubeMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x00ff00,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
+                scene.add(tubeMesh);
+
                 // Create grids
                 const gridHelper = new THREE.GridHelper(worldData.grid.size, worldData.grid.divisions);
                 gridHelper.material.opacity = worldData.grid.opacity;
@@ -682,6 +705,9 @@
                         );
                     }
                 });
+
+                // Start the animation loop after world is created
+                animate();
             }
 
             // Modified createTower function to accept height and floating parameters
