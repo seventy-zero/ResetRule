@@ -131,6 +131,9 @@
         scene.background = new THREE.Color(0x000000);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000);
         
+        // Add camera to scene immediately
+        scene.add(camera);
+        
         // Renderer setup
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -198,10 +201,6 @@
                     isFlinging = false;
                     console.log('Player state reset');
                     
-                    // Ensure scene is properly set up
-                    scene.add(camera);
-                    console.log('Camera added to scene');
-                    
                     // Join the game
                     if (ws.readyState === WebSocket.OPEN) {
                         ws.send(JSON.stringify({
@@ -231,6 +230,9 @@
         controls.addEventListener('lock', function() {
             instructions.classList.add('hidden');
             console.log('Controls locked - Player started:', playerUsername);
+            // Ensure camera is at correct position after lock
+            camera.position.set(0, playerHeight, 0);
+            camera.rotation.set(0, 0, 0);
         });
 
         controls.addEventListener('unlock', function() {
