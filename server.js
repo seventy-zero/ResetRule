@@ -7,8 +7,18 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Serve static files
+// Serve static files from the current directory
 app.use(express.static(__dirname));
+
+// Explicitly handle the root route
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Handle 404 errors
+app.use((req, res) => {
+    res.status(404).sendFile(path.join(__dirname, 'index.html'));
+});
 
 // Store connected players
 const players = new Map();
