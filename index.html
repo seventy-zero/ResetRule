@@ -1128,9 +1128,9 @@
                     const moveX = right * Math.cos(angle) - forward * Math.sin(angle);
                     const moveZ = right * Math.sin(angle) + forward * Math.cos(angle);
                     
-                    // Set velocity
-                    velocity.x = moveX * moveSpeed * 6;
-                    velocity.z = moveZ * moveSpeed * 6;
+                    // Set velocity with increased movement speed
+                    velocity.x = moveX * moveSpeed * 12;
+                    velocity.z = moveZ * moveSpeed * 12;
                 });
 
                 window.leftJoystick.on('end', function() {
