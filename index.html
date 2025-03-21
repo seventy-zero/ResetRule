@@ -596,9 +596,14 @@
         // WebSocket setup with Railway support
         const getWebSocketUrl = () => {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            if (window.location.hostname.includes('.railway.app')) {
-                return `${protocol}//${window.location.host}`;
+            const host = window.location.host;
+            
+            // Check if we're on Railway
+            if (host.includes('.railway.app')) {
+                return `${protocol}//${host}`;
             }
+            
+            // Local development
             return 'ws://localhost:3000';
         };
 
@@ -607,67 +612,77 @@
 
         function setupWebSocket() {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${wsProtocol}//${window.location.host}`;
+            const wsUrl = getWebSocketUrl();
+            
+            console.log('Attempting to connect to WebSocket at:', wsUrl);
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
                 console.log('Connected to server');
                 // Send join message with username
-                ws.send(JSON.stringify({
-                    type: 'join',
-                    username: playerUsername
-                }));
+                if (playerUsername) {
+                    ws.send(JSON.stringify({
+                        type: 'join',
+                        username: playerUsername
+                    }));
+                }
             };
 
             ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                console.log('Received message:', data.type);
-                
-                switch (data.type) {
-                    case 'world_data':
-                        console.log('Received world data');
-                        // Clear existing towers
-                        towers.forEach(tower => {
-                            scene.remove(tower.mesh);
-                        });
-                        towers.length = 0;
-                        
-                        // Create towers from server data
-                        data.towers.forEach(towerData => {
-                            createTowerFromData(towerData);
-                        });
-                        
-                        // Create bridges from server data
-                        data.bridges.forEach(bridgeData => {
-                            createBridgeFromData(bridgeData);
-                        });
-                        break;
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Received message:', data.type);
+                    
+                    switch (data.type) {
+                        case 'world_data':
+                            console.log('Received world data');
+                            // Clear existing towers
+                            towers.forEach(tower => {
+                                scene.remove(tower.mesh);
+                            });
+                            towers.length = 0;
+                            
+                            // Create towers from server data
+                            data.towers.forEach(towerData => {
+                                createTowerFromData(towerData);
+                            });
+                            
+                            // Create bridges from server data
+                            data.bridges.forEach(bridgeData => {
+                                createBridgeFromData(bridgeData);
+                            });
+                            break;
 
-                    case 'room_info':
-                        console.log(`Joined room ${data.name} with ${data.playerCount} players`);
-                        document.getElementById('roomInfo').textContent = `${data.name} - Players: ${data.playerCount}/20`;
-                        break;
+                        case 'room_info':
+                            console.log(`Joined room ${data.name} with ${data.playerCount} players`);
+                            document.getElementById('roomInfo').textContent = `${data.name} - Players: ${data.playerCount}/20`;
+                            break;
 
-                    case 'player_joined':
-                        console.log('Player joined:', data.username);
-                        handlePlayerJoined(data.username);
-                        break;
+                        case 'player_joined':
+                            console.log('Player joined:', data.username);
+                            handlePlayerJoined(data.username);
+                            break;
 
-                    case 'position':
-                        if (data.username !== playerUsername && gameStarted) {
-                            updatePlayerPosition(data.username, data.position, data.rotation);
-                        }
-                        break;
+                        case 'position':
+                            if (data.username !== playerUsername && gameStarted) {
+                                updatePlayerPosition(data.username, data.position, data.rotation);
+                            }
+                            break;
 
-                    case 'player_left':
-                        console.log('Player left:', data.username);
-                        handlePlayerLeft(data.username);
-                        break;
+                        case 'player_left':
+                            console.log('Player left:', data.username);
+                            handlePlayerLeft(data.username);
+                            break;
+                    }
+                } catch (error) {
+                    console.error('Error processing message:', error);
                 }
             };
 
             ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
+                // Attempt to reconnect after a delay
+                setTimeout(setupWebSocket, 3000);
             };
 
             ws.onclose = () => {
