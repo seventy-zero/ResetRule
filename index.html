@@ -93,6 +93,28 @@
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000000);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000);
+        
+        // Renderer setup
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // Add error handling for WebGL context
+        if (!renderer.capabilities.isWebGL2) {
+            document.body.innerHTML = 'WebGL 2 is not available in your browser - please use a WebGL 2 enabled browser';
+            throw new Error('WebGL 2 not available');
+        }
+
+        // Add error event listener
+        renderer.domElement.addEventListener('webglcontextlost', function(event) {
+            event.preventDefault();
+            console.error('WebGL context lost');
+        });
+
+        renderer.domElement.addEventListener('webglcontextrestored', function() {
+            console.log('WebGL context restored');
+        });
 
         // Add WebSocket connection
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -111,12 +133,18 @@
         // Controls setup
         const controls = new PointerLockControls(camera, document.body);
 
+        // Position camera initially
+        camera.position.set(0, playerHeight, 0);
+
         // Enable/disable start button based on username input
         usernameInput.addEventListener('input', function() {
             const username = this.value.trim();
             startButton.disabled = username.length === 0;
             playerUsername = username;
         });
+
+        // Initialize game state
+        let gameStarted = false;
 
         startButton.addEventListener('click', function() {
             if (usernameInput.value.trim()) {
@@ -127,16 +155,19 @@
                     username: playerUsername
                 }));
                 controls.lock();
+                gameStarted = true;
             }
         });
 
         controls.addEventListener('lock', function() {
             instructions.classList.add('hidden');
-            console.log('Player started:', playerUsername); // For debugging
+            console.log('Player started:', playerUsername);
         });
 
         controls.addEventListener('unlock', function() {
-            instructions.classList.remove('hidden');
+            if (gameStarted) {
+                instructions.classList.remove('hidden');
+            }
         });
 
         // Create player model
@@ -271,28 +302,6 @@
             console.log('Disconnected from server');
             alert('Lost connection to game server. Please refresh to reconnect.');
         };
-
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
-
-        // Add error handling for WebGL context
-        if (!renderer.capabilities.isWebGL2) {
-            document.body.innerHTML = 'WebGL 2 is not available in your browser - please use a WebGL 2 enabled browser';
-            throw new Error('WebGL 2 not available');
-        }
-
-        document.body.appendChild(renderer.domElement);
-
-        // Add error event listener
-        renderer.domElement.addEventListener('webglcontextlost', function(event) {
-            event.preventDefault();
-            console.error('WebGL context lost');
-        });
-
-        renderer.domElement.addEventListener('webglcontextrestored', function() {
-            console.log('WebGL context restored');
-        });
 
         // Nebula shader
         const nebulaVertexShader = `
@@ -808,90 +817,7 @@
         const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
         scene.add(tubeMesh);
 
-        // Position camera
-        camera.position.set(0, playerHeight, 0); // Set initial height to player height
-
-        // Handle window resize
-        window.addEventListener('resize', onWindowResize, false);
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        // Movement controls
-        const onKeyDown = function(event) {
-            switch (event.code) {
-                case 'ArrowUp':
-                case 'KeyW':
-                    moveForward = true;
-                    break;
-                case 'ArrowDown':
-                case 'KeyS':
-                    moveBackward = true;
-                    break;
-                case 'ArrowLeft':
-                case 'KeyA':
-                    moveLeft = true;
-                    break;
-                case 'ArrowRight':
-                case 'KeyD':
-                    moveRight = true;
-                    break;
-                case 'KeyE':
-                    showLine = true;
-                    break;
-            }
-        };
-
-        const onKeyUp = function(event) {
-            switch (event.code) {
-                case 'ArrowUp':
-                case 'KeyW':
-                    moveForward = false;
-                    break;
-                case 'ArrowDown':
-                case 'KeyS':
-                    moveBackward = false;
-                    break;
-                case 'ArrowLeft':
-                case 'KeyA':
-                    moveLeft = false;
-                    break;
-                case 'ArrowRight':
-                case 'KeyD':
-                    moveRight = false;
-                    break;
-                case 'KeyE':
-                    showLine = false;
-                    break;
-            }
-        };
-
-        // Mouse controls for line visibility
-        document.addEventListener('mousedown', (event) => {
-            if (event.button === 0) { // Left mouse button
-                showLine = true;
-            }
-        });
-
-        document.addEventListener('mouseup', (event) => {
-            if (event.button === 0) { // Left mouse button
-                showLine = false;
-            }
-        });
-
-        document.addEventListener('keydown', onKeyDown);
-        document.addEventListener('keyup', onKeyUp);
-
-        // Function to get camera direction
-        function getCameraDirection() {
-            const direction = new THREE.Vector3();
-            camera.getWorldDirection(direction);
-            return direction;
-        }
-
-        // Animation loop with collision detection, star rotation, and nebula animation
+        // Animation loop
         function animate() {
             requestAnimationFrame(animate);
 
@@ -1130,7 +1056,89 @@
 
             renderer.render(scene, camera);
         }
+
+        // Start animation loop immediately
         animate();
+
+        // Handle window resize
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Movement controls
+        const onKeyDown = function(event) {
+            switch (event.code) {
+                case 'ArrowUp':
+                case 'KeyW':
+                    moveForward = true;
+                    break;
+                case 'ArrowDown':
+                case 'KeyS':
+                    moveBackward = true;
+                    break;
+                case 'ArrowLeft':
+                case 'KeyA':
+                    moveLeft = true;
+                    break;
+                case 'ArrowRight':
+                case 'KeyD':
+                    moveRight = true;
+                    break;
+                case 'KeyE':
+                    showLine = true;
+                    break;
+            }
+        };
+
+        const onKeyUp = function(event) {
+            switch (event.code) {
+                case 'ArrowUp':
+                case 'KeyW':
+                    moveForward = false;
+                    break;
+                case 'ArrowDown':
+                case 'KeyS':
+                    moveBackward = false;
+                    break;
+                case 'ArrowLeft':
+                case 'KeyA':
+                    moveLeft = false;
+                    break;
+                case 'ArrowRight':
+                case 'KeyD':
+                    moveRight = false;
+                    break;
+                case 'KeyE':
+                    showLine = false;
+                    break;
+            }
+        };
+
+        // Mouse controls for line visibility
+        document.addEventListener('mousedown', (event) => {
+            if (event.button === 0) { // Left mouse button
+                showLine = true;
+            }
+        });
+
+        document.addEventListener('mouseup', (event) => {
+            if (event.button === 0) { // Left mouse button
+                showLine = false;
+            }
+        });
+
+        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('keyup', onKeyUp);
+
+        // Function to get camera direction
+        function getCameraDirection() {
+            const direction = new THREE.Vector3();
+            camera.getWorldDirection(direction);
+            return direction;
+        }
     </script>
 </body>
 </html>
