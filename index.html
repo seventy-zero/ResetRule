@@ -826,7 +826,7 @@
         function createCollectible(id, position, color) {
             console.log(`Creating collectible ${id} at position (${position.x}, ${position.y}, ${position.z}) with color ${color}`);
             const geometry = new THREE.SphereGeometry(ITEM_RADIUS, 8, 8);
-            const material = new THREE.MeshBasicMaterial({ 
+            const material = new THREE.MeshStandardMaterial({ 
                 color: color,
                 emissive: color,
                 emissiveIntensity: 0.5
@@ -837,10 +837,12 @@
             
             // Add glow effect
             const glowGeometry = new THREE.SphereGeometry(ITEM_RADIUS * 1.2, 8, 8);
-            const glowMaterial = new THREE.MeshBasicMaterial({
+            const glowMaterial = new THREE.MeshStandardMaterial({
                 color: color,
                 transparent: true,
-                opacity: 0.3
+                opacity: 0.3,
+                emissive: color,
+                emissiveIntensity: 0.3
             });
             const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
             mesh.add(glowMesh);
