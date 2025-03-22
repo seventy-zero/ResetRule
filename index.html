@@ -549,13 +549,21 @@
                         positions[i] = x * Math.cos(theta) - z * Math.sin(theta);
                         positions[i + 2] = x * Math.sin(theta) + z * Math.cos(theta);
                     }
-                    // Use a slightly larger cylinder for collision
-                    collisionGeometry = new THREE.CylinderGeometry(18, 18, height, 8);
+                    // Create multiple collision boxes for better accuracy
+                    const twistSegments = 4;
+                    for (let i = 0; i < twistSegments; i++) {
+                        const segmentHeight = height / twistSegments;
+                        const collisionBox = new THREE.Box3();
+                        collisionBox.setFromObject(new THREE.Mesh(
+                            new THREE.CylinderGeometry(18, 18, segmentHeight, 8)
+                        ));
+                        collisionBoxes.push(collisionBox);
+                    }
                     break;
                 case 5: // Pyramid tower
                     geometry = new THREE.ConeGeometry(24, height, 4);
                     // Create multiple collision boxes for better accuracy
-                    const pyramidSegments = 3;
+                    const pyramidSegments = 4; // Increased from 3 to 4 for better accuracy
                     for (let i = 0; i < pyramidSegments; i++) {
                         const segmentHeight = height / pyramidSegments;
                         const topSize = 24 * (1 - (i + 1) / pyramidSegments);
@@ -569,16 +577,34 @@
                     break;
                 case 6: // Octagonal tower
                     geometry = new THREE.CylinderGeometry(19, 19, height, 8);
-                    collisionGeometry = geometry;
+                    // Create multiple collision boxes for better accuracy
+                    const octagonSegments = 3;
+                    for (let i = 0; i < octagonSegments; i++) {
+                        const segmentHeight = height / octagonSegments;
+                        const collisionBox = new THREE.Box3();
+                        collisionBox.setFromObject(new THREE.Mesh(
+                            new THREE.CylinderGeometry(19, 19, segmentHeight, 8)
+                        ));
+                        collisionBoxes.push(collisionBox);
+                    }
                     break;
                 case 7: // Double width tower
                     geometry = new THREE.BoxGeometry(42, height, 42);
-                    collisionGeometry = geometry;
+                    // Create multiple collision boxes for better accuracy
+                    const doubleSegments = 3;
+                    for (let i = 0; i < doubleSegments; i++) {
+                        const segmentHeight = height / doubleSegments;
+                        const collisionBox = new THREE.Box3();
+                        collisionBox.setFromObject(new THREE.Mesh(
+                            new THREE.BoxGeometry(42, segmentHeight, 42)
+                        ));
+                        collisionBoxes.push(collisionBox);
+                    }
                     break;
                 case 8: // Inverse pyramid
                     geometry = new THREE.CylinderGeometry(12, 28, height, 4);
                     // Create multiple collision boxes for better accuracy
-                    const inverseSegments = 3;
+                    const inverseSegments = 4; // Increased from 3 to 4 for better accuracy
                     for (let i = 0; i < inverseSegments; i++) {
                         const segmentHeight = height / inverseSegments;
                         const topRadius = 28 - (28 - 12) * (i + 1) / inverseSegments;
@@ -592,11 +618,31 @@
                     break;
                 case 9: // Star tower
                     geometry = new THREE.CylinderGeometry(24, 24, height, 5);
-                    collisionGeometry = geometry;
+                    // Create multiple collision boxes for better accuracy
+                    const starSegments = 3;
+                    for (let i = 0; i < starSegments; i++) {
+                        const segmentHeight = height / starSegments;
+                        const collisionBox = new THREE.Box3();
+                        collisionBox.setFromObject(new THREE.Mesh(
+                            new THREE.CylinderGeometry(24, 24, segmentHeight, 5)
+                        ));
+                        collisionBoxes.push(collisionBox);
+                    }
                     break;
                 case 10: // Thin spire
                     geometry = new THREE.CylinderGeometry(8, 16, height, 6);
-                    collisionGeometry = new THREE.CylinderGeometry(16, 16, height, 6);
+                    // Create multiple collision boxes for better accuracy
+                    const spireSegments = 4;
+                    for (let i = 0; i < spireSegments; i++) {
+                        const segmentHeight = height / spireSegments;
+                        const topRadius = 8 + (16 - 8) * (i + 1) / spireSegments;
+                        const bottomRadius = 8 + (16 - 8) * i / spireSegments;
+                        const collisionBox = new THREE.Box3();
+                        collisionBox.setFromObject(new THREE.Mesh(
+                            new THREE.CylinderGeometry(bottomRadius, topRadius, segmentHeight, 6)
+                        ));
+                        collisionBoxes.push(collisionBox);
+                    }
                     break;
                 case 11: // Complex tower (stacked shapes)
                     const baseHeight = height * 0.6;
