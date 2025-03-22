@@ -287,15 +287,15 @@
                 this.predictedPosition = new THREE.Vector3();
                 this.velocity = new THREE.Vector3();
                 this.lastUpdateTime = Date.now();
-                this.interpolationDelay = 100; // Reduced from 150ms to 100ms for more responsive movement
+                this.interpolationDelay = 50; // Reduced from 100ms to 50ms for more responsive movement
                 this.lastPosition = new THREE.Vector3();
                 this.positionHistory = [];
-                this.maxHistorySize = 12; // Increased from 8 to 12 for better prediction
-                this.smoothingFactor = 0.25; // Increased from 0.15 to 0.25 for smoother movement
-                this.rotationSmoothingFactor = 0.2; // Increased from 0.1 to 0.2 for smoother rotation
+                this.maxHistorySize = 16; // Increased from 12 to 16 for better prediction
+                this.smoothingFactor = 0.35; // Increased from 0.25 to 0.35 for smoother movement
+                this.rotationSmoothingFactor = 0.3; // Increased from 0.2 to 0.3 for smoother rotation
                 this.isVisible = true;
-                this.lastVelocity = new THREE.Vector3(); // Store last velocity for acceleration calculation
-                this.acceleration = new THREE.Vector3(); // Store acceleration for better prediction
+                this.lastVelocity = new THREE.Vector3();
+                this.acceleration = new THREE.Vector3();
             }
 
             update(deltaTime) {
@@ -2011,7 +2011,7 @@
             }
 
             // Update position less frequently for smoother movement
-            setInterval(sendPositionUpdate, 150); // Changed from 100ms to 150ms for smoother updates
+            setInterval(sendPositionUpdate, 50); // Changed from 150ms to 50ms for more frequent updates
 
             // Add periodic player list updates
             setInterval(() => {
