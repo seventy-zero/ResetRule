@@ -1541,6 +1541,70 @@
                 leftControls.appendChild(leftJoystickZone);
                 document.body.appendChild(leftControls);
 
+                // Fling button setup
+                const flingBtn = document.getElementById('flingButton');
+                let flingStartTime = 0;
+                const FLING_THRESHOLD = 200;
+
+                // Ensure fling button is visible and properly positioned
+                flingBtn.style.display = 'block';
+                flingBtn.style.position = 'fixed';
+                flingBtn.style.bottom = '160px';
+                flingBtn.style.left = '40px';
+                flingBtn.style.width = '80px';
+                flingBtn.style.height = '80px';
+                flingBtn.style.background = 'rgba(76, 175, 80, 0.6)';
+                flingBtn.style.border = '2px solid rgba(255, 255, 255, 0.8)';
+                flingBtn.style.borderRadius = '50%';
+                flingBtn.style.color = 'white';
+                flingBtn.style.fontSize = '32px';
+                flingBtn.style.lineHeight = '80px';
+                flingBtn.style.textAlign = 'center';
+                flingBtn.style.pointerEvents = 'auto';
+                flingBtn.style.cursor = 'pointer';
+                flingBtn.style.zIndex = '1000';
+                flingBtn.style.touchAction = 'none';
+                flingBtn.style.transition = 'all 0.1s ease-out';
+                flingBtn.style.userSelect = 'none';
+                flingBtn.innerHTML = '⚡';
+
+                // Add fling button event listeners
+                flingBtn.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    flingStartTime = performance.now();
+                    console.log('Fling button touch started');
+                    showLine = true;
+                    this.classList.add('active');
+                }, { passive: false });
+
+                flingBtn.addEventListener('touchend', function(e) {
+                    e.preventDefault();
+                    const touchDuration = performance.now() - flingStartTime;
+                    console.log('Fling button touch ended');
+                    showLine = false;
+                    this.classList.remove('active');
+                    
+                    if (lineCollisionPoint) {
+                        console.log('Initiating fling with collision point:', lineCollisionPoint);
+                        const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
+                        const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                        
+                        let scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
+                        if (touchDuration < FLING_THRESHOLD) {
+                            scaledStrength *= 1.2;
+                        }
+                        
+                        flingVelocity.x = flingDirection.x * scaledStrength;
+                        flingVelocity.z = flingDirection.z * scaledStrength;
+                        verticalVelocity = flingDirection.y * scaledStrength + 0.5;
+                        
+                        isFlinging = true;
+                        isGrounded = false;
+                        lineCollisionPoint = null;
+                        console.log('Fling initiated with velocity:', flingVelocity);
+                    }
+                }, { passive: false });
+
                 // Camera control variables
                 let rightTouchStartX = 0;
                 let rightTouchStartY = 0;
@@ -1731,65 +1795,6 @@
                     requestAnimationFrame(updateControls);
                 }
                 updateControls();
-
-                // Fling button handling
-                const flingButton = document.getElementById('flingButton');
-                let flingStartTime = 0;
-                const FLING_THRESHOLD = 200;
-                
-                flingButton.addEventListener('touchstart', function(e) {
-                    e.preventDefault();
-                    flingStartTime = performance.now();
-                    showLine = true;
-                    this.classList.add('active');
-                    console.log('Fling button touch started');
-                }, { passive: false });
-
-                flingButton.addEventListener('touchend', function(e) {
-                    e.preventDefault();
-                    const touchDuration = performance.now() - flingStartTime;
-                    showLine = false;
-                    this.classList.remove('active');
-                    
-                    if (lineCollisionPoint) {
-                        const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
-                        const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                        
-                        let scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
-                        if (touchDuration < FLING_THRESHOLD) {
-                            scaledStrength *= 1.2;
-                        }
-                        
-                        flingVelocity.x = flingDirection.x * scaledStrength;
-                        flingVelocity.z = flingDirection.z * scaledStrength;
-                        verticalVelocity = flingDirection.y * scaledStrength + 0.5;
-                        
-                        isFlinging = true;
-                        isGrounded = false;
-                        lineCollisionPoint = null;
-                    }
-                    console.log('Fling button touch ended');
-                }, { passive: false });
-
-                // Prevent default touch behaviors
-                document.addEventListener('touchmove', function(e) {
-                    if (!e.target.closest('.mobile-controls') && 
-                        !e.target.closest('#flingButton') && 
-                        e.target !== usernameInput) {
-                        e.preventDefault();
-                    }
-                }, { passive: false });
-
-                document.addEventListener('touchstart', function(e) {
-                    if (!e.target.closest('.mobile-controls') && 
-                        !e.target.closest('#flingButton') && 
-                        e.target !== usernameInput && 
-                        e.target !== startButton) {
-                        e.preventDefault();
-                    }
-                }, { passive: false });
-
-                console.log('Mobile controls initialized');
             }
 
             // Desktop controls
