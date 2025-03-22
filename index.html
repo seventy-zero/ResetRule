@@ -287,13 +287,15 @@
                 this.predictedPosition = new THREE.Vector3();
                 this.velocity = new THREE.Vector3();
                 this.lastUpdateTime = Date.now();
-                this.interpolationDelay = 150;
+                this.interpolationDelay = 100; // Reduced from 150ms to 100ms for more responsive movement
                 this.lastPosition = new THREE.Vector3();
                 this.positionHistory = [];
-                this.maxHistorySize = 8;
-                this.smoothingFactor = 0.15;
-                this.rotationSmoothingFactor = 0.1;
-                this.isVisible = true; // Add visibility flag
+                this.maxHistorySize = 12; // Increased from 8 to 12 for better prediction
+                this.smoothingFactor = 0.25; // Increased from 0.15 to 0.25 for smoother movement
+                this.rotationSmoothingFactor = 0.2; // Increased from 0.1 to 0.2 for smoother rotation
+                this.isVisible = true;
+                this.lastVelocity = new THREE.Vector3(); // Store last velocity for acceleration calculation
+                this.acceleration = new THREE.Vector3(); // Store acceleration for better prediction
             }
 
             update(deltaTime) {
@@ -314,8 +316,9 @@
                     this.positionHistory.shift();
                 }
 
-                // Calculate velocity from position history with weighted average
-                if (this.positionHistory.length >= 2) {
+                // Calculate velocity and acceleration from position history
+                if (this.positionHistory.length >= 3) {
+                    // Calculate current velocity using weighted average of recent positions
                     const weights = [0.5, 0.3, 0.2];
                     this.velocity.set(0, 0, 0);
                     let totalWeight = 0;
@@ -329,23 +332,40 @@
                     }
                     
                     this.velocity.divideScalar(totalWeight * deltaTime);
+
+                    // Calculate acceleration
+                    this.acceleration.copy(this.velocity).sub(this.lastVelocity).divideScalar(deltaTime);
+                    this.lastVelocity.copy(this.velocity);
                 }
                 
                 // Use prediction if we haven't received an update recently
                 if (timeSinceUpdate > this.interpolationDelay) {
                     this.predictedPosition.copy(this.currentPosition);
                     const predictionTime = timeSinceUpdate / 1000;
-                    const damping = Math.exp(-predictionTime * 1.5);
-                    this.predictedPosition.add(this.velocity.clone().multiplyScalar(predictionTime * damping));
+                    
+                    // Use acceleration-based prediction with exponential damping
+                    const damping = Math.exp(-predictionTime * 2.0); // Increased damping factor
+                    const predictedVelocity = this.velocity.clone()
+                        .add(this.acceleration.clone().multiplyScalar(predictionTime * 0.5));
+                    
+                    this.predictedPosition.add(predictedVelocity.multiplyScalar(predictionTime * damping));
                     this.mesh.position.copy(this.predictedPosition);
                 } else {
+                    // Smooth interpolation between current and target position using cubic easing
                     const alpha = Math.min(timeSinceUpdate / this.interpolationDelay, 1);
                     const easedAlpha = alpha * alpha * (3 - 2 * alpha);
                     
+                    // Apply additional smoothing with velocity-based correction
+                    const targetVelocity = this.targetPosition.clone().sub(this.currentPosition).divideScalar(deltaTime);
+                    const velocityCorrection = targetVelocity.sub(this.velocity).multiplyScalar(0.1);
+                    
                     this.currentPosition.lerp(this.targetPosition, easedAlpha * this.smoothingFactor);
+                    this.currentPosition.add(velocityCorrection.multiplyScalar(deltaTime));
+                    
                     this.mesh.position.copy(this.currentPosition);
                 }
 
+                // Smooth rotation interpolation with separate smoothing factor
                 const rotationAlpha = Math.min(timeSinceUpdate / this.interpolationDelay, 1);
                 const easedRotationAlpha = rotationAlpha * rotationAlpha * (3 - 2 * rotationAlpha);
                 this.currentRotation.lerp(this.targetRotation, easedRotationAlpha * this.rotationSmoothingFactor);
