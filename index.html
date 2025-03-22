@@ -536,6 +536,7 @@
             ];
 
             let geometry;
+            let towerHeight = height; // Store the height for orb placement
             
             switch(towerData.type) {
                 case 0: // Cylindrical tower
@@ -949,9 +950,8 @@
         function findValidTowerPosition() {
             console.log('Finding valid tower position...');
             const validTowers = towers.filter(tower => {
-                // Check if tower is tall enough
-                const towerHeight = tower.mesh.geometry.parameters.height;
-                return towerHeight > 10; // Reduced minimum height to allow more placements
+                // Use stored height instead of trying to access geometry
+                return tower.height > 10; // Reduced minimum height to allow more placements
             });
             console.log(`Found ${validTowers.length} valid towers (height > 10)`);
 
@@ -962,7 +962,7 @@
 
             // Try each tower until we find a valid position
             for (const tower of validTowers) {
-                const towerHeight = tower.mesh.geometry.parameters.height;
+                const towerHeight = tower.height;
                 const towerPosition = tower.mesh.position;
                 console.log(`Trying tower at position (${towerPosition.x}, ${towerPosition.y}, ${towerPosition.z}) with height ${towerHeight}`);
                 
@@ -1029,6 +1029,10 @@
                 position: position.clone(),
                 color: color
             });
+            
+            // Add to spatial grid for collision detection
+            spatialGrid.add(mesh);
+            
             console.log(`Collectible ${id} created successfully`);
         }
 
@@ -1039,6 +1043,13 @@
             let attempts = 0;
             const maxAttempts = 1000; // Increased from 100 to 1000 to allow more attempts
             let successfulPlacements = 0;
+            
+            // Clear existing collectibles
+            collectibles.forEach(item => {
+                scene.remove(item.mesh);
+                spatialGrid.remove(item.mesh);
+            });
+            collectibles.clear();
             
             for (let i = 0; i < ITEM_COUNT; i++) {
                 let position;
