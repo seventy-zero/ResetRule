@@ -677,64 +677,108 @@
             
             scene.add(bridgeGroup);
             
-            // Create a single box collider for the bridge
+            // Create a more precise collision box for the bridge
             const collisionBox = new THREE.Box3();
             const collisionMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(distance, bridgeWidth * 2, bridgeWidth * 2) // Increased from 0.4 and 0.3 to 2
+                new THREE.BoxGeometry(distance, bridgeWidth * 2, bridgeWidth * 2)
             );
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
             collisionBox.setFromObject(collisionMesh);
             
+            // Add the bridge to the towers array with its collision box
             towers.push({
                 mesh: bridgeGroup,
-                collisionBoxes: [collisionBox]
+                collisionBoxes: [collisionBox],
+                isBridge: true,
+                startPos: startPos.clone(),
+                endPos: endPos.clone()
             });
         }
 
         // Update collision check function
         function checkCollision(position, radius) {
-            const playerCollider = new THREE.Sphere(position, radius);
+            const capsule = new CapsuleCollider(radius, playerHeight);
+            capsule.update(position);
+            
             let closestCollision = null;
             let minDistance = Infinity;
             
             for (const tower of towers) {
                 for (const collisionBox of tower.collisionBoxes) {
-                    // Get the closest point on the collision box to the player
-                    const closestPoint = new THREE.Vector3();
-                    collisionBox.clampPoint(position, closestPoint);
+                    const result = capsule.intersectsBox(collisionBox);
                     
-                    // Calculate distance to closest point
-                    const distance = position.distanceTo(closestPoint);
-                    
-                    // If this is closer than our current closest collision
-                    if (distance < minDistance) {
-                        minDistance = distance;
+                    if (result.collision && result.distance < minDistance) {
+                        minDistance = result.distance;
                         closestCollision = {
                             collision: true,
                             tower: tower,
                             collisionBox: collisionBox,
-                            distance: distance,
-                            closestPoint: closestPoint,
-                            isBridge: tower.mesh.name === 'bridge' // Add flag to identify bridges
+                            distance: result.distance,
+                            pushDir: result.pushDir,
+                            pushDistance: result.pushDistance,
+                            isBridge: tower.isBridge || false
                         };
                     }
                 }
             }
             
-            // Only return collision if we're actually within the collision radius
-            if (closestCollision && closestCollision.distance < radius) {
-                return closestCollision;
-            }
-            
-            return {
+            return closestCollision || {
                 collision: false,
                 tower: null,
                 collisionBox: null,
                 distance: Infinity,
-                closestPoint: null,
+                pushDir: null,
+                pushDistance: 0,
                 isBridge: false
             };
+        }
+
+        // Add CapsuleCollider class
+        class CapsuleCollider {
+            constructor(radius, height) {
+                this.radius = radius;
+                this.height = height;
+                this.position = new THREE.Vector3();
+                this.direction = new THREE.Vector3(0, 1, 0);
+            }
+
+            update(position) {
+                this.position.copy(position);
+            }
+
+            intersectsBox(box) {
+                // Get the closest point on the box to the capsule's center
+                const closestPoint = new THREE.Vector3();
+                box.clampPoint(this.position, closestPoint);
+
+                // Calculate the distance from the capsule's center to the closest point
+                const distance = this.position.distanceTo(closestPoint);
+
+                // If the distance is less than the capsule's radius, we have a collision
+                if (distance < this.radius) {
+                    // Calculate the push direction
+                    const pushDir = new THREE.Vector3();
+                    pushDir.copy(this.position).sub(closestPoint).normalize();
+
+                    // Calculate how far we need to push out
+                    const pushDistance = this.radius - distance;
+
+                    return {
+                        collision: true,
+                        pushDir,
+                        pushDistance,
+                        distance
+                    };
+                }
+
+                return {
+                    collision: false,
+                    pushDir: null,
+                    pushDistance: 0,
+                    distance: Infinity
+                };
+            }
         }
 
         // WebSocket setup with Railway support
@@ -1837,75 +1881,7 @@
                             
                             // If there's a collision during fling, push out and continue
                             if (collisionResult.collision) {
-                                if (isFlinging) {
-                                    // During fling, push out strongly and redirect velocity
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                    
-                                    // Push out with a stronger force
-                                    const pushDistance = playerRadius - collisionResult.distance;
-                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                    
-                                    // Normal collision response for all objects
-                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                    
-                                    // Add corner sliding effect
-                                    const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-                                    if (dotProduct < 0) {
-                                        // We're moving towards the collision, apply stronger bounce
-                                        flingVelocity.x = pushDir.x * speed * 0.8;
-                                        flingVelocity.z = pushDir.z * speed * 0.8;
-                                    } else {
-                                        // We're moving along the surface, apply sliding
-                                        flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
-                                        flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
-                                    }
-                                    
-                                    // Add upward velocity for bounce
-                                    verticalVelocity = Math.abs(verticalVelocity) * 0.8;
-                                } else {
-                                    // During normal movement, push out smoothly
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                    
-                                    // Push out with a smoother force
-                                    const pushDistance = playerRadius - collisionResult.distance;
-                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                    
-                                    // Add corner sliding for normal movement
-                                    const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
-                                    if (dotProduct < 0) {
-                                        // We're moving towards the collision, stop movement
-                                        velocity.x = 0;
-                                        velocity.z = 0;
-                                    } else {
-                                        // We're moving along the surface, apply sliding
-                                        velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
-                                        velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
-                                    }
-                                    
-                                    // Remove special bridge handling - treat all collisions the same
-                                    const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-                                    if (currentSpeed > 0.1) { // Only apply bounce if we have significant speed
-                                        const bounceStrength = 0.8; // Consistent bounce for all objects
-                                        velocity.x = pushDir.x * currentSpeed * bounceStrength;
-                                        velocity.z = pushDir.z * currentSpeed * bounceStrength;
-                                        verticalVelocity = Math.max(currentSpeed * 0.5, 0.3);
-                                        isGrounded = false;
-                                    }
-                                }
-                            }
-
-                            // Apply damping to horizontal movement
-                            flingVelocity.x *= flingDamping;
-                            flingVelocity.z *= flingDamping;
-
-                            // Stop flinging when velocity is very small
-                            if (Math.abs(flingVelocity.x) < 0.001 && Math.abs(flingVelocity.z) < 0.001) {
-                                isFlinging = false;
-                                flingVelocity.set(0, 0, 0);
+                                handleCollision(collisionResult, isFlinging);
                             }
                         }
 
@@ -1922,72 +1898,7 @@
                             
                             // If there's a collision during vertical movement, push out
                             if (collisionResult.collision) {
-                                if (isFlinging) {
-                                    // During fling, push out strongly and redirect velocity
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                    
-                                    // Push out with a stronger force
-                                    const pushDistance = playerRadius - collisionResult.distance;
-                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                    
-                                    // Normal collision response for all objects
-                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                    
-                                    // Add corner sliding effect
-                                    const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-                                    if (dotProduct < 0) {
-                                        // We're moving towards the collision, apply stronger bounce
-                                        flingVelocity.x = pushDir.x * speed * 0.8;
-                                        flingVelocity.z = pushDir.z * speed * 0.8;
-                                    } else {
-                                        // We're moving along the surface, apply sliding
-                                        flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
-                                        flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
-                                    }
-                                    
-                                    // Add upward velocity for bounce
-                                    verticalVelocity = Math.abs(verticalVelocity) * 0.8;
-                                } else {
-                                    // During normal movement, push out smoothly
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                    
-                                    // Push out with a smoother force
-                                    const pushDistance = playerRadius - collisionResult.distance;
-                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                    
-                                    // Add corner sliding for normal movement
-                                    const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
-                                    if (dotProduct < 0) {
-                                        // We're moving towards the collision, stop movement
-                                        velocity.x = 0;
-                                        velocity.z = 0;
-                                    } else {
-                                        // We're moving along the surface, apply sliding
-                                        velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
-                                        velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
-                                    }
-                                    
-                                    // Remove special bridge handling - treat all collisions the same
-                                    const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-                                    if (currentSpeed > 0.1) { // Only apply bounce if we have significant speed
-                                        const bounceStrength = 0.8; // Consistent bounce for all objects
-                                        velocity.x = pushDir.x * currentSpeed * bounceStrength;
-                                        velocity.z = pushDir.z * currentSpeed * bounceStrength;
-                                        verticalVelocity = Math.max(currentSpeed * 0.5, 0.3);
-                                        isGrounded = false;
-                                    }
-                                }
-                            }
-
-                            // Check for ground collision
-                            if (camera.position.y <= playerHeight) {
-                                camera.position.y = playerHeight;
-                                verticalVelocity = 0;
-                                isGrounded = true;
+                                handleCollision(collisionResult, isFlinging);
                             }
                         }
 
@@ -1999,53 +1910,7 @@
                         
                         // Handle normal movement collisions with push-out
                         if (collisionResult.collision) {
-                            if (isFlinging) {
-                                // Check if player is stuck inside collider
-                                const distance = camera.position.distanceTo(collisionResult.closestPoint);
-                                if (distance < playerRadius * 0.5) { // If player is more than halfway inside
-                                    // Force push out with extra strength during fling
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                    const pushDistance = playerRadius * 4; // Push out 4x the radius when stuck
-                                    camera.position.x += pushDir.x * pushDistance;
-                                    camera.position.z += pushDir.z * pushDistance;
-                                    
-                                    // Add strong upward velocity to help escape
-                                    verticalVelocity = 1.0;
-                                    isGrounded = false;
-                                    
-                                    // Add extra fling velocity in the push direction
-                                    const flingSpeed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                    flingVelocity.x = pushDir.x * flingSpeed * 1.5;
-                                    flingVelocity.z = pushDir.z * flingSpeed * 1.5;
-                                } else {
-                                    // Normal fling collision response
-                                    const boxCenter = new THREE.Vector3();
-                                    collisionResult.collisionBox.getCenter(boxCenter);
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(boxCenter).normalize();
-                                    camera.position.x += pushDir.x * 3;
-                                    camera.position.z += pushDir.z * 3;
-                                }
-                            } else {
-                                // Check if player is stuck inside collider
-                                const distance = camera.position.distanceTo(collisionResult.closestPoint);
-                                if (distance < playerRadius * 0.5) { // If player is more than halfway inside
-                                    // Force push out with extra strength
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                    const pushDistance = playerRadius * 2; // Push out twice the radius
-                                    camera.position.x += pushDir.x * pushDistance;
-                                    camera.position.z += pushDir.z * pushDistance;
-                                    
-                                    // Add upward velocity to help escape
-                                    verticalVelocity = 0.5;
-                                    isGrounded = false;
-                                } else {
-                                    // Normal collision response
-                                    camera.position.copy(oldPosition);
-                                }
-                            }
+                            handleCollision(collisionResult, isFlinging);
                         }
 
                         // Apply friction to normal movement
