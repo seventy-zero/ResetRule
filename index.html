@@ -287,10 +287,12 @@
                 this.predictedPosition = new THREE.Vector3();
                 this.velocity = new THREE.Vector3();
                 this.lastUpdateTime = Date.now();
-                this.interpolationDelay = 100; // Increased from 50ms to 100ms for smoother movement
+                this.interpolationDelay = 150; // Increased from 100ms to 150ms for smoother movement
                 this.lastPosition = new THREE.Vector3();
                 this.positionHistory = []; // Store last few positions for velocity calculation
-                this.maxHistorySize = 5;
+                this.maxHistorySize = 8; // Increased from 5 to 8 for better prediction
+                this.smoothingFactor = 0.15; // New smoothing factor for position updates
+                this.rotationSmoothingFactor = 0.1; // New smoothing factor for rotation updates
             }
 
             update(deltaTime) {
@@ -305,32 +307,45 @@
                     this.positionHistory.shift();
                 }
 
-                // Calculate velocity from position history
+                // Calculate velocity from position history with weighted average
                 if (this.positionHistory.length >= 2) {
-                    const lastPos = this.positionHistory[this.positionHistory.length - 2];
-                    this.velocity.copy(this.currentPosition).sub(lastPos).divideScalar(deltaTime);
+                    const weights = [0.5, 0.3, 0.2]; // Weights for recent positions
+                    this.velocity.set(0, 0, 0);
+                    let totalWeight = 0;
+                    
+                    for (let i = 1; i < Math.min(4, this.positionHistory.length); i++) {
+                        const weight = weights[i - 1] || 0;
+                        const posDiff = this.positionHistory[this.positionHistory.length - i].clone()
+                            .sub(this.positionHistory[this.positionHistory.length - i - 1]);
+                        this.velocity.add(posDiff.multiplyScalar(weight));
+                        totalWeight += weight;
+                    }
+                    
+                    this.velocity.divideScalar(totalWeight * deltaTime);
                 }
                 
                 // Use prediction if we haven't received an update recently
                 if (timeSinceUpdate > this.interpolationDelay) {
                     this.predictedPosition.copy(this.currentPosition);
-                    // Add velocity-based prediction with damping
+                    // Add velocity-based prediction with exponential damping
                     const predictionTime = timeSinceUpdate / 1000;
-                    const damping = Math.exp(-predictionTime * 2); // Exponential damping
+                    const damping = Math.exp(-predictionTime * 1.5); // Increased damping factor
                     this.predictedPosition.add(this.velocity.clone().multiplyScalar(predictionTime * damping));
                     this.mesh.position.copy(this.predictedPosition);
                 } else {
-                    // Smooth interpolation between current and target position
+                    // Smooth interpolation between current and target position using cubic easing
                     const alpha = Math.min(timeSinceUpdate / this.interpolationDelay, 1);
-                    // Use cubic easing for smoother movement
                     const easedAlpha = alpha * alpha * (3 - 2 * alpha);
-                    this.currentPosition.lerp(this.targetPosition, easedAlpha);
+                    
+                    // Apply additional smoothing
+                    this.currentPosition.lerp(this.targetPosition, easedAlpha * this.smoothingFactor);
                     this.mesh.position.copy(this.currentPosition);
                 }
 
-                // Smooth rotation interpolation
+                // Smooth rotation interpolation with separate smoothing factor
                 const rotationAlpha = Math.min(timeSinceUpdate / this.interpolationDelay, 1);
-                this.currentRotation.lerp(this.targetRotation, rotationAlpha);
+                const easedRotationAlpha = rotationAlpha * rotationAlpha * (3 - 2 * rotationAlpha);
+                this.currentRotation.lerp(this.targetRotation, easedRotationAlpha * this.rotationSmoothingFactor);
                 this.mesh.rotation.copy(this.currentRotation);
             }
         }
@@ -864,23 +879,43 @@
         // Update collision check function
         function checkCollision(position, radius) {
             const playerCollider = new THREE.Sphere(position, radius);
+            let closestCollision = null;
+            let minDistance = Infinity;
             
             for (const tower of towers) {
                 for (const collisionBox of tower.collisionBoxes) {
-                    if (collisionBox.intersectsSphere(playerCollider)) {
-                        return {
+                    // Get the closest point on the collision box to the player
+                    const closestPoint = new THREE.Vector3();
+                    collisionBox.clampPoint(position, closestPoint);
+                    
+                    // Calculate distance to closest point
+                    const distance = position.distanceTo(closestPoint);
+                    
+                    // If this is closer than our current closest collision
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestCollision = {
                             collision: true,
                             tower: tower,
-                            collisionBox: collisionBox
+                            collisionBox: collisionBox,
+                            distance: distance,
+                            closestPoint: closestPoint
                         };
                     }
                 }
             }
             
+            // Only return collision if we're actually within the collision radius
+            if (closestCollision && closestCollision.distance < radius) {
+                return closestCollision;
+            }
+            
             return {
                 collision: false,
                 tower: null,
-                collisionBox: null
+                collisionBox: null,
+                distance: Infinity,
+                closestPoint: null
             };
         }
 
@@ -1950,20 +1985,30 @@
                             
                             // If there's a collision during fling, push out and continue
                             if (collisionResult.collision) {
-                                // Calculate push direction away from collision box center
-                                const boxCenter = new THREE.Vector3();
-                                collisionResult.collisionBox.getCenter(boxCenter);
-                                const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(boxCenter).normalize();
-                                
-                                // Push out with a strong impulse
-                                camera.position.x += pushDir.x * 3;
-                                camera.position.z += pushDir.z * 3;
-                                
-                                // Redirect fling velocity along the push direction
-                                const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                flingVelocity.x = pushDir.x * speed * 0.8;
-                                flingVelocity.z = pushDir.z * speed * 0.8;
+                                if (isFlinging) {
+                                    // During fling, push out strongly and redirect velocity
+                                    const pushDir = new THREE.Vector3();
+                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    
+                                    // Push out with a stronger force
+                                    const pushDistance = playerRadius - collisionResult.distance;
+                                    camera.position.x += pushDir.x * pushDistance * 2;
+                                    camera.position.z += pushDir.z * pushDistance * 2;
+                                    
+                                    // Redirect fling velocity along the push direction
+                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                    flingVelocity.x = pushDir.x * speed * 0.8;
+                                    flingVelocity.z = pushDir.z * speed * 0.8;
+                                } else {
+                                    // During normal movement, push out smoothly
+                                    const pushDir = new THREE.Vector3();
+                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    
+                                    // Push out with a smoother force
+                                    const pushDistance = playerRadius - collisionResult.distance;
+                                    camera.position.x += pushDir.x * pushDistance;
+                                    camera.position.z += pushDir.z * pushDistance;
+                                }
                             }
 
                             // Apply damping to horizontal movement
@@ -1990,17 +2035,30 @@
                             
                             // If there's a collision during vertical movement, push out
                             if (collisionResult.collision) {
-                                // Calculate push direction away from collision box center
-                                const boxCenter = new THREE.Vector3();
-                                collisionResult.collisionBox.getCenter(boxCenter);
-                                const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(boxCenter).normalize();
-                                
-                                // Push out horizontally
-                                camera.position.x += pushDir.x * 3;
-                                camera.position.z += pushDir.z * 3;
-                                
-                                verticalVelocity = 0;
+                                if (isFlinging) {
+                                    // During fling, push out strongly and redirect velocity
+                                    const pushDir = new THREE.Vector3();
+                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    
+                                    // Push out with a stronger force
+                                    const pushDistance = playerRadius - collisionResult.distance;
+                                    camera.position.x += pushDir.x * pushDistance * 2;
+                                    camera.position.z += pushDir.z * pushDistance * 2;
+                                    
+                                    // Redirect fling velocity along the push direction
+                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                    flingVelocity.x = pushDir.x * speed * 0.8;
+                                    flingVelocity.z = pushDir.z * speed * 0.8;
+                                } else {
+                                    // During normal movement, push out smoothly
+                                    const pushDir = new THREE.Vector3();
+                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    
+                                    // Push out with a smoother force
+                                    const pushDistance = playerRadius - collisionResult.distance;
+                                    camera.position.x += pushDir.x * pushDistance;
+                                    camera.position.z += pushDir.z * pushDistance;
+                                }
                             }
 
                             // Check for ground collision
@@ -2086,7 +2144,7 @@
             }
 
             // Update position less frequently for smoother movement
-            setInterval(sendPositionUpdate, 100); // Changed from 50ms to 100ms for smoother updates
+            setInterval(sendPositionUpdate, 150); // Changed from 100ms to 150ms for smoother updates
 
             // Add periodic player list updates
             setInterval(() => {
