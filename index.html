@@ -1692,6 +1692,10 @@
                         camera.position.z += flingVelocity.z;
                         camera.position.y += verticalVelocity;
                         
+                        // Apply damping to horizontal movement
+                        flingVelocity.x *= flingDamping;
+                        flingVelocity.z *= flingDamping;
+                        
                         console.log('Fling initiated with velocity:', flingVelocity);
                     }
                 }, { passive: false });
