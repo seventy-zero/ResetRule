@@ -277,16 +277,15 @@
         const direction = new THREE.Vector3();
 
         // Collectible item properties
-        const ITEM_COUNT = 20;
+        const ITEM_COUNT = 100; // Increased from 20 to 100
         const ITEM_RADIUS = 3;
         const ITEM_HEIGHT = 2;
-        const MIN_DISTANCE_BETWEEN_ITEMS = 100;
-        const ITEM_COLORS = [
-            0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff,
-            0x00ffff, 0xff8800, 0x8800ff, 0x00ff88, 0xff0088,
-            0x88ff00, 0x0088ff, 0xff8800, 0x8800ff, 0x00ff88,
-            0xff0088, 0x88ff00, 0x0088ff, 0xff8800, 0x8800ff
-        ];
+        const MIN_DISTANCE_BETWEEN_ITEMS = 50; // Reduced from 100 to allow more items
+        const ITEM_COLORS = Array.from({ length: 100 }, (_, i) => {
+            // Generate a rainbow of colors
+            const hue = (i / 100) * 360;
+            return new THREE.Color().setHSL(hue / 360, 0.8, 0.5);
+        });
 
         // Mobile detection
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -952,9 +951,9 @@
             const validTowers = towers.filter(tower => {
                 // Check if tower is tall enough
                 const towerHeight = tower.mesh.geometry.parameters.height;
-                return towerHeight > 20; // Minimum tower height for item placement
+                return towerHeight > 10; // Reduced minimum height to allow more placements
             });
-            console.log(`Found ${validTowers.length} valid towers (height > 20)`);
+            console.log(`Found ${validTowers.length} valid towers (height > 10)`);
 
             if (validTowers.length === 0) {
                 console.warn('No valid towers found for item placement');
@@ -968,7 +967,7 @@
                 console.log(`Trying tower at position (${towerPosition.x}, ${towerPosition.y}, ${towerPosition.z}) with height ${towerHeight}`);
                 
                 // Try different heights on the tower
-                for (let height = 10; height < towerHeight - 10; height += 20) {
+                for (let height = 5; height < towerHeight - 5; height += 10) {
                     const position = new THREE.Vector3(
                         towerPosition.x,
                         towerPosition.y + height,
@@ -1038,7 +1037,7 @@
             console.log('Initializing collectibles...');
             console.log(`Total towers: ${towers.length}`);
             let attempts = 0;
-            const maxAttempts = 100;
+            const maxAttempts = 1000; // Increased from 100 to 1000 to allow more attempts
             let successfulPlacements = 0;
             
             for (let i = 0; i < ITEM_COUNT; i++) {
