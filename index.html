@@ -1700,6 +1700,40 @@
                         // Apply gravity immediately
                         verticalVelocity -= gravity;
                         
+                        // Update player collider position
+                        playerCollider.center.copy(camera.position);
+                        
+                        // Check for initial collisions
+                        const collisionResult = checkCollision(camera.position, playerRadius);
+                        if (collisionResult.collision) {
+                            // During fling, push out strongly and redirect velocity
+                            const pushDir = new THREE.Vector3();
+                            pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                            
+                            // Push out with a stronger force
+                            const pushDistance = playerRadius - collisionResult.distance;
+                            camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                            camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                            
+                            // Normal collision response for all objects
+                            const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                            
+                            // Add corner sliding effect
+                            const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
+                            if (dotProduct < 0) {
+                                // We're moving towards the collision, apply stronger bounce
+                                flingVelocity.x = pushDir.x * speed * 0.8;
+                                flingVelocity.z = pushDir.z * speed * 0.8;
+                            } else {
+                                // We're moving along the surface, apply sliding
+                                flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
+                                flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
+                            }
+                            
+                            // Add upward velocity for bounce
+                            verticalVelocity = Math.abs(verticalVelocity) * 0.8;
+                        }
+                        
                         console.log('Fling initiated with velocity:', flingVelocity);
                     }
                 }, { passive: false });
