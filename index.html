@@ -2048,8 +2048,23 @@
                                 camera.position.x += pushDir.x * 3;
                                 camera.position.z += pushDir.z * 3;
                             } else {
-                                // During normal movement, just prevent movement
-                                camera.position.copy(oldPosition);
+                                // Check if player is stuck inside collider
+                                const distance = camera.position.distanceTo(collisionResult.closestPoint);
+                                if (distance < playerRadius * 0.5) { // If player is more than halfway inside
+                                    // Force push out with extra strength
+                                    const pushDir = new THREE.Vector3();
+                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    const pushDistance = playerRadius * 2; // Push out twice the radius
+                                    camera.position.x += pushDir.x * pushDistance;
+                                    camera.position.z += pushDir.z * pushDistance;
+                                    
+                                    // Add upward velocity to help escape
+                                    verticalVelocity = 0.5;
+                                    isGrounded = false;
+                                } else {
+                                    // Normal collision response
+                                    camera.position.copy(oldPosition);
+                                }
                             }
                         }
 
