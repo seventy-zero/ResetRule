@@ -1144,6 +1144,33 @@
             controls.maxPolarAngle = Math.PI - 0.1; // Limit looking down (in radians)
             controls.enableDamping = true; // Add smooth damping
             controls.dampingFactor = 0.05; // Adjust damping factor
+            
+            // Add camera rotation constraints
+            camera.rotation.order = 'YXZ'; // Set rotation order to prevent gimbal lock
+            camera.rotation.x = 0; // Reset initial rotation
+            camera.rotation.z = 0; // Reset initial rotation
+            
+            // Add camera rotation update function
+            function updateCameraRotation() {
+                // Clamp vertical rotation (X axis)
+                camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
+                
+                // Force roll to 0 (Z axis)
+                camera.rotation.z = 0;
+                
+                // Normalize Y rotation to prevent overflow
+                camera.rotation.y = ((camera.rotation.y % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+            }
+            
+            // Add camera rotation update to animation loop
+            const originalAnimate = animate;
+            animate = function() {
+                if (gameStarted && controls.isLocked) {
+                    updateCameraRotation();
+                }
+                originalAnimate();
+            };
+            
             console.log('Controls initialized');
 
             // Collision setup
