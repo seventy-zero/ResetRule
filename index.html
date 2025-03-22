@@ -228,19 +228,19 @@
 
         // Global variables and constants
         const playerHeight = 10;
-        const playerRadius = 1;
+        const playerRadius = 2;
         const moveSpeed = 0.05;
-        const gravity = 0.015;
-        const flingStrength = 5.0; // Increased for more powerful fling
-        const flingDamping = 0.99; // Less damping for better momentum
+        const gravity = 0.025;
+        const flingStrength = 5.0; // Increased from 3.5 for stronger fling
+        const flingDamping = 0.99; // Increased from 0.985 for less damping
         const clock = new THREE.Clock();
         const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
         const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
 
         // Add movement smoothing constants
         const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
-        const COLLISION_PUSH_FORCE = 4.0; // Stronger collision response
-        const CORNER_SLIDE_FORCE = 0.9; // Better sliding along surfaces
+        const COLLISION_PUSH_FORCE = 4.0; // Increased from 3.5 for stronger collision response
+        const CORNER_SLIDE_FORCE = 0.9; // Increased from 0.8 for better sliding
         const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
         const STUCK_THRESHOLD = 0.3; // New constant for detecting when player is stuck
         const STUCK_PUSH_FORCE = 5.0; // New constant for extra push force when stuck
