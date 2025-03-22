@@ -1670,10 +1670,8 @@
                         const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
                         const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
                         
-                        let scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
-                        if (touchDuration < FLING_THRESHOLD) {
-                            scaledStrength *= 1.2;
-                        }
+                        // Match desktop fling strength calculation exactly
+                        const scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
                         
                         // Set fling velocity with proper strength
                         flingVelocity.x = flingDirection.x * scaledStrength;
