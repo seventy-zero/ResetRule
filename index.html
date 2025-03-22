@@ -1500,6 +1500,8 @@
                 const maxDistance = 35; // Reduced from 50 for more precise control
                 let lastUpdateTime = 0;
                 const updateInterval = 1000 / 60; // 60fps
+                let lastRotationX = 0;
+                let lastRotationY = 0;
 
                 // Touch start handler
                 joystickZone.addEventListener('touchstart', function(e) {
@@ -1509,6 +1511,8 @@
                     touchStartY = touch.clientY;
                     isTouching = true;
                     joystick.style.transition = 'none'; // Disable transition for immediate response
+                    lastRotationX = camera.rotation.x;
+                    lastRotationY = camera.rotation.y;
                     console.log('Touch started');
                 }, { passive: false });
 
@@ -1529,7 +1533,7 @@
                     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                     
                     // Apply exponential smoothing to joystick movement
-                    const smoothing = 0.3;
+                    const smoothing = 0.5; // Increased from 0.3 for less tick
                     const targetX = distance > maxDistance ? (deltaX / distance) * maxDistance : deltaX;
                     const targetY = distance > maxDistance ? (deltaY / distance) * maxDistance : deltaY;
                     
@@ -1540,21 +1544,24 @@
                     joystick.style.left = `${joystickX + 60}px`;
                     joystick.style.top = `${joystickY + 60}px`;
                     
-                    // Update camera rotation with smoother control
-                    const lookSpeed = 0.03; // Reduced from 0.05 for smoother rotation
+                    // Calculate target rotations
+                    const lookSpeed = 0.02; // Reduced from 0.03 for smoother rotation
+                    const targetRotationX = lastRotationX - (joystickY / maxDistance) * lookSpeed;
+                    const targetRotationY = lastRotationY - (joystickX / maxDistance) * lookSpeed;
                     
-                    // Apply exponential smoothing to camera rotation
-                    const targetRotationX = -joystickY / maxDistance;
-                    const targetRotationY = -joystickX / maxDistance;
-                    
-                    camera.rotation.x += (targetRotationX - camera.rotation.x) * smoothing;
-                    camera.rotation.y += (targetRotationY - camera.rotation.y) * smoothing;
+                    // Apply rotation with less smoothing for more responsive control
+                    camera.rotation.x = targetRotationX;
+                    camera.rotation.y = targetRotationY;
                     
                     // Clamp vertical rotation to prevent over-rotation
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
                     
                     // Force roll to 0
                     camera.rotation.z = 0;
+                    
+                    // Update last rotation values
+                    lastRotationX = camera.rotation.x;
+                    lastRotationY = camera.rotation.y;
                     
                     console.log('Touch moved:', joystickX, joystickY);
                 }, { passive: false });
