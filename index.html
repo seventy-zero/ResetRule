@@ -286,22 +286,13 @@
             constructor(username, mesh) {
                 this.username = username;
                 this.mesh = mesh;
-                this.targetPosition = new THREE.Vector3();
-                this.targetRotation = new THREE.Vector3();
-                this.currentPosition = new THREE.Vector3();
-                this.currentRotation = new THREE.Vector3();
-                this.predictedPosition = new THREE.Vector3();
-                this.velocity = new THREE.Vector3();
+                this.position = new THREE.Vector3();
+                this.rotation = new THREE.Euler();
+                this.speed = 0;
+                this.heading = 0;
+                this.verticalSpeed = 0;
                 this.lastUpdateTime = Date.now();
-                this.interpolationDelay = 50; // Reduced from 100ms to 50ms for more responsive movement
-                this.lastPosition = new THREE.Vector3();
-                this.positionHistory = [];
-                this.maxHistorySize = 16; // Increased from 12 to 16 for better prediction
-                this.smoothingFactor = 0.35; // Increased from 0.25 to 0.35 for smoother movement
-                this.rotationSmoothingFactor = 0.3; // Increased from 0.2 to 0.3 for smoother rotation
                 this.isVisible = true;
-                this.lastVelocity = new THREE.Vector3();
-                this.acceleration = new THREE.Vector3();
             }
 
             update(deltaTime) {
@@ -315,67 +306,26 @@
                 
                 // Make sure mesh is visible
                 this.mesh.visible = true;
-                
-                // Update position history
-                this.positionHistory.push(this.currentPosition.clone());
-                if (this.positionHistory.length > this.maxHistorySize) {
-                    this.positionHistory.shift();
-                }
 
-                // Calculate velocity and acceleration from position history
-                if (this.positionHistory.length >= 3) {
-                    // Calculate current velocity using weighted average of recent positions
-                    const weights = [0.5, 0.3, 0.2];
-                    this.velocity.set(0, 0, 0);
-                    let totalWeight = 0;
-                    
-                    for (let i = 1; i < Math.min(4, this.positionHistory.length); i++) {
-                        const weight = weights[i - 1] || 0;
-                        const posDiff = this.positionHistory[this.positionHistory.length - i].clone()
-                            .sub(this.positionHistory[this.positionHistory.length - i - 1]);
-                        this.velocity.add(posDiff.multiplyScalar(weight));
-                        totalWeight += weight;
-                    }
-                    
-                    this.velocity.divideScalar(totalWeight * deltaTime);
+                // Calculate movement based on speed and heading
+                const headingRad = (this.heading * Math.PI) / 180;
+                const distanceMoved = this.speed * deltaTime;
 
-                    // Calculate acceleration
-                    this.acceleration.copy(this.velocity).sub(this.lastVelocity).divideScalar(deltaTime);
-                    this.lastVelocity.copy(this.velocity);
-                }
-                
-                // Use prediction if we haven't received an update recently
-                if (timeSinceUpdate > this.interpolationDelay) {
-                    this.predictedPosition.copy(this.currentPosition);
-                    const predictionTime = timeSinceUpdate / 1000;
-                    
-                    // Use acceleration-based prediction with exponential damping
-                    const damping = Math.exp(-predictionTime * 2.0); // Increased damping factor
-                    const predictedVelocity = this.velocity.clone()
-                        .add(this.acceleration.clone().multiplyScalar(predictionTime * 0.5));
-                    
-                    this.predictedPosition.add(predictedVelocity.multiplyScalar(predictionTime * damping));
-                    this.mesh.position.copy(this.predictedPosition);
-                } else {
-                    // Smooth interpolation between current and target position using cubic easing
-                    const alpha = Math.min(timeSinceUpdate / this.interpolationDelay, 1);
-                    const easedAlpha = alpha * alpha * (3 - 2 * alpha);
-                    
-                    // Apply additional smoothing with velocity-based correction
-                    const targetVelocity = this.targetPosition.clone().sub(this.currentPosition).divideScalar(deltaTime);
-                    const velocityCorrection = targetVelocity.sub(this.velocity).multiplyScalar(0.1);
-                    
-                    this.currentPosition.lerp(this.targetPosition, easedAlpha * this.smoothingFactor);
-                    this.currentPosition.add(velocityCorrection.multiplyScalar(deltaTime));
-                    
-                    this.mesh.position.copy(this.currentPosition);
-                }
+                // Calculate target positions
+                const targetX = this.position.x - Math.sin(headingRad) * distanceMoved;
+                const targetZ = this.position.z - Math.cos(headingRad) * distanceMoved;
+                const targetY = this.position.y + this.verticalSpeed * deltaTime;
 
-                // Smooth rotation interpolation with separate smoothing factor
-                const rotationAlpha = Math.min(timeSinceUpdate / this.interpolationDelay, 1);
-                const easedRotationAlpha = rotationAlpha * rotationAlpha * (3 - 2 * rotationAlpha);
-                this.currentRotation.lerp(this.targetRotation, easedRotationAlpha * this.rotationSmoothingFactor);
-                this.mesh.rotation.copy(this.currentRotation);
+                // Use exponential smoothing for interpolation
+                const lerpFactor = 1 - Math.exp(-10 * deltaTime);
+
+                // Smoothly interpolate position
+                this.mesh.position.x += (targetX - this.mesh.position.x) * lerpFactor;
+                this.mesh.position.z += (targetZ - this.mesh.position.z) * lerpFactor;
+                this.mesh.position.y += (targetY - this.mesh.position.y) * lerpFactor;
+
+                // Update rotation
+                this.mesh.rotation.y = -headingRad;
             }
         }
 
@@ -422,8 +372,8 @@
             
             // Create and store player state
             const playerState = new PlayerState(username, playerMesh);
-            playerState.targetPosition.set(0, playerHeight, 0);
-            playerState.targetRotation.set(0, 0, 0);
+            playerState.position.set(0, playerHeight, 0);
+            playerState.rotation.set(0, 0, 0);
             playerStates.set(username, playerState);
             
             console.log('Player model created successfully for:', username);
@@ -434,34 +384,34 @@
         function updatePlayerPosition(username, position, rotation) {
             const playerState = playerStates.get(username);
             if (playerState) {
-                // Update target position
+                // Update position
                 if (position) {
                     if (Array.isArray(position)) {
-                        playerState.targetPosition.fromArray(position);
+                        playerState.position.fromArray(position);
                     } else {
-                        playerState.targetPosition.set(position.x, position.y, position.z);
-                    }
-                    
-                    // Initialize current position if it's the first update
-                    if (playerState.currentPosition.lengthSq() === 0) {
-                        playerState.currentPosition.copy(playerState.targetPosition);
+                        playerState.position.set(position.x, position.y, position.z);
                     }
                 }
                 
-                // Update target rotation
+                // Update rotation
                 if (rotation) {
                     if (Array.isArray(rotation)) {
-                        playerState.targetRotation.fromArray(rotation);
+                        playerState.rotation.fromArray(rotation);
                     } else {
-                        playerState.targetRotation.set(rotation.x, rotation.y, rotation.z);
-                    }
-                    
-                    // Initialize current rotation if it's the first update
-                    if (playerState.currentRotation.lengthSq() === 0) {
-                        playerState.currentRotation.copy(playerState.targetRotation);
+                        playerState.rotation.set(rotation.x, rotation.y, rotation.z);
                     }
                 }
                 
+                // Calculate speed and heading from position changes
+                if (playerState.lastPosition) {
+                    const dx = playerState.position.x - playerState.lastPosition.x;
+                    const dz = playerState.position.z - playerState.lastPosition.z;
+                    playerState.speed = Math.sqrt(dx * dx + dz * dz) / (0.016); // Assuming 60fps
+                    playerState.heading = Math.atan2(-dx, -dz) * 180 / Math.PI;
+                    playerState.verticalSpeed = (playerState.position.y - playerState.lastPosition.y) / 0.016;
+                }
+                
+                playerState.lastPosition = playerState.position.clone();
                 playerState.lastUpdateTime = Date.now();
             } else {
                 console.warn('No player state found for username:', username);
@@ -862,7 +812,33 @@
                                 console.log('Creating missing player model for:', data.username);
                                 createPlayerModel(data.username);
                             }
-                            updatePlayerPosition(data.username, data.position, data.rotation);
+                            
+                            // Update player state with new data
+                            const playerState = playerStates.get(data.username);
+                            if (playerState) {
+                                // Update position
+                                if (data.position) {
+                                    playerState.position.fromArray(data.position);
+                                }
+                                
+                                // Update rotation
+                                if (data.rotation) {
+                                    playerState.rotation.fromArray(data.rotation);
+                                }
+                                
+                                // Update speed and heading if provided
+                                if (data.speed !== undefined) {
+                                    playerState.speed = data.speed;
+                                }
+                                if (data.heading !== undefined) {
+                                    playerState.heading = data.heading;
+                                }
+                                if (data.verticalSpeed !== undefined) {
+                                    playerState.verticalSpeed = data.verticalSpeed;
+                                }
+                                
+                                playerState.lastUpdateTime = Date.now();
+                            }
                         }
                         break;
 
@@ -2106,25 +2082,37 @@
             // Send position updates
             function sendPositionUpdate() {
                 if (ws.readyState === WebSocket.OPEN && gameStarted) {
-                    // Only send if position changed significantly (reduced thresholds for more frequent updates)
-                    const positionChanged = Math.abs(camera.position.x - lastSentPosition.x) > 0.1 ||
-                                          Math.abs(camera.position.y - lastSentPosition.y) > 0.1 ||
-                                          Math.abs(camera.position.z - lastSentPosition.z) > 0.1;
-                    
-                    // Only send if rotation changed significantly (reduced threshold for more frequent updates)
-                    const rotationChanged = Math.abs(camera.rotation.x - lastSentRotation.x) > 0.05 ||
-                                          Math.abs(camera.rotation.y - lastSentRotation.y) > 0.05 ||
-                                          Math.abs(camera.rotation.z - lastSentRotation.z) > 0.05;
-                    
-                    if (positionChanged || rotationChanged) {
-                        ws.send(JSON.stringify({
-                            type: 'position',
-                            position: camera.position.toArray(),
-                            rotation: camera.rotation.toArray()
-                        }));
-                        lastSentPosition.copy(camera.position);
-                        lastSentRotation.copy(camera.rotation);
-                    }
+                    // Calculate speed and heading
+                    const dx = camera.position.x - lastSentPosition.x;
+                    const dz = camera.position.z - lastSentPosition.z;
+                    const speed = Math.sqrt(dx * dx + dz * dz) / (0.016); // Assuming 60fps
+                    const heading = Math.atan2(-dx, -dz) * 180 / Math.PI;
+                    const verticalSpeed = (camera.position.y - lastSentPosition.y) / 0.016;
+
+                    // Round position data to 2 decimal places
+                    const positionData = {
+                        position: [
+                            Math.round(camera.position.x * 100) / 100,
+                            Math.round(camera.position.y * 100) / 100,
+                            Math.round(camera.position.z * 100) / 100
+                        ],
+                        rotation: [
+                            Math.round(camera.rotation.x * 100) / 100,
+                            Math.round(camera.rotation.y * 100) / 100,
+                            Math.round(camera.rotation.z * 100) / 100
+                        ],
+                        speed: Math.round(speed),
+                        heading: Math.round(heading),
+                        verticalSpeed: Math.round(verticalSpeed * 100) / 100
+                    };
+
+                    ws.send(JSON.stringify({
+                        type: 'position',
+                        ...positionData
+                    }));
+
+                    lastSentPosition.copy(camera.position);
+                    lastSentRotation.copy(camera.rotation);
                 }
             }
 
