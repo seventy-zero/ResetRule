@@ -218,19 +218,19 @@
         // Global variables and constants
         const playerHeight = 10;
         const playerRadius = 2;
-        const moveSpeed = 0.05;
+        const moveSpeed = 0.5;
         const gravity = 0.035;
         const flingStrength = 2.5;
         const flingDamping = 0.985;
         const clock = new THREE.Clock();
-        const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
-        const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
+        const lastSentPosition = new THREE.Vector3();
+        const lastSentRotation = new THREE.Vector3();
 
         // Add movement smoothing constants
-        const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
-        const COLLISION_PUSH_FORCE = 2.5; // Increased from 2.0 for stronger collision response
-        const CORNER_SLIDE_FORCE = 0.7; // New constant for corner sliding
-        const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
+        const MOVEMENT_SMOOTHING = 0.85;
+        const COLLISION_PUSH_FORCE = 2.5;
+        const CORNER_SLIDE_FORCE = 0.7;
+        const MIN_VELOCITY_THRESHOLD = 0.001;
 
         // Game state variables
         let gameStarted = false;
@@ -1785,399 +1785,52 @@
                         direction.x = Number(moveRight) - Number(moveLeft);
                         direction.normalize();
 
-                        if (moveForward || moveBackward) velocity.z -= direction.z * moveSpeed;
-                        if (moveLeft || moveRight) velocity.x -= direction.x * moveSpeed;
+                        // Get camera direction and right vector
+                        camera.getWorldDirection(cameraDirection);
+                        rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
 
-                        // Apply movement
-                        controls.moveRight(-velocity.x);
-                        controls.moveForward(-velocity.z);
+                        // Calculate final movement direction
+                        const moveDirection = new THREE.Vector3();
+                        moveDirection.copy(cameraDirection).multiplyScalar(direction.z);
+                        moveDirection.add(rightVector.multiplyScalar(direction.x));
+
+                        // Apply movement directly
+                        if (moveForward || moveBackward) {
+                            camera.position.x += moveDirection.x * moveSpeed;
+                            camera.position.z += moveDirection.z * moveSpeed;
+                        }
+                        if (moveLeft || moveRight) {
+                            camera.position.x += moveDirection.x * moveSpeed;
+                            camera.position.z += moveDirection.z * moveSpeed;
+                        }
 
                         // Update line trace position
-                        const cameraDirection = new THREE.Vector3();
-                        camera.getWorldDirection(cameraDirection);
-                        const rightVector = new THREE.Vector3();
-                        rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
-                        
-                        // Update line visibility
                         tubeMesh.visible = showLine;
-                        
-                        if (showLine) {
-                            // Calculate start and end points
-                            const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
-                            startPoint.y = camera.position.y;
-                            
-                            const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
-                            
-                            // Update curve points
-                            curve.points[0].copy(startPoint);
-                            curve.points[1].copy(endPoint);
-                            
-                            // Update the tube geometry
-                            const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
-                            tubeMesh.geometry.dispose();
-                            tubeMesh.geometry = newTubeGeometry;
 
-                            // Check for line collision with towers
-                            raycaster.set(startPoint, cameraDirection);
-                            const intersects = [];
-                            towers.forEach(tower => {
-                                const towerIntersects = raycaster.intersectObject(tower.mesh);
-                                if (towerIntersects.length > 0 && towerIntersects[0].distance <= 330) {
-                                    intersects.push(towerIntersects[0]);
-                                }
-                            });
+                        // Update player position
+                        const newPosition = camera.position.clone().add(moveDirection.multiplyScalar(deltaTime));
+                        camera.position.copy(newPosition);
 
-                            // Sort intersections by distance and get the closest one
-                            if (intersects.length > 0) {
-                                intersects.sort((a, b) => a.distance - b.distance);
-                                lineCollisionPoint = intersects[0].point;
-                                
-                                // Update line end point to collision point
-                                curve.points[1].copy(lineCollisionPoint);
-                                const collidedTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
-                                tubeMesh.geometry.dispose();
-                                tubeMesh.geometry = collidedTubeGeometry;
-                                
-                                // Change line color to indicate valid target
-                                tubeMaterial.color.setHex(0x00ff00);
-                            } else {
-                                lineCollisionPoint = null;
-                                // Change line color to indicate no target
-                                tubeMaterial.color.setHex(0xff0000);
-                            }
-                        } else if (lineCollisionPoint) {
-                            // Initiate fling when line is released and we had a collision point
-                            const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
-                            
-                            // Increase fling strength based on distance to target, but more gently
-                            const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                            const scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
-                            
-                            // Set velocity components
-                            flingVelocity.x = flingDirection.x * scaledStrength;
-                            flingVelocity.z = flingDirection.z * scaledStrength;
-                            verticalVelocity = flingDirection.y * scaledStrength + 0.5;
-                            
-                            isFlinging = true;
-                            isGrounded = false;
-                            lineCollisionPoint = null;
-                        }
-
-                        // Apply fling velocity if active
-                        if (isFlinging) {
-                            // Move in world space
-                            camera.position.x += flingVelocity.x;
-                            camera.position.z += flingVelocity.z;
-
-                            // Update player collider position
-                            playerCollider.center.copy(camera.position);
-
-                            // Check collisions with all towers
-                            const collisionResult = checkCollision(camera.position, playerRadius);
-                            
-                            // If there's a collision during fling, push out and continue
-                            if (collisionResult.collision) {
-                                if (isFlinging) {
-                                    // During fling, push out strongly and redirect velocity
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                    
-                                    // Push out with a stronger force
-                                    const pushDistance = playerRadius - collisionResult.distance;
-                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                    
-                                    // Normal collision response for all objects
-                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                    
-                                    // Add corner sliding effect
-                                    const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-                                    if (dotProduct < 0) {
-                                        // We're moving towards the collision, apply stronger bounce
-                                        flingVelocity.x = pushDir.x * speed * 0.8;
-                                        flingVelocity.z = pushDir.z * speed * 0.8;
-                                    } else {
-                                        // We're moving along the surface, apply sliding
-                                        flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
-                                        flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
-                                    }
-                                    
-                                    // Add upward velocity for bounce
-                                    verticalVelocity = Math.abs(verticalVelocity) * 0.8;
-                                } else {
-                                    // During normal movement, push out smoothly
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                    
-                                    // Push out with a smoother force
-                                    const pushDistance = playerRadius - collisionResult.distance;
-                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                    
-                                    // Add corner sliding for normal movement
-                                    const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
-                                    if (dotProduct < 0) {
-                                        // We're moving towards the collision, stop movement
-                                        velocity.x = 0;
-                                        velocity.z = 0;
-                                    } else {
-                                        // We're moving along the surface, apply sliding
-                                        velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
-                                        velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
-                                    }
-                                    
-                                    // Remove special bridge handling - treat all collisions the same
-                                    const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-                                    if (currentSpeed > 0.1) { // Only apply bounce if we have significant speed
-                                        const bounceStrength = 0.8; // Consistent bounce for all objects
-                                        velocity.x = pushDir.x * currentSpeed * bounceStrength;
-                                        velocity.z = pushDir.z * currentSpeed * bounceStrength;
-                                        verticalVelocity = Math.max(currentSpeed * 0.5, 0.3);
-                                        isGrounded = false;
-                                    }
-                                }
-                            }
-
-                            // Apply damping to horizontal movement
-                            flingVelocity.x *= flingDamping;
-                            flingVelocity.z *= flingDamping;
-
-                            // Stop flinging when velocity is very small
-                            if (Math.abs(flingVelocity.x) < 0.001 && Math.abs(flingVelocity.z) < 0.001) {
-                                isFlinging = false;
-                                flingVelocity.set(0, 0, 0);
-                            }
-                        }
-
-                        // Apply gravity and handle ground collision
-                        if (!isGrounded) {
-                            verticalVelocity -= gravity;
-                            camera.position.y += verticalVelocity;
-
-                            // Update player collider position
-                            playerCollider.center.copy(camera.position);
-
-                            // Check collisions after vertical movement
-                            const collisionResult = checkCollision(camera.position, playerRadius);
-                            
-                            // If there's a collision during vertical movement, push out
-                            if (collisionResult.collision) {
-                                if (isFlinging) {
-                                    // During fling, push out strongly and redirect velocity
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                    
-                                    // Push out with a stronger force
-                                    const pushDistance = playerRadius - collisionResult.distance;
-                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                    
-                                    // Normal collision response for all objects
-                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                    
-                                    // Add corner sliding effect
-                                    const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-                                    if (dotProduct < 0) {
-                                        // We're moving towards the collision, apply stronger bounce
-                                        flingVelocity.x = pushDir.x * speed * 0.8;
-                                        flingVelocity.z = pushDir.z * speed * 0.8;
-                                    } else {
-                                        // We're moving along the surface, apply sliding
-                                        flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
-                                        flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
-                                    }
-                                    
-                                    // Add upward velocity for bounce
-                                    verticalVelocity = Math.abs(verticalVelocity) * 0.8;
-                                } else {
-                                    // During normal movement, push out smoothly
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                    
-                                    // Push out with a smoother force
-                                    const pushDistance = playerRadius - collisionResult.distance;
-                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                    
-                                    // Add corner sliding for normal movement
-                                    const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
-                                    if (dotProduct < 0) {
-                                        // We're moving towards the collision, stop movement
-                                        velocity.x = 0;
-                                        velocity.z = 0;
-                                    } else {
-                                        // We're moving along the surface, apply sliding
-                                        velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
-                                        velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
-                                    }
-                                    
-                                    // Remove special bridge handling - treat all collisions the same
-                                    const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-                                    if (currentSpeed > 0.1) { // Only apply bounce if we have significant speed
-                                        const bounceStrength = 0.8; // Consistent bounce for all objects
-                                        velocity.x = pushDir.x * currentSpeed * bounceStrength;
-                                        velocity.z = pushDir.z * currentSpeed * bounceStrength;
-                                        verticalVelocity = Math.max(currentSpeed * 0.5, 0.3);
-                                        isGrounded = false;
-                                    }
-                                }
-                            }
-
-                            // Check for ground collision
-                            if (camera.position.y <= playerHeight) {
-                                camera.position.y = playerHeight;
-                                verticalVelocity = 0;
-                                isGrounded = true;
-                            }
-                        }
-
-                        // Update player collider position for final position
-                        playerCollider.center.copy(camera.position);
-
-                        // Check collisions for normal movement
-                        const collisionResult = checkCollision(camera.position, playerRadius);
-                        
-                        // Handle normal movement collisions with push-out
-                        if (collisionResult.collision) {
-                            if (isFlinging) {
-                                // Check if player is stuck inside collider
-                                const distance = camera.position.distanceTo(collisionResult.closestPoint);
-                                if (distance < playerRadius * 0.5) { // If player is more than halfway inside
-                                    // Force push out with extra strength during fling
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                    const pushDistance = playerRadius * 4; // Push out 4x the radius when stuck
-                                    camera.position.x += pushDir.x * pushDistance;
-                                    camera.position.z += pushDir.z * pushDistance;
-                                    
-                                    // Add strong upward velocity to help escape
-                                    verticalVelocity = 1.0;
-                                    isGrounded = false;
-                                    
-                                    // Add extra fling velocity in the push direction
-                                    const flingSpeed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                    flingVelocity.x = pushDir.x * flingSpeed * 1.5;
-                                    flingVelocity.z = pushDir.z * flingSpeed * 1.5;
-                                } else {
-                                    // Normal fling collision response
-                                    const boxCenter = new THREE.Vector3();
-                                    collisionResult.collisionBox.getCenter(boxCenter);
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(boxCenter).normalize();
-                                    camera.position.x += pushDir.x * 3;
-                                    camera.position.z += pushDir.z * 3;
-                                }
-                            } else {
-                                // Check if player is stuck inside collider
-                                const distance = camera.position.distanceTo(collisionResult.closestPoint);
-                                if (distance < playerRadius * 0.5) { // If player is more than halfway inside
-                                    // Force push out with extra strength
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                    const pushDistance = playerRadius * 2; // Push out twice the radius
-                                    camera.position.x += pushDir.x * pushDistance;
-                                    camera.position.z += pushDir.z * pushDistance;
-                                    
-                                    // Add upward velocity to help escape
-                                    verticalVelocity = 0.5;
-                                    isGrounded = false;
-                                } else {
-                                    // Normal collision response
-                                    camera.position.copy(oldPosition);
-                                }
-                            }
-                        }
-
-                        // Apply friction to normal movement
-                        velocity.x *= MOVEMENT_SMOOTHING;
-                        velocity.z *= MOVEMENT_SMOOTHING;
-
-                        // Stop movement when velocity is very small
-                        if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
-                        if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
-
-                        // Optimize item collection checks
-                        if (currentTime % 2 === 0) { // Check every other frame
-                            const nearbyItems = spatialGrid.getNearbyObjects(camera.position, ITEM_RADIUS + playerRadius);
-                            nearbyItems.forEach(item => {
-                                if (item.mesh.position.distanceTo(camera.position) < ITEM_RADIUS + playerRadius) {
-                                    if (ws.readyState === WebSocket.OPEN) {
-                                        ws.send(JSON.stringify({
-                                            type: 'item_collected',
-                                            itemId: item.mesh.userData.id,
-                                            username: playerUsername
-                                        }));
-                                    }
-                                }
-                            });
-                        }
+                        // Update player state
+                        updatePlayerPosition(playerUsername, newPosition, camera.rotation);
                     }
                 }
 
-                // Always render the scene
+                // Update camera position
+                const newCameraPosition = camera.position.clone().add(velocity.multiplyScalar(deltaTime));
+                camera.position.copy(newCameraPosition);
+
+                // Update player state
+                updatePlayerPosition(playerUsername, camera.position, camera.rotation);
+
+                // Render the scene
                 renderer.render(scene, camera);
             }
+
             animate();
-
-            // Send position updates
-            function sendPositionUpdate() {
-                if (ws.readyState === WebSocket.OPEN && gameStarted) {
-                    // Calculate speed and heading
-                    const dx = camera.position.x - lastSentPosition.x;
-                    const dz = camera.position.z - lastSentPosition.z;
-                    const speed = Math.sqrt(dx * dx + dz * dz) / (0.016); // Assuming 60fps
-                    const heading = Math.atan2(-dx, -dz) * 180 / Math.PI;
-                    const verticalSpeed = (camera.position.y - lastSentPosition.y) / 0.016;
-
-                    // Round position data to 2 decimal places
-                    const positionData = {
-                        position: [
-                            Math.round(camera.position.x * 100) / 100,
-                            Math.round(camera.position.y * 100) / 100,
-                            Math.round(camera.position.z * 100) / 100
-                        ],
-                        rotation: [
-                            Math.round(camera.rotation.x * 100) / 100,
-                            Math.round(camera.rotation.y * 100) / 100,
-                            Math.round(camera.rotation.z * 100) / 100
-                        ],
-                        speed: Math.round(speed),
-                        heading: Math.round(heading),
-                        verticalSpeed: Math.round(verticalSpeed * 100) / 100
-                    };
-
-                    ws.send(JSON.stringify({
-                        type: 'position',
-                        ...positionData
-                    }));
-
-                    lastSentPosition.copy(camera.position);
-                    lastSentRotation.copy(camera.rotation);
-                }
-            }
-
-            // Update position more frequently (16ms = ~60fps)
-            setInterval(sendPositionUpdate, 16);
-
-            // Add periodic player list updates
-            setInterval(() => {
-                if (document.getElementById('playerList').classList.contains('visible')) {
-                    updatePlayerList();
-                }
-            }, 100); // Update every 100ms when visible
         } catch (error) {
-            console.error('Error during initialization:', error);
-            document.body.innerHTML = `
-                <div style="color: white; background: rgba(0,0,0,0.8); padding: 20px; text-align: center;">
-                    An error occurred while initializing the game.<br>
-                    Please try refreshing the page or use a different browser.
-                </div>
-            `;
-            throw error;
+            console.error('Error setting up the game:', error);
         }
-
-        // Initialize WebSocket connection AFTER scene is set up
-        setupWebSocket();
     </script>
 </body>
 </html>
