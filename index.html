@@ -692,37 +692,77 @@
             });
         }
 
+        // Add capsule collision helper
+        class CapsuleCollider {
+            constructor(radius, height, position) {
+                this.radius = radius;
+                this.height = height;
+                this.position = position;
+                this.top = new THREE.Vector3();
+                this.bottom = new THREE.Vector3();
+                this.update();
+            }
+
+            update() {
+                this.bottom.copy(this.position);
+                this.bottom.y -= this.height / 2;
+                this.top.copy(this.position);
+                this.top.y += this.height / 2;
+            }
+
+            intersectsBox(box) {
+                // Get closest point on box to capsule center
+                const closestPoint = new THREE.Vector3();
+                box.clampPoint(this.position, closestPoint);
+
+                // Calculate distance from capsule center to closest point
+                const distance = this.position.distanceTo(closestPoint);
+
+                // If distance is less than radius, we have a collision
+                if (distance < this.radius) {
+                    // Check if collision point is between capsule top and bottom
+                    const pointHeight = closestPoint.y;
+                    if (pointHeight >= this.bottom.y && pointHeight <= this.top.y) {
+                        return {
+                            collision: true,
+                            distance: this.radius - distance,
+                            closestPoint: closestPoint
+                        };
+                    }
+                }
+
+                return {
+                    collision: false,
+                    distance: Infinity,
+                    closestPoint: null
+                };
+            }
+        }
+
         // Update collision check function
         function checkCollision(position, radius) {
-            const playerCollider = new THREE.Sphere(position, radius);
+            const playerCollider = new CapsuleCollider(radius, playerHeight, position);
             let closestCollision = null;
             let minDistance = Infinity;
             
             for (const tower of towers) {
                 for (const collisionBox of tower.collisionBoxes) {
-                    // Get the closest point on the collision box to the player
-                    const closestPoint = new THREE.Vector3();
-                    collisionBox.clampPoint(position, closestPoint);
+                    const collision = playerCollider.intersectsBox(collisionBox);
                     
-                    // Calculate distance to closest point
-                    const distance = position.distanceTo(closestPoint);
-                    
-                    // If this is closer than our current closest collision
-                    if (distance < minDistance) {
-                        minDistance = distance;
+                    if (collision.collision && collision.distance < minDistance) {
+                        minDistance = collision.distance;
                         closestCollision = {
                             collision: true,
                             tower: tower,
                             collisionBox: collisionBox,
-                            distance: distance,
-                            closestPoint: closestPoint,
-                            isBridge: tower.mesh.name === 'bridge' // Add flag to identify bridges
+                            distance: collision.distance,
+                            closestPoint: collision.closestPoint,
+                            isBridge: tower.mesh.name === 'bridge'
                         };
                     }
                 }
             }
             
-            // Only return collision if we're actually within the collision radius
             if (closestCollision && closestCollision.distance < radius) {
                 return closestCollision;
             }
@@ -1130,7 +1170,7 @@
             console.log('Controls initialized');
 
             // Collision setup
-            const playerCollider = new THREE.Sphere(new THREE.Vector3(0, playerHeight, 0), playerRadius);
+            const playerCollider = new CapsuleCollider(playerRadius, playerHeight, new THREE.Vector3(0, playerHeight, 0));
             const raycaster = new THREE.Raycaster();
 
             // Log scene state
