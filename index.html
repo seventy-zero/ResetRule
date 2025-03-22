@@ -2021,13 +2021,13 @@
                     // Rotate star fields with reduced frequency
                     if (currentTime % 3 === 0) { // Update every third frame
                         if (starField && largeStarField) {
-                            // Rotate star fields at different speeds for parallax effect
-                            starField.rotation.y += 0.00005; // Slower rotation for distant stars
-                            largeStarField.rotation.y += 0.0001; // Faster rotation for closer stars
+                            // Rotate star fields at different speeds for parallax effect (5x faster)
+                            starField.rotation.y += 0.00025; // Increased from 0.00005 (5x)
+                            largeStarField.rotation.y += 0.0005; // Increased from 0.0001 (5x)
                             
-                            // Add slight wobble to create more dynamic movement
-                            starField.rotation.x = Math.sin(currentTime * 0.0001) * 0.01;
-                            largeStarField.rotation.x = Math.sin(currentTime * 0.00015) * 0.015;
+                            // Add slight wobble to create more dynamic movement (5x faster)
+                            starField.rotation.x = Math.sin(currentTime * 0.0005) * 0.01; // Increased from 0.0001 (5x)
+                            largeStarField.rotation.x = Math.sin(currentTime * 0.00075) * 0.015; // Increased from 0.00015 (5x)
                         }
                     }
 
