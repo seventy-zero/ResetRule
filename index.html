@@ -96,6 +96,11 @@
             transition: transform 0.1s ease-out;
             touch-action: none;
         }
+        /* Add left joystick for movement */
+        .mobile-controls.left {
+            left: 20px;
+            right: auto;
+        }
         #flingButton {
             display: none;
             position: fixed;
@@ -1487,101 +1492,207 @@
             function initializeMobileControls() {
                 console.log('Initializing mobile controls');
                 
-                const joystickZone = document.getElementById('rightJoystick');
-                const joystick = document.createElement('div');
-                joystick.className = 'joystick';
-                joystickZone.appendChild(joystick);
+                // Create right joystick for camera
+                const rightJoystickZone = document.getElementById('rightJoystick');
+                const rightJoystick = document.createElement('div');
+                rightJoystick.className = 'joystick';
+                rightJoystickZone.appendChild(rightJoystick);
 
-                let touchStartX = 0;
-                let touchStartY = 0;
-                let joystickX = 0;
-                let joystickY = 0;
-                let isTouching = false;
-                const maxDistance = 35; // Reduced from 50 for more precise control
+                // Create left joystick for movement
+                const leftJoystickZone = document.createElement('div');
+                leftJoystickZone.className = 'joystick-zone';
+                const leftJoystick = document.createElement('div');
+                leftJoystick.className = 'joystick';
+                leftJoystickZone.appendChild(leftJoystick);
+                
+                const leftControls = document.createElement('div');
+                leftControls.className = 'mobile-controls left';
+                leftControls.appendChild(leftJoystickZone);
+                document.body.appendChild(leftControls);
+
+                // Camera control variables
+                let rightTouchStartX = 0;
+                let rightTouchStartY = 0;
+                let rightJoystickX = 0;
+                let rightJoystickY = 0;
+                let isRightTouching = false;
+                const rightMaxDistance = 35;
                 let lastUpdateTime = 0;
-                const updateInterval = 1000 / 60; // 60fps
-                let lastRotationX = 0;
-                let lastRotationY = 0;
+                const updateInterval = 1000 / 60;
+                let cameraVelocity = new THREE.Vector2();
+                const CAMERA_ACCELERATION = 0.5;
+                const CAMERA_DECELERATION = 0.8;
+                const MAX_CAMERA_SPEED = 0.1;
 
-                // Touch start handler
-                joystickZone.addEventListener('touchstart', function(e) {
+                // Movement control variables
+                let leftTouchStartX = 0;
+                let leftTouchStartY = 0;
+                let leftJoystickX = 0;
+                let leftJoystickY = 0;
+                let isLeftTouching = false;
+                const leftMaxDistance = 35;
+                let movementVelocity = new THREE.Vector2();
+                const MOVEMENT_ACCELERATION = 0.3;
+                const MOVEMENT_DECELERATION = 0.85;
+                const MAX_MOVEMENT_SPEED = 0.05;
+
+                // Right joystick touch handlers
+                rightJoystickZone.addEventListener('touchstart', function(e) {
                     e.preventDefault();
                     const touch = e.touches[0];
-                    touchStartX = touch.clientX;
-                    touchStartY = touch.clientY;
-                    isTouching = true;
-                    joystick.style.transition = 'none'; // Disable transition for immediate response
-                    lastRotationX = camera.rotation.x;
-                    lastRotationY = camera.rotation.y;
-                    console.log('Touch started');
+                    rightTouchStartX = touch.clientX;
+                    rightTouchStartY = touch.clientY;
+                    isRightTouching = true;
+                    rightJoystick.style.transition = 'none';
+                    console.log('Right touch started');
                 }, { passive: false });
 
-                // Touch move handler
-                joystickZone.addEventListener('touchmove', function(e) {
-                    if (!isTouching) return;
+                rightJoystickZone.addEventListener('touchmove', function(e) {
+                    if (!isRightTouching) return;
                     e.preventDefault();
                     const touch = e.touches[0];
                     const currentTime = performance.now();
                     
-                    // Throttle updates to 60fps
                     if (currentTime - lastUpdateTime < updateInterval) return;
                     lastUpdateTime = currentTime;
                     
-                    // Calculate distance from start
-                    const deltaX = touch.clientX - touchStartX;
-                    const deltaY = touch.clientY - touchStartY;
+                    const deltaX = touch.clientX - rightTouchStartX;
+                    const deltaY = touch.clientY - rightTouchStartY;
                     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                     
                     // Apply exponential smoothing to joystick movement
-                    const smoothing = 0.5; // Increased from 0.3 for less tick
-                    const targetX = distance > maxDistance ? (deltaX / distance) * maxDistance : deltaX;
-                    const targetY = distance > maxDistance ? (deltaY / distance) * maxDistance : deltaY;
+                    const smoothing = 0.5;
+                    const targetX = distance > rightMaxDistance ? (deltaX / distance) * rightMaxDistance : deltaX;
+                    const targetY = distance > rightMaxDistance ? (deltaY / distance) * rightMaxDistance : deltaY;
                     
-                    joystickX += (targetX - joystickX) * smoothing;
-                    joystickY += (targetY - joystickY) * smoothing;
+                    rightJoystickX += (targetX - rightJoystickX) * smoothing;
+                    rightJoystickY += (targetY - rightJoystickY) * smoothing;
                     
                     // Update joystick position
-                    joystick.style.left = `${joystickX + 60}px`;
-                    joystick.style.top = `${joystickY + 60}px`;
+                    rightJoystick.style.left = `${rightJoystickX + 60}px`;
+                    rightJoystick.style.top = `${rightJoystickY + 60}px`;
                     
-                    // Calculate target rotations
-                    const lookSpeed = 0.02; // Reduced from 0.03 for smoother rotation
-                    const targetRotationX = lastRotationX - (joystickY / maxDistance) * lookSpeed;
-                    const targetRotationY = lastRotationY - (joystickX / maxDistance) * lookSpeed;
+                    // Calculate camera velocity with acceleration
+                    const targetVelocityX = (rightJoystickX / rightMaxDistance) * MAX_CAMERA_SPEED;
+                    const targetVelocityY = (rightJoystickY / rightMaxDistance) * MAX_CAMERA_SPEED;
                     
-                    // Apply rotation with less smoothing for more responsive control
-                    camera.rotation.x = targetRotationX;
-                    camera.rotation.y = targetRotationY;
+                    cameraVelocity.x += (targetVelocityX - cameraVelocity.x) * CAMERA_ACCELERATION;
+                    cameraVelocity.y += (targetVelocityY - cameraVelocity.y) * CAMERA_ACCELERATION;
                     
-                    // Clamp vertical rotation to prevent over-rotation
+                    // Apply camera rotation
+                    camera.rotation.y -= cameraVelocity.x;
+                    camera.rotation.x -= cameraVelocity.y;
+                    
+                    // Clamp vertical rotation
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
                     
                     // Force roll to 0
                     camera.rotation.z = 0;
                     
-                    // Update last rotation values
-                    lastRotationX = camera.rotation.x;
-                    lastRotationY = camera.rotation.y;
-                    
-                    console.log('Touch moved:', joystickX, joystickY);
+                    console.log('Right touch moved:', rightJoystickX, rightJoystickY);
                 }, { passive: false });
 
-                // Touch end handler
-                joystickZone.addEventListener('touchend', function(e) {
+                rightJoystickZone.addEventListener('touchend', function(e) {
                     e.preventDefault();
-                    isTouching = false;
-                    joystick.style.transition = 'transform 0.2s ease-out'; // Re-enable transition
-                    joystickX = 0;
-                    joystickY = 0;
-                    joystick.style.left = '60px';
-                    joystick.style.top = '60px';
-                    console.log('Touch ended');
+                    isRightTouching = false;
+                    rightJoystick.style.transition = 'transform 0.2s ease-out';
+                    rightJoystickX = 0;
+                    rightJoystickY = 0;
+                    rightJoystick.style.left = '60px';
+                    rightJoystick.style.top = '60px';
+                    console.log('Right touch ended');
                 }, { passive: false });
+
+                // Left joystick touch handlers
+                leftJoystickZone.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    leftTouchStartX = touch.clientX;
+                    leftTouchStartY = touch.clientY;
+                    isLeftTouching = true;
+                    leftJoystick.style.transition = 'none';
+                    console.log('Left touch started');
+                }, { passive: false });
+
+                leftJoystickZone.addEventListener('touchmove', function(e) {
+                    if (!isLeftTouching) return;
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    const currentTime = performance.now();
+                    
+                    if (currentTime - lastUpdateTime < updateInterval) return;
+                    lastUpdateTime = currentTime;
+                    
+                    const deltaX = touch.clientX - leftTouchStartX;
+                    const deltaY = touch.clientY - leftTouchStartY;
+                    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                    
+                    // Apply exponential smoothing to joystick movement
+                    const smoothing = 0.5;
+                    const targetX = distance > leftMaxDistance ? (deltaX / distance) * leftMaxDistance : deltaX;
+                    const targetY = distance > leftMaxDistance ? (deltaY / distance) * leftMaxDistance : deltaY;
+                    
+                    leftJoystickX += (targetX - leftJoystickX) * smoothing;
+                    leftJoystickY += (targetY - leftJoystickY) * smoothing;
+                    
+                    // Update joystick position
+                    leftJoystick.style.left = `${leftJoystickX + 60}px`;
+                    leftJoystick.style.top = `${leftJoystickY + 60}px`;
+                    
+                    // Calculate movement velocity with acceleration
+                    const targetVelocityX = (leftJoystickX / leftMaxDistance) * MAX_MOVEMENT_SPEED;
+                    const targetVelocityY = (leftJoystickY / leftMaxDistance) * MAX_MOVEMENT_SPEED;
+                    
+                    movementVelocity.x += (targetVelocityX - movementVelocity.x) * MOVEMENT_ACCELERATION;
+                    movementVelocity.y += (targetVelocityY - movementVelocity.y) * MOVEMENT_ACCELERATION;
+                    
+                    // Apply movement relative to camera direction
+                    const cameraDirection = new THREE.Vector3();
+                    camera.getWorldDirection(cameraDirection);
+                    const rightVector = new THREE.Vector3();
+                    rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
+                    
+                    velocity.x = movementVelocity.x * rightVector.x + movementVelocity.y * cameraDirection.x;
+                    velocity.z = movementVelocity.x * rightVector.z + movementVelocity.y * cameraDirection.z;
+                    
+                    console.log('Left touch moved:', leftJoystickX, leftJoystickY);
+                }, { passive: false });
+
+                leftJoystickZone.addEventListener('touchend', function(e) {
+                    e.preventDefault();
+                    isLeftTouching = false;
+                    leftJoystick.style.transition = 'transform 0.2s ease-out';
+                    leftJoystickX = 0;
+                    leftJoystickY = 0;
+                    leftJoystick.style.left = '60px';
+                    leftJoystick.style.top = '60px';
+                    console.log('Left touch ended');
+                }, { passive: false });
+
+                // Update camera and movement in animation loop
+                function updateControls() {
+                    // Apply camera deceleration
+                    if (!isRightTouching) {
+                        cameraVelocity.multiplyScalar(CAMERA_DECELERATION);
+                        camera.rotation.y -= cameraVelocity.x;
+                        camera.rotation.x -= cameraVelocity.y;
+                    }
+                    
+                    // Apply movement deceleration
+                    if (!isLeftTouching) {
+                        movementVelocity.multiplyScalar(MOVEMENT_DECELERATION);
+                        velocity.x *= MOVEMENT_SMOOTHING;
+                        velocity.z *= MOVEMENT_SMOOTHING;
+                    }
+                    
+                    requestAnimationFrame(updateControls);
+                }
+                updateControls();
 
                 // Fling button handling
                 const flingButton = document.getElementById('flingButton');
                 let flingStartTime = 0;
-                const FLING_THRESHOLD = 200; // ms
+                const FLING_THRESHOLD = 200;
                 
                 flingButton.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -1601,10 +1712,8 @@
                         const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
                         const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
                         
-                        // Adjust fling strength based on touch duration
                         let scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
                         if (touchDuration < FLING_THRESHOLD) {
-                            // Quick tap = stronger fling
                             scaledStrength *= 1.2;
                         }
                         
