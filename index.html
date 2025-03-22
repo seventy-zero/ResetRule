@@ -1871,42 +1871,23 @@
                                     camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
                                     camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
                                     
-                                    // Add bounce effect for bridges
-                                    if (collisionResult.isBridge) {
-                                        // Calculate bounce velocity with reduced strength
-                                        const bounceStrength = 0.5; // Reduced from 0.8 to 0.5
-                                        const currentSpeed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                        
-                                        // Apply bounce in the push direction with smoother transition
-                                        const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-                                        if (dotProduct < 0) {
-                                            // We're moving towards the collision, apply gentler bounce
-                                            flingVelocity.x = pushDir.x * currentSpeed * bounceStrength * 0.7;
-                                            flingVelocity.z = pushDir.z * currentSpeed * bounceStrength * 0.7;
-                                        } else {
-                                            // We're moving along the surface, apply sliding
-                                            flingVelocity.x = pushDir.x * currentSpeed * CORNER_SLIDE_FORCE;
-                                            flingVelocity.z = pushDir.z * currentSpeed * CORNER_SLIDE_FORCE;
-                                        }
-                                        
-                                        // Add some upward velocity for more dynamic bounce, but less than before
-                                        verticalVelocity = Math.abs(verticalVelocity) * 0.3; // Reduced from 0.5 to 0.3
+                                    // Normal collision response for all objects
+                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                    
+                                    // Add corner sliding effect
+                                    const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
+                                    if (dotProduct < 0) {
+                                        // We're moving towards the collision, apply stronger bounce
+                                        flingVelocity.x = pushDir.x * speed * 0.8;
+                                        flingVelocity.z = pushDir.z * speed * 0.8;
                                     } else {
-                                        // Normal collision response for non-bridge objects
-                                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                        
-                                        // Add corner sliding effect
-                                        const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-                                        if (dotProduct < 0) {
-                                            // We're moving towards the collision, apply stronger bounce
-                                            flingVelocity.x = pushDir.x * speed * 0.8;
-                                            flingVelocity.z = pushDir.z * speed * 0.8;
-                                        } else {
-                                            // We're moving along the surface, apply sliding
-                                            flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
-                                            flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
-                                        }
+                                        // We're moving along the surface, apply sliding
+                                        flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
+                                        flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
                                     }
+                                    
+                                    // Add upward velocity for bounce
+                                    verticalVelocity = Math.abs(verticalVelocity) * 0.8;
                                 } else {
                                     // During normal movement, push out smoothly
                                     const pushDir = new THREE.Vector3();
@@ -1975,42 +1956,23 @@
                                     camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
                                     camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
                                     
-                                    // Add bounce effect for bridges
-                                    if (collisionResult.isBridge) {
-                                        // Calculate bounce velocity with reduced strength
-                                        const bounceStrength = 0.5; // Reduced from 0.8 to 0.5
-                                        const currentSpeed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                        
-                                        // Apply bounce in the push direction with smoother transition
-                                        const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-                                        if (dotProduct < 0) {
-                                            // We're moving towards the collision, apply gentler bounce
-                                            flingVelocity.x = pushDir.x * currentSpeed * bounceStrength * 0.7;
-                                            flingVelocity.z = pushDir.z * currentSpeed * bounceStrength * 0.7;
-                                        } else {
-                                            // We're moving along the surface, apply sliding
-                                            flingVelocity.x = pushDir.x * currentSpeed * CORNER_SLIDE_FORCE;
-                                            flingVelocity.z = pushDir.z * currentSpeed * CORNER_SLIDE_FORCE;
-                                        }
-                                        
-                                        // Add some upward velocity for more dynamic bounce, but less than before
-                                        verticalVelocity = Math.abs(verticalVelocity) * 0.3; // Reduced from 0.5 to 0.3
+                                    // Normal collision response for all objects
+                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                    
+                                    // Add corner sliding effect
+                                    const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
+                                    if (dotProduct < 0) {
+                                        // We're moving towards the collision, apply stronger bounce
+                                        flingVelocity.x = pushDir.x * speed * 0.8;
+                                        flingVelocity.z = pushDir.z * speed * 0.8;
                                     } else {
-                                        // Normal collision response for non-bridge objects
-                                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                        
-                                        // Add corner sliding effect
-                                        const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-                                        if (dotProduct < 0) {
-                                            // We're moving towards the collision, apply stronger bounce
-                                            flingVelocity.x = pushDir.x * speed * 0.8;
-                                            flingVelocity.z = pushDir.z * speed * 0.8;
-                                        } else {
-                                            // We're moving along the surface, apply sliding
-                                            flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
-                                            flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
-                                        }
+                                        // We're moving along the surface, apply sliding
+                                        flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
+                                        flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
                                     }
+                                    
+                                    // Add upward velocity for bounce
+                                    verticalVelocity = Math.abs(verticalVelocity) * 0.8;
                                 } else {
                                     // During normal movement, push out smoothly
                                     const pushDir = new THREE.Vector3();
