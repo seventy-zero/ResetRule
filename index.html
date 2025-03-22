@@ -1675,7 +1675,7 @@
                             scaledStrength *= 1.2;
                         }
                         
-                        // Set fling velocity
+                        // Set fling velocity with proper strength
                         flingVelocity.x = flingDirection.x * scaledStrength;
                         flingVelocity.z = flingDirection.z * scaledStrength;
                         verticalVelocity = flingDirection.y * scaledStrength + 0.5;
@@ -1687,7 +1687,9 @@
                         // Clear line collision point
                         lineCollisionPoint = null;
                         
-                        // Force camera position update
+                        // Apply initial fling velocity immediately
+                        camera.position.x += flingVelocity.x;
+                        camera.position.z += flingVelocity.z;
                         camera.position.y += verticalVelocity;
                         
                         console.log('Fling initiated with velocity:', flingVelocity);
