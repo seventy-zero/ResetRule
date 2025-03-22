@@ -515,7 +515,7 @@
                 case 1: // Tapered tower
                     geometry = new THREE.CylinderGeometry(12, 24, height, 6);
                     // Create multiple collision boxes for better accuracy
-                    const segments = 4;
+                    const segments = 5; // Increased from 4 to 5 for better accuracy
                     for (let i = 0; i < segments; i++) {
                         const segmentHeight = height / segments;
                         const topRadius = 12 + (24 - 12) * (i + 1) / segments;
@@ -529,7 +529,16 @@
                     break;
                 case 2: // Square tower
                     geometry = new THREE.BoxGeometry(36, height, 36);
-                    collisionGeometry = geometry;
+                    // Create multiple collision boxes for better accuracy
+                    const squareSegments = 4; // Split into 4 segments for better collision detection
+                    for (let i = 0; i < squareSegments; i++) {
+                        const segmentHeight = height / squareSegments;
+                        const collisionBox = new THREE.Box3();
+                        collisionBox.setFromObject(new THREE.Mesh(
+                            new THREE.BoxGeometry(36, segmentHeight, 36)
+                        ));
+                        collisionBoxes.push(collisionBox);
+                    }
                     break;
                 case 3: // Hexagonal tower
                     geometry = new THREE.CylinderGeometry(20, 20, height, 6);
