@@ -699,6 +699,7 @@
             
             // Create bridge mesh and edges
             const bridgeMesh = new THREE.Mesh(bridgeGeometry, bridgeMaterials[0]);
+            bridgeMesh.name = 'bridge'; // Add name to identify bridges
             const bridgeEdges = new THREE.LineSegments(
                 new THREE.EdgesGeometry(bridgeGeometry),
                 bridgeMaterials[1]
@@ -758,7 +759,8 @@
                             tower: tower,
                             collisionBox: collisionBox,
                             distance: distance,
-                            closestPoint: closestPoint
+                            closestPoint: closestPoint,
+                            isBridge: tower.mesh.name === 'bridge' // Add flag to identify bridges
                         };
                     }
                 }
@@ -774,7 +776,8 @@
                 tower: null,
                 collisionBox: null,
                 distance: Infinity,
-                closestPoint: null
+                closestPoint: null,
+                isBridge: false
             };
         }
 
@@ -1862,10 +1865,24 @@
                                     camera.position.x += pushDir.x * pushDistance * 2;
                                     camera.position.z += pushDir.z * pushDistance * 2;
                                     
-                                    // Redirect fling velocity along the push direction
-                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                    flingVelocity.x = pushDir.x * speed * 0.8;
-                                    flingVelocity.z = pushDir.z * speed * 0.8;
+                                    // Add bounce effect for bridges
+                                    if (collisionResult.isBridge) {
+                                        // Calculate bounce velocity
+                                        const bounceStrength = 0.8; // Adjust this value to control bounce intensity
+                                        const currentSpeed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                        
+                                        // Apply bounce in the push direction
+                                        flingVelocity.x = pushDir.x * currentSpeed * bounceStrength;
+                                        flingVelocity.z = pushDir.z * currentSpeed * bounceStrength;
+                                        
+                                        // Add some upward velocity for more dynamic bounce
+                                        verticalVelocity = Math.abs(verticalVelocity) * 0.5;
+                                    } else {
+                                        // Normal collision response for non-bridge objects
+                                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                        flingVelocity.x = pushDir.x * speed * 0.8;
+                                        flingVelocity.z = pushDir.z * speed * 0.8;
+                                    }
                                 } else {
                                     // During normal movement, push out smoothly
                                     const pushDir = new THREE.Vector3();
@@ -1875,6 +1892,13 @@
                                     const pushDistance = playerRadius - collisionResult.distance;
                                     camera.position.x += pushDir.x * pushDistance;
                                     camera.position.z += pushDir.z * pushDistance;
+                                    
+                                    // Add slight bounce for bridges during normal movement
+                                    if (collisionResult.isBridge) {
+                                        const bounceStrength = 0.3; // Smaller bounce for normal movement
+                                        velocity.x = pushDir.x * Math.abs(velocity.x) * bounceStrength;
+                                        velocity.z = pushDir.z * Math.abs(velocity.z) * bounceStrength;
+                                    }
                                 }
                             }
 
@@ -1912,10 +1936,24 @@
                                     camera.position.x += pushDir.x * pushDistance * 2;
                                     camera.position.z += pushDir.z * pushDistance * 2;
                                     
-                                    // Redirect fling velocity along the push direction
-                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                    flingVelocity.x = pushDir.x * speed * 0.8;
-                                    flingVelocity.z = pushDir.z * speed * 0.8;
+                                    // Add bounce effect for bridges
+                                    if (collisionResult.isBridge) {
+                                        // Calculate bounce velocity
+                                        const bounceStrength = 0.8; // Adjust this value to control bounce intensity
+                                        const currentSpeed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                        
+                                        // Apply bounce in the push direction
+                                        flingVelocity.x = pushDir.x * currentSpeed * bounceStrength;
+                                        flingVelocity.z = pushDir.z * currentSpeed * bounceStrength;
+                                        
+                                        // Add some upward velocity for more dynamic bounce
+                                        verticalVelocity = Math.abs(verticalVelocity) * 0.5;
+                                    } else {
+                                        // Normal collision response for non-bridge objects
+                                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                        flingVelocity.x = pushDir.x * speed * 0.8;
+                                        flingVelocity.z = pushDir.z * speed * 0.8;
+                                    }
                                 } else {
                                     // During normal movement, push out smoothly
                                     const pushDir = new THREE.Vector3();
@@ -1925,6 +1963,13 @@
                                     const pushDistance = playerRadius - collisionResult.distance;
                                     camera.position.x += pushDir.x * pushDistance;
                                     camera.position.z += pushDir.z * pushDistance;
+                                    
+                                    // Add slight bounce for bridges during normal movement
+                                    if (collisionResult.isBridge) {
+                                        const bounceStrength = 0.3; // Smaller bounce for normal movement
+                                        velocity.x = pushDir.x * Math.abs(velocity.x) * bounceStrength;
+                                        velocity.z = pushDir.z * Math.abs(velocity.z) * bounceStrength;
+                                    }
                                 }
                             }
 
