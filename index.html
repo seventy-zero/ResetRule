@@ -1575,6 +1575,83 @@
                     console.log('Fling button touch started');
                     showLine = true;
                     this.classList.add('active');
+                    
+                    // Update line trace position
+                    const cameraDirection = new THREE.Vector3();
+                    camera.getWorldDirection(cameraDirection);
+                    const rightVector = new THREE.Vector3();
+                    rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
+                    
+                    // Calculate start and end points
+                    const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
+                    startPoint.y = camera.position.y;
+                    
+                    const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
+                    
+                    // Update curve points
+                    curve.points[0].copy(startPoint);
+                    curve.points[1].copy(endPoint);
+                    
+                    // Update the tube geometry
+                    const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
+                    tubeMesh.geometry.dispose();
+                    tubeMesh.geometry = newTubeGeometry;
+                    tubeMesh.visible = true;
+                }, { passive: false });
+
+                flingBtn.addEventListener('touchmove', function(e) {
+                    e.preventDefault();
+                    if (!showLine) return;
+                    
+                    // Update line trace position
+                    const cameraDirection = new THREE.Vector3();
+                    camera.getWorldDirection(cameraDirection);
+                    const rightVector = new THREE.Vector3();
+                    rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
+                    
+                    // Calculate start and end points
+                    const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
+                    startPoint.y = camera.position.y;
+                    
+                    const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
+                    
+                    // Update curve points
+                    curve.points[0].copy(startPoint);
+                    curve.points[1].copy(endPoint);
+                    
+                    // Update the tube geometry
+                    const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
+                    tubeMesh.geometry.dispose();
+                    tubeMesh.geometry = newTubeGeometry;
+
+                    // Check for line collision with towers
+                    raycaster.set(startPoint, cameraDirection);
+                    const intersects = [];
+                    towers.forEach(tower => {
+                        const towerIntersects = raycaster.intersectObject(tower.mesh);
+                        if (towerIntersects.length > 0 && towerIntersects[0].distance <= 330) {
+                            intersects.push(towerIntersects[0]);
+                        }
+                    });
+
+                    // Sort intersections by distance and get the closest one
+                    if (intersects.length > 0) {
+                        intersects.sort((a, b) => a.distance - b.distance);
+                        lineCollisionPoint = intersects[0].point;
+                        
+                        // Update line end point to collision point
+                        curve.points[1].copy(lineCollisionPoint);
+                        const collidedTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
+                        tubeMesh.geometry.dispose();
+                        tubeMesh.geometry = collidedTubeGeometry;
+                        
+                        // Change line color to indicate valid target
+                        tubeMaterial.color.setHex(0x00ff00);
+                    } else {
+                        lineCollisionPoint = null;
+                        // Change line color to indicate no target
+                        tubeMaterial.color.setHex(0xff0000);
+                    }
                 }, { passive: false });
 
                 flingBtn.addEventListener('touchend', function(e) {
@@ -1582,6 +1659,7 @@
                     const touchDuration = performance.now() - flingStartTime;
                     console.log('Fling button touch ended');
                     showLine = false;
+                    tubeMesh.visible = false;
                     this.classList.remove('active');
                     
                     if (lineCollisionPoint) {
@@ -1912,8 +1990,13 @@
                     // Rotate star fields with reduced frequency
                     if (currentTime % 3 === 0) { // Update every third frame
                         if (starField && largeStarField) {
-                            starField.rotation.y += 0.0001;
-                            largeStarField.rotation.y += 0.00015;
+                            // Rotate star fields at different speeds for parallax effect
+                            starField.rotation.y += 0.00005; // Slower rotation for distant stars
+                            largeStarField.rotation.y += 0.0001; // Faster rotation for closer stars
+                            
+                            // Add slight wobble to create more dynamic movement
+                            starField.rotation.x = Math.sin(currentTime * 0.0001) * 0.01;
+                            largeStarField.rotation.x = Math.sin(currentTime * 0.00015) * 0.015;
                         }
                     }
 
