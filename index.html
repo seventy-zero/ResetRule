@@ -1670,7 +1670,7 @@
                         const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
                         const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
                         
-                        // Match desktop fling strength calculation exactly
+                        // Calculate fling strength based on distance
                         const scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
                         
                         // Set fling velocity with proper strength
@@ -1689,16 +1689,6 @@
                         camera.position.x += flingVelocity.x;
                         camera.position.z += flingVelocity.z;
                         camera.position.y += verticalVelocity;
-                        
-                        // Apply damping to horizontal movement
-                        flingVelocity.x *= flingDamping;
-                        flingVelocity.z *= flingDamping;
-                        
-                        // Force camera position update
-                        camera.position.y += verticalVelocity;
-                        
-                        // Apply gravity immediately
-                        verticalVelocity -= gravity;
                         
                         // Update player collider position
                         playerCollider.center.copy(camera.position);
@@ -1733,6 +1723,16 @@
                             // Add upward velocity for bounce
                             verticalVelocity = Math.abs(verticalVelocity) * 0.8;
                         }
+                        
+                        // Apply damping to horizontal movement
+                        flingVelocity.x *= flingDamping;
+                        flingVelocity.z *= flingDamping;
+                        
+                        // Force camera position update
+                        camera.position.y += verticalVelocity;
+                        
+                        // Apply gravity immediately
+                        verticalVelocity -= gravity;
                         
                         console.log('Fling initiated with velocity:', flingVelocity);
                     }
