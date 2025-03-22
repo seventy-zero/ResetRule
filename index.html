@@ -789,11 +789,6 @@
                         });
                         towers.length = 0;
                         
-                        collectibles.forEach(item => {
-                            scene.remove(item.mesh);
-                        });
-                        collectibles.clear();
-                        
                         // Create towers from server data
                         data.towers.forEach(towerData => {
                             createTowerFromData(towerData);
@@ -804,8 +799,36 @@
                             createBridgeFromData(bridgeData);
                         });
 
-                        // Initialize collectibles
-                        initializeCollectibles();
+                        // Initialize orbs without collection tracking
+                        for (let i = 0; i < ITEM_COUNT; i++) {
+                            const position = findValidTowerPosition();
+                            if (position) {
+                                const geometry = new THREE.SphereGeometry(ITEM_RADIUS, 8, 8);
+                                const material = new THREE.MeshBasicMaterial({ 
+                                    color: ITEM_COLORS[i],
+                                    emissive: ITEM_COLORS[i],
+                                    emissiveIntensity: 0.5
+                                });
+                                const mesh = new THREE.Mesh(geometry, material);
+                                mesh.position.copy(position);
+                                
+                                // Add glow effect
+                                const glowGeometry = new THREE.SphereGeometry(ITEM_RADIUS * 1.2, 8, 8);
+                                const glowMaterial = new THREE.MeshBasicMaterial({
+                                    color: ITEM_COLORS[i],
+                                    transparent: true,
+                                    opacity: 0.3
+                                });
+                                const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
+                                mesh.add(glowMesh);
+                                
+                                // Add floating animation
+                                mesh.userData.originalY = position.y;
+                                mesh.userData.floatOffset = Math.random() * Math.PI * 2;
+                                
+                                scene.add(mesh);
+                            }
+                        }
                         break;
 
                     case 'room_info':
