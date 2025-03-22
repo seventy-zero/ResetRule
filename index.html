@@ -1672,13 +1672,21 @@
                             scaledStrength *= 1.2;
                         }
                         
+                        // Set fling velocity
                         flingVelocity.x = flingDirection.x * scaledStrength;
                         flingVelocity.z = flingDirection.z * scaledStrength;
                         verticalVelocity = flingDirection.y * scaledStrength + 0.5;
                         
+                        // Set fling state
                         isFlinging = true;
                         isGrounded = false;
+                        
+                        // Clear line collision point
                         lineCollisionPoint = null;
+                        
+                        // Force camera position update
+                        camera.position.y += verticalVelocity;
+                        
                         console.log('Fling initiated with velocity:', flingVelocity);
                     }
                 }, { passive: false });
@@ -1693,9 +1701,9 @@
                 let lastUpdateTime = 0;
                 const updateInterval = 1000 / 60;
                 let cameraVelocity = new THREE.Vector2();
-                const CAMERA_ACCELERATION = 0.5;
+                const CAMERA_ACCELERATION = 0.3; // Reduced from 0.5
                 const CAMERA_DECELERATION = 0.8;
-                const MAX_CAMERA_SPEED = 0.1;
+                const MAX_CAMERA_SPEED = 0.05; // Reduced from 0.1
 
                 // Movement control variables
                 let leftTouchStartX = 0;
