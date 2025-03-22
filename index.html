@@ -2024,13 +2024,33 @@
                         // Handle normal movement collisions with push-out
                         if (collisionResult.collision) {
                             if (isFlinging) {
-                                // During fling, push out strongly
-                                const boxCenter = new THREE.Vector3();
-                                collisionResult.collisionBox.getCenter(boxCenter);
-                                const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(boxCenter).normalize();
-                                camera.position.x += pushDir.x * 3;
-                                camera.position.z += pushDir.z * 3;
+                                // Check if player is stuck inside collider
+                                const distance = camera.position.distanceTo(collisionResult.closestPoint);
+                                if (distance < playerRadius * 0.5) { // If player is more than halfway inside
+                                    // Force push out with extra strength during fling
+                                    const pushDir = new THREE.Vector3();
+                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    const pushDistance = playerRadius * 4; // Push out 4x the radius when stuck
+                                    camera.position.x += pushDir.x * pushDistance;
+                                    camera.position.z += pushDir.z * pushDistance;
+                                    
+                                    // Add strong upward velocity to help escape
+                                    verticalVelocity = 1.0;
+                                    isGrounded = false;
+                                    
+                                    // Add extra fling velocity in the push direction
+                                    const flingSpeed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                    flingVelocity.x = pushDir.x * flingSpeed * 1.5;
+                                    flingVelocity.z = pushDir.z * flingSpeed * 1.5;
+                                } else {
+                                    // Normal fling collision response
+                                    const boxCenter = new THREE.Vector3();
+                                    collisionResult.collisionBox.getCenter(boxCenter);
+                                    const pushDir = new THREE.Vector3();
+                                    pushDir.copy(camera.position).sub(boxCenter).normalize();
+                                    camera.position.x += pushDir.x * 3;
+                                    camera.position.z += pushDir.z * 3;
+                                }
                             } else {
                                 // Check if player is stuck inside collider
                                 const distance = camera.position.distanceTo(collisionResult.closestPoint);
