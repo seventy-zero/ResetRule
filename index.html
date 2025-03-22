@@ -1910,21 +1910,13 @@
                                         velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
                                     }
                                     
-                                    // Add strong bounce for bridges during normal movement
-                                    if (collisionResult.isBridge) {
-                                        const bounceStrength = 1.2; // Increased from 0.15 to 1.2
-                                        const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-                                        
-                                        // Calculate bounce direction
-                                        const pushDir = new THREE.Vector3();
-                                        pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                        
-                                        // Apply strong bounce force
+                                    // Remove special bridge handling - treat all collisions the same
+                                    const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+                                    if (currentSpeed > 0.1) { // Only apply bounce if we have significant speed
+                                        const bounceStrength = 0.8; // Consistent bounce for all objects
                                         velocity.x = pushDir.x * currentSpeed * bounceStrength;
                                         velocity.z = pushDir.z * currentSpeed * bounceStrength;
-                                        
-                                        // Add significant upward velocity
-                                        verticalVelocity = Math.max(currentSpeed * 0.8, 1.0);
+                                        verticalVelocity = Math.max(currentSpeed * 0.5, 0.3);
                                         isGrounded = false;
                                     }
                                 }
@@ -2003,21 +1995,13 @@
                                         velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
                                     }
                                     
-                                    // Add strong bounce for bridges during normal movement
-                                    if (collisionResult.isBridge) {
-                                        const bounceStrength = 1.2; // Increased from 0.15 to 1.2
-                                        const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-                                        
-                                        // Calculate bounce direction
-                                        const pushDir = new THREE.Vector3();
-                                        pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                        
-                                        // Apply strong bounce force
+                                    // Remove special bridge handling - treat all collisions the same
+                                    const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+                                    if (currentSpeed > 0.1) { // Only apply bounce if we have significant speed
+                                        const bounceStrength = 0.8; // Consistent bounce for all objects
                                         velocity.x = pushDir.x * currentSpeed * bounceStrength;
                                         velocity.z = pushDir.z * currentSpeed * bounceStrength;
-                                        
-                                        // Add significant upward velocity
-                                        verticalVelocity = Math.max(currentSpeed * 0.8, 1.0);
+                                        verticalVelocity = Math.max(currentSpeed * 0.5, 0.3);
                                         isGrounded = false;
                                     }
                                 }
