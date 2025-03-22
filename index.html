@@ -542,7 +542,16 @@
                     break;
                 case 3: // Hexagonal tower
                     geometry = new THREE.CylinderGeometry(20, 20, height, 6);
-                    collisionGeometry = geometry;
+                    // Create multiple collision boxes for better accuracy
+                    const hexagonSegments = 4;
+                    for (let i = 0; i < hexagonSegments; i++) {
+                        const segmentHeight = height / hexagonSegments;
+                        const collisionBox = new THREE.Box3();
+                        collisionBox.setFromObject(new THREE.Mesh(
+                            new THREE.CylinderGeometry(20, 20, segmentHeight, 6)
+                        ));
+                        collisionBoxes.push(collisionBox);
+                    }
                     break;
                 case 4: // Twisted tower
                     geometry = new THREE.CylinderGeometry(15, 15, height, 8, 10, true);
@@ -559,12 +568,14 @@
                         positions[i + 2] = x * Math.sin(theta) + z * Math.cos(theta);
                     }
                     // Create multiple collision boxes for better accuracy
-                    const twistSegments = 4;
+                    const twistSegments = 6; // Increased segments for better twist approximation
                     for (let i = 0; i < twistSegments; i++) {
                         const segmentHeight = height / twistSegments;
+                        const progress = i / twistSegments;
+                        const radius = 15 + Math.sin(progress * Math.PI * 2) * 2; // Vary radius to match twist
                         const collisionBox = new THREE.Box3();
                         collisionBox.setFromObject(new THREE.Mesh(
-                            new THREE.CylinderGeometry(18, 18, segmentHeight, 8)
+                            new THREE.CylinderGeometry(radius, radius, segmentHeight, 8)
                         ));
                         collisionBoxes.push(collisionBox);
                     }
@@ -670,7 +681,20 @@
                         new THREE.ConeGeometry(28, topHeight, 6)
                     ));
                     
-                    collisionBoxes = [baseCollisionBox, topCollisionBox];
+                    // Create intermediate collision boxes for smoother transition
+                    const transitionSegments = 3;
+                    for (let i = 0; i < transitionSegments; i++) {
+                        const segmentHeight = topHeight / transitionSegments;
+                        const progress = i / transitionSegments;
+                        const radius = 28 + (38 - 28) * (1 - progress);
+                        const collisionBox = new THREE.Box3();
+                        collisionBox.setFromObject(new THREE.Mesh(
+                            new THREE.CylinderGeometry(radius, radius, segmentHeight, 8)
+                        ));
+                        collisionBoxes.push(collisionBox);
+                    }
+                    
+                    collisionBoxes = [baseCollisionBox, ...collisionBoxes, topCollisionBox];
                     
                     // Create base with edges
                     const baseMesh = new THREE.Mesh(geometry, materials[0]);
