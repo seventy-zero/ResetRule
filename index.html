@@ -1140,6 +1140,10 @@
 
             // Controls setup
             controls = new PointerLockControls(camera, document.body);
+            controls.minPolarAngle = 0.1; // Limit looking up (in radians)
+            controls.maxPolarAngle = Math.PI - 0.1; // Limit looking down (in radians)
+            controls.enableDamping = true; // Add smooth damping
+            controls.dampingFactor = 0.05; // Adjust damping factor
             console.log('Controls initialized');
 
             // Collision setup
@@ -1579,12 +1583,17 @@
                     cameraVelocity.x += (targetVelocityX - cameraVelocity.x) * CAMERA_ACCELERATION;
                     cameraVelocity.y += (targetVelocityY - cameraVelocity.y) * CAMERA_ACCELERATION;
                     
-                    // Apply camera rotation
-                    camera.rotation.y -= cameraVelocity.x;
-                    camera.rotation.x -= cameraVelocity.y;
+                    // Apply camera rotation with constraints
+                    const currentRotationX = camera.rotation.x;
+                    const newRotationX = currentRotationX - cameraVelocity.y;
                     
-                    // Clamp vertical rotation
-                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
+                    // Clamp vertical rotation to prevent over-rotation
+                    if (newRotationX > -Math.PI/2 && newRotationX < Math.PI/2) {
+                        camera.rotation.x = newRotationX;
+                    }
+                    
+                    // Apply horizontal rotation
+                    camera.rotation.y -= cameraVelocity.x;
                     
                     // Force roll to 0
                     camera.rotation.z = 0;
@@ -1646,14 +1655,21 @@
                     movementVelocity.x += (targetVelocityX - movementVelocity.x) * MOVEMENT_ACCELERATION;
                     movementVelocity.y += (targetVelocityY - movementVelocity.y) * MOVEMENT_ACCELERATION;
                     
-                    // Apply movement relative to camera direction
+                    // Get camera direction vectors
                     const cameraDirection = new THREE.Vector3();
                     camera.getWorldDirection(cameraDirection);
                     const rightVector = new THREE.Vector3();
                     rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
                     
-                    velocity.x = movementVelocity.x * rightVector.x + movementVelocity.y * cameraDirection.x;
-                    velocity.z = movementVelocity.x * rightVector.z + movementVelocity.y * cameraDirection.z;
+                    // Calculate movement relative to camera direction
+                    // Forward/backward movement (Y axis of joystick)
+                    const forwardMovement = movementVelocity.y * cameraDirection;
+                    // Left/right movement (X axis of joystick)
+                    const rightMovement = movementVelocity.x * rightVector;
+                    
+                    // Combine movements
+                    velocity.x = forwardMovement.x + rightMovement.x;
+                    velocity.z = forwardMovement.z + rightMovement.z;
                     
                     console.log('Left touch moved:', leftJoystickX, leftJoystickY);
                 }, { passive: false });
