@@ -1696,6 +1696,9 @@
                         flingVelocity.x *= flingDamping;
                         flingVelocity.z *= flingDamping;
                         
+                        // Force camera position update
+                        camera.position.y += verticalVelocity;
+                        
                         console.log('Fling initiated with velocity:', flingVelocity);
                     }
                 }, { passive: false });
@@ -2110,6 +2113,10 @@
                             // Move in world space
                             camera.position.x += flingVelocity.x;
                             camera.position.z += flingVelocity.z;
+                            camera.position.y += verticalVelocity;
+
+                            // Apply gravity
+                            verticalVelocity -= gravity;
 
                             // Update player collider position
                             playerCollider.center.copy(camera.position);
@@ -2146,43 +2153,21 @@
                                     
                                     // Add upward velocity for bounce
                                     verticalVelocity = Math.abs(verticalVelocity) * 0.8;
-                                } else {
-                                    // During normal movement, push out smoothly
-                                    const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                    
-                                    // Push out with a smoother force
-                                    const pushDistance = playerRadius - collisionResult.distance;
-                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                    
-                                    // Add corner sliding for normal movement
-                                    const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
-                                    if (dotProduct < 0) {
-                                        // We're moving towards the collision, stop movement
-                                        velocity.x = 0;
-                                        velocity.z = 0;
-                                    } else {
-                                        // We're moving along the surface, apply sliding
-                                        velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
-                                        velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
-                                    }
-                                    
-                                    // Remove special bridge handling - treat all collisions the same
-                                    const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-                                    if (currentSpeed > 0.1) { // Only apply bounce if we have significant speed
-                                        const bounceStrength = 0.8; // Consistent bounce for all objects
-                                        velocity.x = pushDir.x * currentSpeed * bounceStrength;
-                                        velocity.z = pushDir.z * currentSpeed * bounceStrength;
-                                        verticalVelocity = Math.max(currentSpeed * 0.5, 0.3);
-                                        isGrounded = false;
-                                    }
                                 }
                             }
 
                             // Apply damping to horizontal movement
                             flingVelocity.x *= flingDamping;
                             flingVelocity.z *= flingDamping;
+
+                            // Check for ground collision
+                            if (camera.position.y <= playerHeight) {
+                                camera.position.y = playerHeight;
+                                verticalVelocity = 0;
+                                isGrounded = true;
+                                isFlinging = false;
+                                flingVelocity.set(0, 0, 0);
+                            }
 
                             // Stop flinging when velocity is very small
                             if (Math.abs(flingVelocity.x) < 0.001 && Math.abs(flingVelocity.z) < 0.001) {
