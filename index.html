@@ -598,7 +598,7 @@
                 case 6: // Octagonal tower
                     geometry = new THREE.CylinderGeometry(19, 19, height, 8);
                     // Create multiple collision boxes for better accuracy
-                    const octagonSegments = 3;
+                    const octagonSegments = 5; // Increased from 3 to 5 for better accuracy
                     for (let i = 0; i < octagonSegments; i++) {
                         const segmentHeight = height / octagonSegments;
                         const collisionBox = new THREE.Box3();
@@ -611,7 +611,7 @@
                 case 7: // Double width tower
                     geometry = new THREE.BoxGeometry(42, height, 42);
                     // Create multiple collision boxes for better accuracy
-                    const doubleSegments = 3;
+                    const doubleSegments = 5; // Increased from 3 to 5 for better accuracy
                     for (let i = 0; i < doubleSegments; i++) {
                         const segmentHeight = height / doubleSegments;
                         const collisionBox = new THREE.Box3();
@@ -639,7 +639,7 @@
                 case 9: // Star tower
                     geometry = new THREE.CylinderGeometry(24, 24, height, 5);
                     // Create multiple collision boxes for better accuracy
-                    const starSegments = 3;
+                    const starSegments = 5; // Increased from 3 to 5 for better accuracy
                     for (let i = 0; i < starSegments; i++) {
                         const segmentHeight = height / starSegments;
                         const collisionBox = new THREE.Box3();
