@@ -73,6 +73,7 @@
             width: 120px;
             pointer-events: auto;
             z-index: 1000;
+            touch-action: none;
         }
         .joystick-zone {
             position: absolute;
@@ -92,29 +93,34 @@
             border-radius: 25px;
             pointer-events: none;
             transform: translate(-50%, -50%);
+            transition: transform 0.1s ease-out;
+            touch-action: none;
         }
         #flingButton {
             display: none;
             position: fixed;
             bottom: 160px;
             left: 40px;
-            width: 60px;
-            height: 60px;
+            width: 80px;
+            height: 80px;
             background: rgba(76, 175, 80, 0.6);
             border: 2px solid rgba(255, 255, 255, 0.8);
             border-radius: 50%;
             color: white;
-            font-size: 24px;
-            line-height: 60px;
+            font-size: 32px;
+            line-height: 80px;
             text-align: center;
             pointer-events: auto;
             cursor: pointer;
             -webkit-tap-highlight-color: transparent;
             z-index: 1000;
             touch-action: none;
+            transition: all 0.1s ease-out;
+            user-select: none;
         }
         #flingButton.active {
             background: rgba(76, 175, 80, 0.9);
+            transform: scale(0.95);
         }
         /* Show mobile controls on touch devices */
         @media (pointer: coarse) {
@@ -1491,7 +1497,9 @@
                 let joystickX = 0;
                 let joystickY = 0;
                 let isTouching = false;
-                const maxDistance = 50;
+                const maxDistance = 35; // Reduced from 50 for more precise control
+                let lastUpdateTime = 0;
+                const updateInterval = 1000 / 60; // 60fps
 
                 // Touch start handler
                 joystickZone.addEventListener('touchstart', function(e) {
@@ -1500,6 +1508,7 @@
                     touchStartX = touch.clientX;
                     touchStartY = touch.clientY;
                     isTouching = true;
+                    joystick.style.transition = 'none'; // Disable transition for immediate response
                     console.log('Touch started');
                 }, { passive: false });
 
@@ -1508,32 +1517,38 @@
                     if (!isTouching) return;
                     e.preventDefault();
                     const touch = e.touches[0];
+                    const currentTime = performance.now();
+                    
+                    // Throttle updates to 60fps
+                    if (currentTime - lastUpdateTime < updateInterval) return;
+                    lastUpdateTime = currentTime;
                     
                     // Calculate distance from start
                     const deltaX = touch.clientX - touchStartX;
                     const deltaY = touch.clientY - touchStartY;
                     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                     
-                    // Limit joystick movement
-                    if (distance > maxDistance) {
-                        const angle = Math.atan2(deltaY, deltaX);
-                        joystickX = Math.cos(angle) * maxDistance;
-                        joystickY = Math.sin(angle) * maxDistance;
-                    } else {
-                        joystickX = deltaX;
-                        joystickY = deltaY;
-                    }
+                    // Apply exponential smoothing to joystick movement
+                    const smoothing = 0.3;
+                    const targetX = distance > maxDistance ? (deltaX / distance) * maxDistance : deltaX;
+                    const targetY = distance > maxDistance ? (deltaY / distance) * maxDistance : deltaY;
+                    
+                    joystickX += (targetX - joystickX) * smoothing;
+                    joystickY += (targetY - joystickY) * smoothing;
                     
                     // Update joystick position
                     joystick.style.left = `${joystickX + 60}px`;
                     joystick.style.top = `${joystickY + 60}px`;
                     
-                    // Update camera rotation
-                    const lookSpeed = 0.05;
+                    // Update camera rotation with smoother control
+                    const lookSpeed = 0.03; // Reduced from 0.05 for smoother rotation
                     
-                    // Rotate camera based on joystick position
-                    camera.rotation.y -= (joystickX / maxDistance) * lookSpeed;
-                    camera.rotation.x -= (joystickY / maxDistance) * lookSpeed;
+                    // Apply exponential smoothing to camera rotation
+                    const targetRotationX = -joystickY / maxDistance;
+                    const targetRotationY = -joystickX / maxDistance;
+                    
+                    camera.rotation.x += (targetRotationX - camera.rotation.x) * smoothing;
+                    camera.rotation.y += (targetRotationY - camera.rotation.y) * smoothing;
                     
                     // Clamp vertical rotation to prevent over-rotation
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
@@ -1548,6 +1563,7 @@
                 joystickZone.addEventListener('touchend', function(e) {
                     e.preventDefault();
                     isTouching = false;
+                    joystick.style.transition = 'transform 0.2s ease-out'; // Re-enable transition
                     joystickX = 0;
                     joystickY = 0;
                     joystick.style.left = '60px';
@@ -1557,9 +1573,12 @@
 
                 // Fling button handling
                 const flingButton = document.getElementById('flingButton');
+                let flingStartTime = 0;
+                const FLING_THRESHOLD = 200; // ms
                 
                 flingButton.addEventListener('touchstart', function(e) {
                     e.preventDefault();
+                    flingStartTime = performance.now();
                     showLine = true;
                     this.classList.add('active');
                     console.log('Fling button touch started');
@@ -1567,12 +1586,20 @@
 
                 flingButton.addEventListener('touchend', function(e) {
                     e.preventDefault();
+                    const touchDuration = performance.now() - flingStartTime;
                     showLine = false;
                     this.classList.remove('active');
+                    
                     if (lineCollisionPoint) {
                         const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
                         const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                        const scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
+                        
+                        // Adjust fling strength based on touch duration
+                        let scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
+                        if (touchDuration < FLING_THRESHOLD) {
+                            // Quick tap = stronger fling
+                            scaledStrength *= 1.2;
+                        }
                         
                         flingVelocity.x = flingDirection.x * scaledStrength;
                         flingVelocity.z = flingDirection.z * scaledStrength;
@@ -1585,15 +1612,7 @@
                     console.log('Fling button touch ended');
                 }, { passive: false });
 
-                console.log('Mobile controls initialized');
-            }
-
-            // Mobile-specific touch handlers
-            if (isMobile) {
-                // Show mobile instructions immediately
-                document.getElementById('mobileInstructions').style.display = 'block';
-                
-                // Prevent default touch behaviors only for the game canvas
+                // Prevent default touch behaviors
                 document.addEventListener('touchmove', function(e) {
                     if (!e.target.closest('.mobile-controls') && 
                         !e.target.closest('#flingButton') && 
@@ -1611,10 +1630,7 @@
                     }
                 }, { passive: false });
 
-                // Prevent pinch zoom
-                document.addEventListener('gesturestart', function(e) {
-                    e.preventDefault();
-                }, { passive: false });
+                console.log('Mobile controls initialized');
             }
 
             // Desktop controls
