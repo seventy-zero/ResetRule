@@ -2019,16 +2019,14 @@
                     }
 
                     // Rotate star fields with reduced frequency
-                    if (currentTime % 3 === 0) { // Update every third frame
-                        if (starField && largeStarField) {
-                            // Rotate star fields at different speeds for parallax effect (5x faster)
-                            starField.rotation.y += 0.00025; // Increased from 0.00005 (5x)
-                            largeStarField.rotation.y += 0.0005; // Increased from 0.0001 (5x)
-                            
-                            // Add slight wobble to create more dynamic movement (5x faster)
-                            starField.rotation.x = Math.sin(currentTime * 0.0005) * 0.01; // Increased from 0.0001 (5x)
-                            largeStarField.rotation.x = Math.sin(currentTime * 0.00075) * 0.015; // Increased from 0.00015 (5x)
-                        }
+                    if (starField && largeStarField) {
+                        // Rotate star fields at different speeds for parallax effect (10x faster)
+                        starField.rotation.y += 0.0005; // Increased from 0.00025 (2x)
+                        largeStarField.rotation.y += 0.001; // Increased from 0.0005 (2x)
+                        
+                        // Add slight wobble to create more dynamic movement (10x faster)
+                        starField.rotation.x = Math.sin(currentTime * 0.001) * 0.01; // Increased from 0.0005 (2x)
+                        largeStarField.rotation.x = Math.sin(currentTime * 0.0015) * 0.015; // Increased from 0.00075 (2x)
                     }
 
                     // Only process movement and game logic if controls are locked and game is started
