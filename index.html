@@ -1641,7 +1641,7 @@
                     const intersects = [];
                     towers.forEach(tower => {
                         const towerIntersects = raycaster.intersectObject(tower.mesh);
-                        if (towerIntersects.length > 0 && towerIntersects[0].distance <= 330) {
+                        if (towerIntersects.length > 0 && towerIntersects[0].distance <= 500) { // Increased from 330 to 500
                             intersects.push(towerIntersects[0]);
                         }
                     });
@@ -2076,7 +2076,7 @@
                             const intersects = [];
                             towers.forEach(tower => {
                                 const towerIntersects = raycaster.intersectObject(tower.mesh);
-                                if (towerIntersects.length > 0 && towerIntersects[0].distance <= 330) {
+                                if (towerIntersects.length > 0 && towerIntersects[0].distance <= 430) { // Increased from 330 to 500
                                     intersects.push(towerIntersects[0]);
                                 }
                             });
