@@ -224,6 +224,7 @@
         const flingDamping = 0.985;
         const clock = new THREE.Clock();
         const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
+        const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
 
         // Game state variables
         let gameStarted = false;
@@ -284,9 +285,12 @@
                 this.currentPosition = new THREE.Vector3();
                 this.currentRotation = new THREE.Vector3();
                 this.predictedPosition = new THREE.Vector3();
-                this.velocity = new THREE.Vector3(); // Initialize velocity
+                this.velocity = new THREE.Vector3();
                 this.lastUpdateTime = Date.now();
-                this.interpolationDelay = 50; // Reduced from 100ms to 50ms for smoother movement
+                this.interpolationDelay = 100; // Increased from 50ms to 100ms for smoother movement
+                this.lastPosition = new THREE.Vector3();
+                this.positionHistory = []; // Store last few positions for velocity calculation
+                this.maxHistorySize = 5;
             }
 
             update(deltaTime) {
@@ -295,18 +299,39 @@
                 const currentTime = Date.now();
                 const timeSinceUpdate = currentTime - this.lastUpdateTime;
                 
+                // Update position history
+                this.positionHistory.push(this.currentPosition.clone());
+                if (this.positionHistory.length > this.maxHistorySize) {
+                    this.positionHistory.shift();
+                }
+
+                // Calculate velocity from position history
+                if (this.positionHistory.length >= 2) {
+                    const lastPos = this.positionHistory[this.positionHistory.length - 2];
+                    this.velocity.copy(this.currentPosition).sub(lastPos).divideScalar(deltaTime);
+                }
+                
                 // Use prediction if we haven't received an update recently
                 if (timeSinceUpdate > this.interpolationDelay) {
                     this.predictedPosition.copy(this.currentPosition);
-                    // Add simple velocity-based prediction
-                    this.predictedPosition.add(this.velocity.clone().multiplyScalar(timeSinceUpdate / 1000));
+                    // Add velocity-based prediction with damping
+                    const predictionTime = timeSinceUpdate / 1000;
+                    const damping = Math.exp(-predictionTime * 2); // Exponential damping
+                    this.predictedPosition.add(this.velocity.clone().multiplyScalar(predictionTime * damping));
                     this.mesh.position.copy(this.predictedPosition);
                 } else {
                     // Smooth interpolation between current and target position
                     const alpha = Math.min(timeSinceUpdate / this.interpolationDelay, 1);
-                    this.currentPosition.lerp(this.targetPosition, alpha);
+                    // Use cubic easing for smoother movement
+                    const easedAlpha = alpha * alpha * (3 - 2 * alpha);
+                    this.currentPosition.lerp(this.targetPosition, easedAlpha);
                     this.mesh.position.copy(this.currentPosition);
                 }
+
+                // Smooth rotation interpolation
+                const rotationAlpha = Math.min(timeSinceUpdate / this.interpolationDelay, 1);
+                this.currentRotation.lerp(this.targetRotation, rotationAlpha);
+                this.mesh.rotation.copy(this.currentRotation);
             }
         }
 
@@ -2030,23 +2055,29 @@
             function sendPositionUpdate() {
                 if (ws.readyState === WebSocket.OPEN && gameStarted) {
                     // Only send if position changed significantly
-                    const positionChanged = Math.abs(camera.position.x - lastSentPosition.x) > 0.1 ||
-                                          Math.abs(camera.position.y - lastSentPosition.y) > 0.1 ||
-                                          Math.abs(camera.position.z - lastSentPosition.z) > 0.1;
+                    const positionChanged = Math.abs(camera.position.x - lastSentPosition.x) > 0.5 ||
+                                          Math.abs(camera.position.y - lastSentPosition.y) > 0.5 ||
+                                          Math.abs(camera.position.z - lastSentPosition.z) > 0.5;
                     
-                    if (positionChanged) {
+                    // Only send if rotation changed significantly
+                    const rotationChanged = Math.abs(camera.rotation.x - lastSentRotation.x) > 0.1 ||
+                                          Math.abs(camera.rotation.y - lastSentRotation.y) > 0.1 ||
+                                          Math.abs(camera.rotation.z - lastSentRotation.z) > 0.1;
+                    
+                    if (positionChanged || rotationChanged) {
                         ws.send(JSON.stringify({
                             type: 'position',
                             position: camera.position.toArray(),
                             rotation: camera.rotation.toArray()
                         }));
                         lastSentPosition.copy(camera.position);
+                        lastSentRotation.copy(camera.rotation);
                     }
                 }
             }
 
-            // Update position more frequently for smoother movement
-            setInterval(sendPositionUpdate, 50); // Changed back to 50ms for better responsiveness
+            // Update position less frequently for smoother movement
+            setInterval(sendPositionUpdate, 100); // Changed from 50ms to 100ms for smoother updates
 
             // Add periodic player list updates
             setInterval(() => {
