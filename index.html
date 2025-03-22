@@ -230,17 +230,17 @@
         const playerHeight = 10;
         const playerRadius = 2;
         const moveSpeed = 0.05;
-        const gravity = 0.025;
-        const flingStrength = 5.0; // Increased from 3.5 for stronger fling
-        const flingDamping = 0.99; // Increased from 0.985 for less damping
+        const gravity = 0.025; // Reduced from 0.035 for more natural falling
+        const flingStrength = 3.5;
+        const flingDamping = 0.985;
         const clock = new THREE.Clock();
         const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
         const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
 
         // Add movement smoothing constants
         const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
-        const COLLISION_PUSH_FORCE = 4.0; // Increased from 3.5 for stronger collision response
-        const CORNER_SLIDE_FORCE = 0.9; // Increased from 0.8 for better sliding
+        const COLLISION_PUSH_FORCE = 3.5; // Increased from 2.5 for stronger collision response
+        const CORNER_SLIDE_FORCE = 0.8; // Increased from 0.7 for better sliding
         const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
         const STUCK_THRESHOLD = 0.3; // New constant for detecting when player is stuck
         const STUCK_PUSH_FORCE = 5.0; // New constant for extra push force when stuck
@@ -1659,6 +1659,7 @@
                 flingBtn.addEventListener('touchend', function(e) {
                     e.preventDefault();
                     e.stopPropagation(); // Prevent event from reaching camera controls
+                    const touchDuration = performance.now() - flingStartTime;
                     console.log('Fling button touch ended');
                     showLine = false;
                     tubeMesh.visible = false;
@@ -1688,40 +1689,6 @@
                         camera.position.x += flingVelocity.x;
                         camera.position.z += flingVelocity.z;
                         camera.position.y += verticalVelocity;
-                        
-                        // Update player collider position
-                        playerCollider.center.copy(camera.position);
-                        
-                        // Check for initial collisions
-                        const collisionResult = checkCollision(camera.position, playerRadius);
-                        if (collisionResult.collision) {
-                            // During fling, push out strongly and redirect velocity
-                            const pushDir = new THREE.Vector3();
-                            pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                            
-                            // Push out with a stronger force
-                            const pushDistance = playerRadius - collisionResult.distance;
-                            camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                            camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                            
-                            // Normal collision response for all objects
-                            const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                            
-                            // Add corner sliding effect
-                            const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-                            if (dotProduct < 0) {
-                                // We're moving towards the collision, apply stronger bounce
-                                flingVelocity.x = pushDir.x * speed * 0.8;
-                                flingVelocity.z = pushDir.z * speed * 0.8;
-                            } else {
-                                // We're moving along the surface, apply sliding
-                                flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
-                                flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
-                            }
-                            
-                            // Add upward velocity for bounce
-                            verticalVelocity = Math.abs(verticalVelocity) * 0.8;
-                        }
                         
                         // Apply damping to horizontal movement
                         flingVelocity.x *= flingDamping;
@@ -2160,32 +2127,34 @@
                             
                             // If there's a collision during fling, push out and continue
                             if (collisionResult.collision) {
-                                // During fling, push out strongly and redirect velocity
-                                const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                
-                                // Push out with a stronger force
-                                const pushDistance = playerRadius - collisionResult.distance;
-                                camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                
-                                // Normal collision response for all objects
-                                const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                
-                                // Add corner sliding effect
-                                const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-                                if (dotProduct < 0) {
-                                    // We're moving towards the collision, apply stronger bounce
-                                    flingVelocity.x = pushDir.x * speed * 0.8;
-                                    flingVelocity.z = pushDir.z * speed * 0.8;
-                                } else {
-                                    // We're moving along the surface, apply sliding
-                                    flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
-                                    flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
+                                if (isFlinging) {
+                                    // During fling, push out strongly and redirect velocity
+                                    const pushDir = new THREE.Vector3();
+                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    
+                                    // Push out with a stronger force
+                                    const pushDistance = playerRadius - collisionResult.distance;
+                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                                    
+                                    // Normal collision response for all objects
+                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                    
+                                    // Add corner sliding effect
+                                    const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
+                                    if (dotProduct < 0) {
+                                        // We're moving towards the collision, apply stronger bounce
+                                        flingVelocity.x = pushDir.x * speed * 0.8;
+                                        flingVelocity.z = pushDir.z * speed * 0.8;
+                                    } else {
+                                        // We're moving along the surface, apply sliding
+                                        flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
+                                        flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
+                                    }
+                                    
+                                    // Add upward velocity for bounce
+                                    verticalVelocity = Math.abs(verticalVelocity) * 0.8;
                                 }
-                                
-                                // Add upward velocity for bounce
-                                verticalVelocity = Math.abs(verticalVelocity) * 0.8;
                             }
 
                             // Apply damping to horizontal movement
@@ -2221,62 +2190,64 @@
                             
                             // If there's a collision during vertical movement, push out
                             if (collisionResult.collision) {
-                                // During fling, push out strongly and redirect velocity
-                                const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                
-                                // Push out with a stronger force
-                                const pushDistance = playerRadius - collisionResult.distance;
-                                camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                
-                                // Normal collision response for all objects
-                                const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                
-                                // Add corner sliding effect
-                                const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-                                if (dotProduct < 0) {
-                                    // We're moving towards the collision, apply stronger bounce
-                                    flingVelocity.x = pushDir.x * speed * 0.8;
-                                    flingVelocity.z = pushDir.z * speed * 0.8;
+                                if (isFlinging) {
+                                    // During fling, push out strongly and redirect velocity
+                                    const pushDir = new THREE.Vector3();
+                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    
+                                    // Push out with a stronger force
+                                    const pushDistance = playerRadius - collisionResult.distance;
+                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                                    
+                                    // Normal collision response for all objects
+                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                    
+                                    // Add corner sliding effect
+                                    const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
+                                    if (dotProduct < 0) {
+                                        // We're moving towards the collision, apply stronger bounce
+                                        flingVelocity.x = pushDir.x * speed * 0.8;
+                                        flingVelocity.z = pushDir.z * speed * 0.8;
+                                    } else {
+                                        // We're moving along the surface, apply sliding
+                                        flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
+                                        flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
+                                    }
+                                    
+                                    // Add upward velocity for bounce
+                                    verticalVelocity = Math.abs(verticalVelocity) * 0.8;
                                 } else {
-                                    // We're moving along the surface, apply sliding
-                                    flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
-                                    flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
-                                }
-                                
-                                // Add upward velocity for bounce
-                                verticalVelocity = Math.abs(verticalVelocity) * 0.8;
-                            } else {
-                                // During normal movement, push out smoothly
-                                const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
-                                
-                                // Push out with a smoother force
-                                const pushDistance = playerRadius - collisionResult.distance;
-                                camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                
-                                // Add corner sliding for normal movement
-                                const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
-                                if (dotProduct < 0) {
-                                    // We're moving towards the collision, stop movement
-                                    velocity.x = 0;
-                                    velocity.z = 0;
-                                } else {
-                                    // We're moving along the surface, apply sliding
-                                    velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
-                                    velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
-                                }
-                                
-                                // Remove special bridge handling - treat all collisions the same
-                                const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-                                if (currentSpeed > 0.1) { // Only apply bounce if we have significant speed
-                                    const bounceStrength = 0.8; // Consistent bounce for all objects
-                                    velocity.x = pushDir.x * currentSpeed * bounceStrength;
-                                    velocity.z = pushDir.z * currentSpeed * bounceStrength;
-                                    verticalVelocity = Math.max(currentSpeed * 0.5, 0.3);
-                                    isGrounded = false;
+                                    // During normal movement, push out smoothly
+                                    const pushDir = new THREE.Vector3();
+                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    
+                                    // Push out with a smoother force
+                                    const pushDistance = playerRadius - collisionResult.distance;
+                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                                    
+                                    // Add corner sliding for normal movement
+                                    const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
+                                    if (dotProduct < 0) {
+                                        // We're moving towards the collision, stop movement
+                                        velocity.x = 0;
+                                        velocity.z = 0;
+                                    } else {
+                                        // We're moving along the surface, apply sliding
+                                        velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
+                                        velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
+                                    }
+                                    
+                                    // Remove special bridge handling - treat all collisions the same
+                                    const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+                                    if (currentSpeed > 0.1) { // Only apply bounce if we have significant speed
+                                        const bounceStrength = 0.8; // Consistent bounce for all objects
+                                        velocity.x = pushDir.x * currentSpeed * bounceStrength;
+                                        velocity.z = pushDir.z * currentSpeed * bounceStrength;
+                                        verticalVelocity = Math.max(currentSpeed * 0.5, 0.3);
+                                        isGrounded = false;
+                                    }
                                 }
                             }
 
