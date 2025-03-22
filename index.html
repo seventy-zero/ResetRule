@@ -2106,15 +2106,15 @@
             // Send position updates
             function sendPositionUpdate() {
                 if (ws.readyState === WebSocket.OPEN && gameStarted) {
-                    // Only send if position changed significantly
-                    const positionChanged = Math.abs(camera.position.x - lastSentPosition.x) > 0.5 ||
-                                          Math.abs(camera.position.y - lastSentPosition.y) > 0.5 ||
-                                          Math.abs(camera.position.z - lastSentPosition.z) > 0.5;
+                    // Only send if position changed significantly (reduced thresholds for more frequent updates)
+                    const positionChanged = Math.abs(camera.position.x - lastSentPosition.x) > 0.1 ||
+                                          Math.abs(camera.position.y - lastSentPosition.y) > 0.1 ||
+                                          Math.abs(camera.position.z - lastSentPosition.z) > 0.1;
                     
-                    // Only send if rotation changed significantly
-                    const rotationChanged = Math.abs(camera.rotation.x - lastSentRotation.x) > 0.1 ||
-                                          Math.abs(camera.rotation.y - lastSentRotation.y) > 0.1 ||
-                                          Math.abs(camera.rotation.z - lastSentRotation.z) > 0.1;
+                    // Only send if rotation changed significantly (reduced threshold for more frequent updates)
+                    const rotationChanged = Math.abs(camera.rotation.x - lastSentRotation.x) > 0.05 ||
+                                          Math.abs(camera.rotation.y - lastSentRotation.y) > 0.05 ||
+                                          Math.abs(camera.rotation.z - lastSentRotation.z) > 0.05;
                     
                     if (positionChanged || rotationChanged) {
                         ws.send(JSON.stringify({
@@ -2128,8 +2128,8 @@
                 }
             }
 
-            // Update position less frequently for smoother movement
-            setInterval(sendPositionUpdate, 50); // Changed from 150ms to 50ms for more frequent updates
+            // Update position more frequently (16ms = ~60fps)
+            setInterval(sendPositionUpdate, 16);
 
             // Add periodic player list updates
             setInterval(() => {
