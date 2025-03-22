@@ -287,19 +287,26 @@
                 this.predictedPosition = new THREE.Vector3();
                 this.velocity = new THREE.Vector3();
                 this.lastUpdateTime = Date.now();
-                this.interpolationDelay = 150; // Increased from 100ms to 150ms for smoother movement
+                this.interpolationDelay = 150;
                 this.lastPosition = new THREE.Vector3();
-                this.positionHistory = []; // Store last few positions for velocity calculation
-                this.maxHistorySize = 8; // Increased from 5 to 8 for better prediction
-                this.smoothingFactor = 0.15; // New smoothing factor for position updates
-                this.rotationSmoothingFactor = 0.1; // New smoothing factor for rotation updates
+                this.positionHistory = [];
+                this.maxHistorySize = 8;
+                this.smoothingFactor = 0.15;
+                this.rotationSmoothingFactor = 0.1;
+                this.isVisible = true; // Add visibility flag
             }
 
             update(deltaTime) {
-                if (!this.mesh) return;
+                if (!this.mesh) {
+                    console.warn(`No mesh found for player ${this.username}`);
+                    return;
+                }
 
                 const currentTime = Date.now();
                 const timeSinceUpdate = currentTime - this.lastUpdateTime;
+                
+                // Make sure mesh is visible
+                this.mesh.visible = true;
                 
                 // Update position history
                 this.positionHistory.push(this.currentPosition.clone());
@@ -309,7 +316,7 @@
 
                 // Calculate velocity from position history with weighted average
                 if (this.positionHistory.length >= 2) {
-                    const weights = [0.5, 0.3, 0.2]; // Weights for recent positions
+                    const weights = [0.5, 0.3, 0.2];
                     this.velocity.set(0, 0, 0);
                     let totalWeight = 0;
                     
@@ -327,22 +334,18 @@
                 // Use prediction if we haven't received an update recently
                 if (timeSinceUpdate > this.interpolationDelay) {
                     this.predictedPosition.copy(this.currentPosition);
-                    // Add velocity-based prediction with exponential damping
                     const predictionTime = timeSinceUpdate / 1000;
-                    const damping = Math.exp(-predictionTime * 1.5); // Increased damping factor
+                    const damping = Math.exp(-predictionTime * 1.5);
                     this.predictedPosition.add(this.velocity.clone().multiplyScalar(predictionTime * damping));
                     this.mesh.position.copy(this.predictedPosition);
                 } else {
-                    // Smooth interpolation between current and target position using cubic easing
                     const alpha = Math.min(timeSinceUpdate / this.interpolationDelay, 1);
                     const easedAlpha = alpha * alpha * (3 - 2 * alpha);
                     
-                    // Apply additional smoothing
                     this.currentPosition.lerp(this.targetPosition, easedAlpha * this.smoothingFactor);
                     this.mesh.position.copy(this.currentPosition);
                 }
 
-                // Smooth rotation interpolation with separate smoothing factor
                 const rotationAlpha = Math.min(timeSinceUpdate / this.interpolationDelay, 1);
                 const easedRotationAlpha = rotationAlpha * rotationAlpha * (3 - 2 * rotationAlpha);
                 this.currentRotation.lerp(this.targetRotation, easedRotationAlpha * this.rotationSmoothingFactor);
@@ -825,13 +828,17 @@
 
                     case 'position':
                         if (data.username !== playerUsername && gameStarted) {
+                            // Ensure player model exists before updating position
+                            if (!playerStates.has(data.username)) {
+                                console.log('Creating missing player model for:', data.username);
+                                createPlayerModel(data.username);
+                            }
                             updatePlayerPosition(data.username, data.position, data.rotation);
                         }
                         break;
 
                     case 'player_left':
                         console.log('Player left:', data.username);
-                        handlePlayerDisconnection(data.username);
                         handlePlayerLeft(data.username);
                         break;
 
@@ -880,14 +887,18 @@
 
         // Update player list when players join/leave
         function handlePlayerJoined(username) {
+            console.log('Handling player joined:', username);
             if (username !== playerUsername && gameStarted) {
-                createPlayerModel(username);
-                updatePlayerPosition(username, data.position, data.rotation);
+                // Create player model if it doesn't exist
+                if (!playerStates.has(username)) {
+                    createPlayerModel(username);
+                }
                 updatePlayerList();
             }
         }
 
         function handlePlayerLeft(username) {
+            console.log('Handling player left:', username);
             removePlayer(username);
             updatePlayerList();
         }
