@@ -730,7 +730,7 @@
             // Create a single box collider for the bridge
             const collisionBox = new THREE.Box3();
             const collisionMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(distance, bridgeWidth * 0.4, bridgeWidth * 0.3) // Reduced from 0.8 and 0.6 to 0.4 and 0.3
+                new THREE.BoxGeometry(distance, bridgeWidth * 2, bridgeWidth * 2) // Increased from 0.4 and 0.3 to 2
             );
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
