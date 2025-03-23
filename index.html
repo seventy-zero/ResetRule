@@ -2661,7 +2661,7 @@
         }
 
         // Add after the global variables section
-        const SHOTGUN_COOLDOWN = 1000; // 1 second cooldown between shots
+        const SHOTGUN_COOLDOWN = 500; // Reduced from 1000 to 500ms
         const SHOTGUN_RANGE = 30; // Short range for shotgun
         const PELLET_COUNT = 8; // Number of pellets per shot
         const PELLET_SPREAD = 0.3; // Spread angle in radians
@@ -2672,33 +2672,33 @@
 
         // Add after the scene setup
         // Create shotgun muzzle flash effect
-        const muzzleFlashGeometry = new THREE.SphereGeometry(3, 16, 16); // Increased from 2 to 3
+        const muzzleFlashGeometry = new THREE.SphereGeometry(5, 16, 16); // Increased from 3 to 5
         const muzzleFlashMaterial = new THREE.MeshBasicMaterial({
             color: 0xffff00,
             transparent: true,
-            opacity: 0.8
+            opacity: 1.0 // Increased from 0.8 to 1.0
         });
         const muzzleFlash = new THREE.Mesh(muzzleFlashGeometry, muzzleFlashMaterial);
         muzzleFlash.visible = false;
         scene.add(muzzleFlash);
 
         // Add a second, larger flash for better visibility
-        const outerFlashGeometry = new THREE.SphereGeometry(4, 16, 16); // Increased from 3 to 4
+        const outerFlashGeometry = new THREE.SphereGeometry(7, 16, 16); // Increased from 4 to 7
         const outerFlashMaterial = new THREE.MeshBasicMaterial({
             color: 0xff6600,
             transparent: true,
-            opacity: 0.6
+            opacity: 0.8 // Increased from 0.6 to 0.8
         });
         const outerFlash = new THREE.Mesh(outerFlashGeometry, outerFlashMaterial);
         outerFlash.visible = false;
         scene.add(outerFlash);
 
         // Create shotgun pellets
-        const pelletGeometry = new THREE.SphereGeometry(0.8, 8, 8); // Increased from 0.5 to 0.8
+        const pelletGeometry = new THREE.SphereGeometry(1.5, 8, 8); // Increased from 0.8 to 1.5
         const pelletMaterial = new THREE.MeshBasicMaterial({
             color: 0xffff00,
             transparent: true,
-            opacity: 0.9
+            opacity: 1.0 // Increased from 0.9 to 1.0
         });
         const pellets = [];
         for (let i = 0; i < PELLET_COUNT; i++) {
@@ -2873,8 +2873,8 @@
         if (!isMobile) {
             // Add shotgun firing to mouse controls
             document.addEventListener('mousedown', (event) => {
-                if (event.button === 1) { // Middle mouse button
-                    console.log('Firing shotgun (middle mouse button)');
+                if (event.button === 2) { // Right mouse button (changed from 1 to 2)
+                    console.log('Firing shotgun (right mouse button)');
                     fireShotgun();
                 }
             });
