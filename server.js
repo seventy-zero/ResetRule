@@ -1,7 +1,6 @@
 const express = require('express');
 const WebSocket = require('ws');
 const path = require('path');
-const THREE = require('three');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -438,6 +437,47 @@ const objectPool = {
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1)); // Limit pixel ratio
 renderer.shadowMap.enabled = false; // Disable shadows if not needed
 
+// Vector math helper functions
+function Vector3(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+}
+
+Vector3.prototype.clone = function() {
+    return new Vector3(this.x, this.y, this.z);
+};
+
+Vector3.prototype.sub = function(v) {
+    this.x -= v.x;
+    this.y -= v.y;
+    this.z -= v.z;
+    return this;
+};
+
+Vector3.prototype.length = function() {
+    return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
+};
+
+Vector3.prototype.normalize = function() {
+    const len = this.length();
+    if (len > 0) {
+        this.x /= len;
+        this.y /= len;
+        this.z /= len;
+    }
+    return this;
+};
+
+function dotProduct(v1, v2) {
+    return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+}
+
+function angleBetween(v1, v2) {
+    const dot = dotProduct(v1, v2);
+    return Math.acos(Math.min(Math.max(dot, -1), 1));
+}
+
 // Handle shotgun shot
 socket.on('shotgunShot', (data) => {
     const shooter = players.get(socket.id);
@@ -458,9 +498,9 @@ socket.on('shotgunShot', (data) => {
         if (playerId === socket.id) return; // Skip shooter
 
         // Check if player is within the cone of effect
-        const playerPos = new THREE.Vector3(player.position.x, player.position.y, player.position.z);
-        const shooterPos = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
-        const direction = new THREE.Vector3(data.direction.x, data.direction.y, data.direction.z);
+        const playerPos = new Vector3(player.position.x, player.position.y, player.position.z);
+        const shooterPos = new Vector3(data.position.x, data.position.y, data.position.z);
+        const direction = new Vector3(data.direction.x, data.direction.y, data.direction.z);
         
         // Calculate vector from shooter to player
         const toPlayer = playerPos.clone().sub(shooterPos);
@@ -470,7 +510,7 @@ socket.on('shotgunShot', (data) => {
         if (distance <= 10) {
             // Calculate angle between shot direction and player
             toPlayer.normalize();
-            const angle = direction.angleTo(toPlayer);
+            const angle = angleBetween(direction, toPlayer);
             
             // Cone angle is about 45 degrees (0.785 radians)
             if (angle <= 0.785) {
