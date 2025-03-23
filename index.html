@@ -2280,17 +2280,22 @@
         function createOrb(orbData) {
             console.log('Creating orb with data:', orbData);
             
-            // Make orbs smaller (5x instead of 20x)
-            const baseSize = orbData.size * 5;
+            // Make orbs larger (10x instead of 5x)
+            const baseSize = orbData.size * 10;
             
-            const geometry = new THREE.SphereGeometry(baseSize, 32, 32);
+            // Use dodecahedron geometry instead of sphere
+            const geometry = new THREE.DodecahedronGeometry(baseSize, 0);
+            
+            // Create a glowing material with enhanced emissive properties
             const material = new THREE.MeshPhongMaterial({
                 color: orbData.color,
                 emissive: orbData.color,
-                emissiveIntensity: 1.0,
+                emissiveIntensity: 2.0, // Increased from 1.0 for stronger glow
                 transparent: true,
-                opacity: 1.0,
-                shininess: 100
+                opacity: 0.9,
+                shininess: 200, // Increased from 100 for more shine
+                specular: 0xffffff, // Add white specular highlight
+                specularIntensity: 0.5 // Add some specular intensity
             });
             
             const orb = new THREE.Mesh(geometry, material);
@@ -2300,7 +2305,7 @@
                 orbData.position.z
             );
             
-            // Remove animation properties since we don't want them to move
+            // Store original scale but no animation needed
             orb.userData.originalScale = baseSize;
             
             // Add to scene and store in orbs collection
