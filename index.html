@@ -270,6 +270,35 @@
         const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
         const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
 
+        // Add object pooling system
+        const objectPool = {
+            vectors: [],
+            spheres: [],
+            boxes: [],
+            getVector: function() {
+                return this.vectors.pop() || new THREE.Vector3();
+            },
+            releaseVector: function(vector) {
+                vector.set(0, 0, 0);
+                this.vectors.push(vector);
+            },
+            getSphere: function() {
+                return this.spheres.pop() || new THREE.Sphere();
+            },
+            releaseSphere: function(sphere) {
+                sphere.center.set(0, 0, 0);
+                sphere.radius = 0;
+                this.spheres.push(sphere);
+            },
+            getBox: function() {
+                return this.boxes.pop() || new THREE.Box3();
+            },
+            releaseBox: function(box) {
+                box.makeEmpty();
+                this.boxes.push(box);
+            }
+        };
+
         // Add movement smoothing constants
         const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
         const COLLISION_PUSH_FORCE = 3.5; // Increased from 2.5 for stronger collision response
