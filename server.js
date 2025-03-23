@@ -143,12 +143,21 @@ function generateWorld() {
     for (let i = 0; i < NUM_ORBS; i++) {
         let validPosition = false;
         let attempts = 0;
-        const maxAttempts = 100; // Increased from 50 to 100
+        const maxAttempts = 200; // Increased to 200 attempts
         
         while (!validPosition && attempts < maxAttempts) {
             const x = (Math.random() - 0.5) * MAX_RADIUS * 2;
             const z = (Math.random() - 0.5) * MAX_RADIUS * 2;
-            const y = Math.random() * 200 + 50; // Height between 50 and 250
+            
+            // More varied height distribution
+            let y;
+            if (Math.random() < 0.3) { // 30% chance for low orbs (50-100)
+                y = Math.random() * 50 + 50;
+            } else if (Math.random() < 0.5) { // 50% chance for medium orbs (100-200)
+                y = Math.random() * 100 + 100;
+            } else { // 20% chance for high orbs (200-300)
+                y = Math.random() * 100 + 200;
+            }
             
             // Check if position is too close to any tower
             let tooCloseToTower = false;
@@ -157,7 +166,7 @@ function generateWorld() {
                     Math.pow(x - tower.x, 2) + 
                     Math.pow(z - tower.z, 2)
                 );
-                if (distance < 15) { // Reduced from 30 to 15
+                if (distance < 8) { // Reduced from 15 to 8
                     tooCloseToTower = true;
                     break;
                 }
@@ -191,7 +200,7 @@ function generateWorld() {
                     Math.pow(z - projZ, 2)
                 );
                 
-                if (distance < 10) { // Reduced from 20 to 10
+                if (distance < 5) { // Reduced from 10 to 5
                     tooCloseToBridge = true;
                     break;
                 }
@@ -212,7 +221,7 @@ function generateWorld() {
                 orbs.push(orb);
                 successfulOrbs++;
                 
-                if (i % 10 === 0) { // Log more frequently
+                if (i % 5 === 0) { // Log more frequently
                     console.log(`Generated orb ${successfulOrbs}/${NUM_ORBS}:`, orb);
                 }
             }
