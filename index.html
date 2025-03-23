@@ -2690,6 +2690,47 @@
                     updatePlayerList();
                 }
             }, 100); // Update every 100ms when visible
+
+            // Create bridges
+            const BRIDGE_LENGTH = 100;
+            const BRIDGE_WIDTH = 20;
+            const BRIDGE_HEIGHT = 5;
+            const BRIDGE_COUNT = 3;
+            const bridges = [];
+
+            for (let i = 0; i < BRIDGE_COUNT; i++) {
+                const bridgeGeometry = new THREE.BoxGeometry(BRIDGE_LENGTH, BRIDGE_HEIGHT, BRIDGE_WIDTH);
+                const bridgeMaterial = new THREE.MeshPhongMaterial({ color: 0x808080 });
+                const bridge = new THREE.Mesh(bridgeGeometry, bridgeMaterial);
+                
+                // Position bridges at different heights and angles
+                const height = 50 + i * 30;
+                const angle = (Math.PI * 2 * i) / BRIDGE_COUNT;
+                const radius = 150;
+                
+                bridge.position.set(
+                    Math.cos(angle) * radius,
+                    height,
+                    Math.sin(angle) * radius
+                );
+                bridge.rotation.y = angle + Math.PI / 2;
+                
+                scene.add(bridge);
+                bridges.push(bridge);
+
+                // Create more precise collider for the bridge
+                const colliderGeometry = new THREE.BoxGeometry(
+                    BRIDGE_LENGTH,  // Length
+                    BRIDGE_HEIGHT,  // Height
+                    BRIDGE_WIDTH    // Width
+                );
+                const collider = new THREE.Mesh(colliderGeometry);
+                collider.position.copy(bridge.position);
+                collider.rotation.copy(bridge.rotation);
+                collider.visible = false;
+                scene.add(collider);
+                bridgeColliders.push(collider);
+            }
         } catch (error) {
             console.error('Error during initialization:', error);
             document.body.innerHTML = `
