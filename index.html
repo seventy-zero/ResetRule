@@ -752,7 +752,7 @@
             // Create a more precise box collider for the bridge
             const collisionBox = new THREE.Box3();
             const collisionMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(distance, bridgeWidth * 1.2, bridgeWidth * 1.2) // Slightly larger than visual bridge
+                new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.8) // Reduced from 1.2x to 0.8x for tighter collision
             );
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
@@ -797,15 +797,36 @@
                                 Math.pow(position.z - closestPoint.z, 2)
                             );
                             
-                            if (horizontalDistance < radius) {
-                                return {
-                                    collision: true,
-                                    tower: tower,
-                                    collisionBox: collisionBox,
-                                    distance: horizontalDistance,
-                                    closestPoint: closestPoint,
-                                    isBridge: true
-                                };
+                            // Only return collision if we're within the bridge's length
+                            const bridgeLength = collisionBox.userData.length;
+                            const bridgeStart = new THREE.Vector3(
+                                collisionBox.min.x,
+                                collisionBox.userData.height,
+                                collisionBox.min.z
+                            );
+                            const bridgeEnd = new THREE.Vector3(
+                                collisionBox.max.x,
+                                collisionBox.userData.height,
+                                collisionBox.max.z
+                            );
+                            
+                            // Calculate distance along bridge axis
+                            const bridgeAxis = bridgeEnd.clone().sub(bridgeStart).normalize();
+                            const playerToStart = position.clone().sub(bridgeStart);
+                            const distanceAlongBridge = playerToStart.dot(bridgeAxis);
+                            
+                            // Check if we're within the bridge's length
+                            if (distanceAlongBridge >= 0 && distanceAlongBridge <= bridgeLength) {
+                                if (horizontalDistance < radius) {
+                                    return {
+                                        collision: true,
+                                        tower: tower,
+                                        collisionBox: collisionBox,
+                                        distance: horizontalDistance,
+                                        closestPoint: closestPoint,
+                                        isBridge: true
+                                    };
+                                }
                             }
                         } else {
                             // If above bridge, check full 3D distance
