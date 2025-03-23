@@ -775,26 +775,17 @@
                 matrix.makeRotationY(angle);
                 matrix.setPosition(midPoint.x, bridgeData.height, midPoint.z);
                 
-                // Get the bridge's geometry
-                const geometry = bridgeMeshInstance.geometry;
-                const boundingBox = new THREE.Box3();
-                boundingBox.setFromBufferAttribute(geometry.attributes.position);
+                // Create a box that matches the bridge's actual dimensions
+                const localMin = new THREE.Vector3(-bridgeLength/2, -bridgeWidth/2, -bridgeWidth/2);
+                const localMax = new THREE.Vector3(bridgeLength/2, bridgeWidth/2, bridgeWidth/2);
                 
-                // Scale the bounding box to match the bridge's actual size
-                const scale = new THREE.Vector3(
-                    bridgeLength / (boundingBox.max.x - boundingBox.min.x),
-                    0.1, // Make it thin in height
-                    bridgeWidth / (boundingBox.max.z - boundingBox.min.z)
-                );
+                // Transform the points to world space
+                localMin.applyMatrix4(matrix);
+                localMax.applyMatrix4(matrix);
                 
-                // Apply the scale and transform
-                boundingBox.min.multiply(scale);
-                boundingBox.max.multiply(scale);
-                boundingBox.min.applyMatrix4(matrix);
-                boundingBox.max.applyMatrix4(matrix);
-                
-                // Set the collision box to the transformed bounding box
-                collisionBox.copy(boundingBox);
+                // Set the collision box to the transformed points
+                collisionBox.min.copy(localMin);
+                collisionBox.max.copy(localMax);
                 
                 // Add bridge data to collision box for better collision handling
                 collisionBox.userData = {
@@ -810,7 +801,7 @@
             } else {
                 // Fallback to the old method if mesh not found
                 console.warn('Bridge mesh not found, using fallback collision box');
-                const bridgeHeight = 0.5;
+                const bridgeHeight = bridgeWidth;
                 const localMin = new THREE.Vector3(-bridgeLength/2, -bridgeHeight/2, -bridgeWidth/2);
                 const localMax = new THREE.Vector3(bridgeLength/2, bridgeHeight/2, bridgeWidth/2);
                 localMin.applyMatrix4(matrix);
