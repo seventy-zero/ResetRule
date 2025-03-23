@@ -2812,13 +2812,12 @@
         }
 
         // Shooting system constants
-        const SHOTGUN_COOLDOWN = 500; // ms between shots
-        const SHOTGUN_RANGE = 30; // Short range for shotgun
-        const PELLET_COUNT = 8; // Number of pellets per shot
-        const PELLET_SPREAD = 0.3; // Spread angle in radians
-        const SHOTGUN_DAMAGE = 20; // Damage per pellet
-        const PELLET_SPEED = 8; // Speed of pellets
-        const PELLET_LIFETIME = 2000; // How long pellets last in ms
+        const SHOTGUN_COOLDOWN = 1000; // 1 second cooldown
+        const SHOTGUN_RANGE = 2000; // Increased from 1000 to 2000
+        const PELLET_COUNT = 8;
+        const PELLET_SPREAD = 0.2;
+        const PELLET_SPEED = 2;
+        const PELLET_LIFETIME = 2000; // Increased from 1000 to 2000ms
         const PELLET_GRAVITY = 0.008; // Gravity effect on pellets
         let lastShotTime = 0;
         let playerHealth = 100;
