@@ -273,6 +273,9 @@
         const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
         let ws = null; // Initialize WebSocket variable
 
+        // Initialize WebSocket connection immediately
+        setupWebSocket();
+
         // Add object pooling system
         const objectPool = {
             vectors: [],
@@ -796,6 +799,7 @@
                 // Fallback to the old method if mesh not found
                 console.warn('Bridge mesh not found, using fallback collision box');
                 const bridgeHeight = 0.5;
+                const bridgeLength = distance; // Use the distance parameter for bridge length
                 const localMin = new THREE.Vector3(-bridgeLength/2, -bridgeHeight/2, -bridgeWidth/2);
                 const localMax = new THREE.Vector3(bridgeLength/2, bridgeHeight/2, bridgeWidth/2);
                 localMin.applyMatrix4(matrix);
