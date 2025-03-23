@@ -2892,23 +2892,22 @@
 
         // Handle shotgun firing
         function fireShotgun() {
-            if (isDead) return;
+            // Guard clause to prevent firing before camera is initialized
+            if (!camera) {
+                console.log('Camera not initialized yet');
+                return;
+            }
             
             const currentTime = Date.now();
             if (currentTime - lastShotTime < SHOTGUN_COOLDOWN) return;
             
             lastShotTime = currentTime;
             
-            // Get camera direction
-            const cameraDirection = new THREE.Vector3();
-            camera.getWorldDirection(cameraDirection);
-            
-            // Calculate offset position for muzzle flash and pellets
-            const rightVector = new THREE.Vector3();
-            rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
+            // Calculate muzzle position based on camera direction
             const muzzleOffset = 20;
-            const muzzlePosition = camera.position.clone().add(rightVector.multiplyScalar(muzzleOffset));
-            muzzlePosition.y = camera.position.y - 1;
+            const muzzlePosition = new THREE.Vector3();
+            muzzlePosition.copy(camera.position);
+            muzzlePosition.add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(muzzleOffset));
             
             // Show muzzle flash at offset position
             muzzleFlash.position.copy(muzzlePosition);
@@ -2922,9 +2921,9 @@
                 // Calculate spread direction
                 const spreadAngle = (Math.random() - 0.5) * PELLET_SPREAD;
                 const spreadAxis = new THREE.Vector3();
-                spreadAxis.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
+                spreadAxis.crossVectors(camera.getWorldDirection(new THREE.Vector3()), new THREE.Vector3(0, 1, 0)).normalize();
                 
-                const pelletDir = cameraDirection.clone();
+                const pelletDir = camera.getWorldDirection(new THREE.Vector3());
                 pelletDir.applyAxisAngle(spreadAxis, spreadAngle);
                 pelletDirections.push(pelletDir);
                 
