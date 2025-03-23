@@ -2851,12 +2851,31 @@
             pellets: [],
             active: new Set(),
             get: function() {
-                return this.pellets.pop();
+                const pellet = this.pellets.pop();
+                if (!pellet) {
+                    // Create new pellet if pool is empty
+                    const geometry = new THREE.SphereGeometry(0.2, 8, 8);
+                    const material = new THREE.MeshBasicMaterial({ 
+                        color: 0xffff00,
+                        transparent: true,
+                        opacity: 0.8
+                    });
+                    pellet = new THREE.Mesh(geometry, material);
+                    pellet.velocity = new THREE.Vector3();
+                    pellet.spawnTime = 0;
+                    pellet.lifetime = 2000; // Increased from 1000 to 2000ms
+                    pellet.trail = [];
+                    pellet.maxTrailLength = 10; // Increased from 5 to 10
+                }
+                pellet.visible = true;
+                this.active.add(pellet);
+                return pellet;
             },
             release: function(pellet) {
                 pellet.visible = false;
                 pellet.position.set(0, 0, 0);
                 pellet.velocity = new THREE.Vector3();
+                pellet.trail = [];
                 this.active.delete(pellet);
                 this.pellets.push(pellet);
             }
@@ -2864,7 +2883,8 @@
 
         // Create initial pellet pool
         for (let i = 0; i < PELLET_COUNT * 2; i++) {
-            pelletPool.get();
+            const pellet = pelletPool.get();
+            pelletPool.release(pellet);
         }
 
         // Handle shotgun firing
@@ -2934,9 +2954,13 @@
                     spreadAxis.crossVectors(spreadDirection, new THREE.Vector3(0, 1, 0));
                     spreadDirection.applyAxisAngle(spreadAxis, spreadAngle);
                     
-                    // Set initial velocity
-                    pellet.velocity.copy(spreadDirection).multiplyScalar(PELLET_SPEED);
+                    // Set initial velocity with increased speed
+                    pellet.velocity.copy(spreadDirection).multiplyScalar(PELLET_SPEED * 2); // Doubled speed
                     pellet.velocity.y += 2; // Add slight upward velocity
+                    
+                    // Set spawn time and initialize trail
+                    pellet.spawnTime = currentTime;
+                    pellet.trail = [];
                     
                     scene.add(pellet);
                 }
