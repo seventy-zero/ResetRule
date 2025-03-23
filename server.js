@@ -9,6 +9,7 @@ const PORT = process.env.PORT || 3000;
 const NUM_TOWERS = 3000;
 const MAX_RADIUS = 4800;
 const BRIDGE_CHANCE = 0.1;
+const NUM_ORBS = 100;
 
 // Word lists for room names
 const adjectives = [
@@ -65,6 +66,7 @@ function createBridge(startPos, endPos) {
 function generateWorld() {
     const towers = [];
     const bridges = [];
+    const orbs = [];
     const towerPositions = [];
     
     // Create a grid of towers with some random offset
@@ -127,8 +129,24 @@ function generateWorld() {
             }
         }
     }
+
+    // Generate orbs
+    for (let i = 0; i < NUM_ORBS; i++) {
+        const x = (Math.random() - 0.5) * MAX_RADIUS * 2;
+        const z = (Math.random() - 0.5) * MAX_RADIUS * 2;
+        const y = Math.random() * 200 + 50; // Height between 50 and 250
+        const color = Math.floor(Math.random() * 0xFFFFFF); // Random color
+        const size = Math.random() * 0.5 + 0.5; // Size between 0.5 and 1
+
+        orbs.push({
+            id: i,
+            position: { x, y, z },
+            color,
+            size
+        });
+    }
     
-    return { towers, bridges };
+    return { towers, bridges, orbs };
 }
 
 // Serve static files
@@ -164,7 +182,8 @@ class GameRoom {
         ws.send(JSON.stringify({
             type: 'world_data',
             towers: this.world.towers,
-            bridges: this.world.bridges
+            bridges: this.world.bridges,
+            orbs: this.world.orbs
         }));
         
         // Broadcast updated player count to all players in the room
