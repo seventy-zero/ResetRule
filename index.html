@@ -803,8 +803,8 @@
                                 Math.pow(position.z - closestPoint.z, 2)
                             );
                             
-                            // Use a narrower collision width for bridges
-                            if (horizontalDistance < radius * 0.5) { // Reduced from radius to radius * 0.5
+                            // Use a much narrower collision width for bridges
+                            if (horizontalDistance < radius * 0.2) { // Reduced to 20% of normal radius
                                 return {
                                     collision: true,
                                     tower: tower,
@@ -817,7 +817,7 @@
                             }
                         } else {
                             // If above bridge, check full 3D distance
-                            if (distance < radius * 0.5) { // Reduced from radius to radius * 0.5
+                            if (distance < radius * 0.2) { // Reduced to 20% of normal radius
                                 return {
                                     collision: true,
                                     tower: tower,
