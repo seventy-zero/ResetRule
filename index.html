@@ -3101,10 +3101,11 @@
             segment.style.cssText = `
                 width: 20px;
                 height: 30px;
-                background-color: #4CAF50;
+                background-color: #00ff00;
                 border: 2px solid rgba(255, 255, 255, 0.5);
                 border-radius: 3px;
                 transition: background-color 0.2s ease;
+                box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
             `;
             healthDisplay.appendChild(segment);
         }
@@ -3121,9 +3122,11 @@
                 const segmentPercentage = Math.min(100, (segmentHealth / healthPerSegment) * 100);
                 
                 if (segmentPercentage <= 0) {
-                    segments[i].style.backgroundColor = '#ff4444'; // Red when empty
+                    segments[i].style.backgroundColor = '#ff0000'; // Brighter red when empty
+                    segments[i].style.boxShadow = '0 0 10px rgba(255, 0, 0, 0.5)';
                 } else {
-                    segments[i].style.backgroundColor = '#4CAF50'; // Green when full
+                    segments[i].style.backgroundColor = '#00ff00'; // Brighter green when full
+                    segments[i].style.boxShadow = '0 0 10px rgba(0, 255, 0, 0.5)';
                 }
             }
         }
