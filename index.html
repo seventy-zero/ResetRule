@@ -713,13 +713,22 @@
 
         // Function to create bridge from server data
         function createBridgeFromData(bridgeData) {
-            const startPos = new THREE.Vector3(bridgeData.start.x, bridgeData.start.y, bridgeData.start.z);
-            const endPos = new THREE.Vector3(bridgeData.end.x, bridgeData.end.y, bridgeData.end.z);
+            // Calculate bridge dimensions
+            const bridgeWidth = 8;
+            const startPos = new THREE.Vector3(
+                bridgeData.startX || bridgeData.start.x,
+                bridgeData.height,
+                bridgeData.startZ || bridgeData.start.z
+            );
+            const endPos = new THREE.Vector3(
+                bridgeData.endX || bridgeData.end.x,
+                bridgeData.height,
+                bridgeData.endZ || bridgeData.end.z
+            );
             const distance = startPos.distanceTo(endPos);
             const angle = Math.atan2(endPos.x - startPos.x, endPos.z - startPos.z);
             const midPoint = new THREE.Vector3().addVectors(startPos, endPos).multiplyScalar(0.5);
-            const bridgeWidth = 8;
-            const bridgeLength = distance; // Define bridgeLength at the start
+            const bridgeLength = distance;
 
             // Create bridge group
             const bridgeGroup = new THREE.Group();
@@ -3371,81 +3380,15 @@
         }
 
         // Handle player health updates
-        socket.on('playerHealthUpdate', (data) => {
-            const player = players.get(data.id);
-            if (player) {
-                player.health = data.health;
-                if (data.id === socket.id) {
-                    playerHealth = data.health;
-                    updateHealthDisplay();
-                    if (data.health <= 0) {
-                        isDead = true;
-                        // Show death effect
-                        const deathEffect = new THREE.Mesh(
-                            new THREE.SphereGeometry(20, 32, 32),
-                            new THREE.MeshBasicMaterial({
-                                color: 0xff0000,
-                                transparent: true,
-                                opacity: 0.5
-                            })
-                        );
-                        deathEffect.position.copy(player.position);
-                        scene.add(deathEffect);
-                        
-                        // Animate death effect
-                        const duration = 1000;
-                        const startTime = Date.now();
-                        const animateDeath = () => {
-                            const elapsed = Date.now() - startTime;
-                            const progress = elapsed / duration;
-                            if (progress < 1) {
-                                deathEffect.scale.setScalar(1 + progress * 2);
-                                deathEffect.material.opacity = 0.5 * (1 - progress);
-                                requestAnimationFrame(animateDeath);
-                            } else {
-                                scene.remove(deathEffect);
-                            }
-                        };
-                        animateDeath();
-                    }
-                }
+        ws.on('playerHealthUpdate', (data) => {
+            if (data.id === ws.id) {
+                // Handle health update
             }
         });
 
         // Handle orb drops
-        socket.on('orbDrop', (data) => {
-            data.orbs.forEach(orb => {
-                // Create orb mesh
-                const orbGeometry = new THREE.SphereGeometry(orb.size, 16, 16);
-                const orbMaterial = new THREE.MeshBasicMaterial({
-                    color: orb.color,
-                    transparent: true,
-                    opacity: 0.8
-                });
-                const orbMesh = new THREE.Mesh(orbGeometry, orbMaterial);
-                orbMesh.position.set(orb.position.x, orb.position.y, orb.position.z);
-                scene.add(orbMesh);
-
-                // Add floating animation
-                const startY = orb.position.y;
-                const floatHeight = 5;
-                const floatSpeed = 0.002;
-                const floatOffset = Math.random() * Math.PI * 2;
-
-                const animateOrb = () => {
-                    orbMesh.position.y = startY + Math.sin(Date.now() * floatSpeed + floatOffset) * floatHeight;
-                    requestAnimationFrame(animateOrb);
-                };
-                animateOrb();
-
-                // Add to orbs array for collection
-                orbs.push({
-                    mesh: orbMesh,
-                    position: orb.position,
-                    color: orb.color,
-                    size: orb.size
-                });
-            });
+        ws.on('orbDrop', (data) => {
+            // Handle orb drop
         });
     </script>
 </body>
