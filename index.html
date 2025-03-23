@@ -948,6 +948,10 @@
 
             ws.onopen = () => {
                 console.log('WebSocket connection established');
+                // Request world data immediately
+                ws.send(JSON.stringify({
+                    type: 'request_world_data'
+                }));
                 // Only send join message if we have a username
                 if (playerUsername) {
                     const joinMessage = {
@@ -986,14 +990,18 @@
                         towers.length = 0;
                         
                         // Create towers from server data
-                        data.towers.forEach(towerData => {
-                            createTowerFromData(towerData);
-                        });
+                        if (data.towers) {
+                            data.towers.forEach(towerData => {
+                                createTowerFromData(towerData);
+                            });
+                        }
                         
                         // Create bridges from server data
-                        data.bridges.forEach(bridgeData => {
-                            createBridgeFromData(bridgeData);
-                        });
+                        if (data.bridges) {
+                            data.bridges.forEach(bridgeData => {
+                                createBridgeFromData(bridgeData);
+                            });
+                        }
 
                         // Debug logging for orbs
                         console.log('Processing orbs data:', data.orbs);

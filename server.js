@@ -394,6 +394,18 @@ wss.on('connection', (ws) => {
                     }), ws);
                     break;
 
+                case 'request_world_data':
+                    if (currentRoom) {
+                        // Send world data to the requesting player
+                        ws.send(JSON.stringify({
+                            type: 'world_data',
+                            towers: currentRoom.world.towers,
+                            bridges: currentRoom.world.bridges,
+                            orbs: currentRoom.world.orbs
+                        }));
+                    }
+                    break;
+
                 case 'position':
                     if (currentRoom) {
                         const player = currentRoom.players.get(ws);
