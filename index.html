@@ -2126,8 +2126,13 @@
             function animate() {
                 requestAnimationFrame(animate);
                 
-                const deltaTime = clock.getDelta();
-                const currentTime = performance.now();
+                // Update delta time
+                const currentTime = Date.now();
+                deltaTime = (currentTime - lastTime) / 1000;
+                lastTime = currentTime;
+                
+                // Update pellets
+                updatePellets();
                 
                 if (gameStarted) {
                     // Update other players' positions with throttling
