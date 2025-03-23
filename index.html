@@ -2896,7 +2896,10 @@
             }
             
             const currentTime = Date.now();
-            if (currentTime - lastShotTime < SHOTGUN_COOLDOWN) return;
+            if (currentTime - lastShotTime < SHOTGUN_COOLDOWN) {
+                console.log('Shotgun on cooldown');
+                return;
+            }
             
             lastShotTime = currentTime;
             
@@ -2965,7 +2968,7 @@
                     scene.add(pellet);
                 }
                 
-                // Send shot data to server
+                // Send shot data to server if connected
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     const shotData = {
                         type: 'shotgun_shot',
@@ -3274,6 +3277,11 @@
             
             // Add new listener
             document.addEventListener('mousedown', handleShotgunFire);
+            
+            // Add context menu prevention for right-click
+            document.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+            });
         }
 
         // Define the shotgun firing handler
