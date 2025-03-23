@@ -183,6 +183,27 @@
         .playerListItem:hover {
             background-color: rgba(76, 175, 80, 0.2);
         }
+
+        .popupButton {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            transition: transform 0.1s;
+            animation: none;
+        }
+
+        .popupButton:hover {
+            animation: shake 0.5s infinite;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
     </style>
 </head>
 <body>
@@ -215,6 +236,15 @@
         <div id="rightJoystick" class="joystick-zone"></div>
     </div>
     <div id="flingButton">⚡</div>
+
+    <!-- Add after the roomInfo div -->
+    <div id="orbPopup" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(0, 0, 0, 0.9); padding: 30px; border-radius: 10px; z-index: 2000; text-align: center; border: 2px solid #4CAF50;">
+        <h2 style="color: #4CAF50; margin-bottom: 20px;">You've collected 30 orbs!</h2>
+        <div style="display: flex; gap: 20px; justify-content: center;">
+            <button id="resetButton" class="popupButton" style="background-color: #ff4444;">Reset</button>
+            <button id="ruleButton" class="popupButton" style="background-color: #4CAF50;">Rule</button>
+        </div>
+    </div>
 
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
@@ -2390,6 +2420,26 @@
             const orbCountElement = document.getElementById('orbCount');
             const currentOrbs = playerOrbs.get(playerUsername) || 0;
             orbCountElement.textContent = `Orbs: ${currentOrbs}`;
+            
+            // Show popup when reaching 30 orbs
+            if (currentOrbs >= 30) {
+                const popup = document.getElementById('orbPopup');
+                popup.style.display = 'block';
+                
+                // Add button event listeners
+                document.getElementById('resetButton').onclick = () => {
+                    // Reset orb count
+                    playerOrbs.set(playerUsername, 0);
+                    updateOrbCount();
+                    popup.style.display = 'none';
+                };
+                
+                document.getElementById('ruleButton').onclick = () => {
+                    // Handle rule button click
+                    console.log('Rule button clicked');
+                    popup.style.display = 'none';
+                };
+            }
         }
     </script>
 </body>
