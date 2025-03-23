@@ -752,14 +752,14 @@
             // Create a more precise box collider for the bridge
             const collisionBox = new THREE.Box3();
             const collisionMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(distance, bridgeWidth * 0.25, bridgeWidth) // Reduced height to 0.25x for more precise collision
+                new THREE.BoxGeometry(distance, bridgeWidth * 0.1, bridgeWidth) // Reduced height to 0.1x for very thin collision
             );
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
             collisionBox.setFromObject(collisionMesh);
             
             // Adjust collision box to be centered on the bridge's top surface
-            const boxHeight = bridgeWidth * 0.25;
+            const boxHeight = bridgeWidth * 0.1;
             collisionBox.min.y = bridgeData.height - boxHeight * 0.5;
             collisionBox.max.y = bridgeData.height + boxHeight * 0.5;
             
@@ -807,7 +807,7 @@
                             );
                             
                             // Use a much narrower collision width for bridges
-                            if (horizontalDistance < radius * 0.2) { // Reduced to 20% of normal radius
+                            if (horizontalDistance < radius * 0.1) { // Reduced to 10% of normal radius
                                 return {
                                     collision: true,
                                     tower: tower,
@@ -820,7 +820,7 @@
                             }
                         } else {
                             // If above bridge, check full 3D distance
-                            if (distance < radius * 0.2) { // Reduced to 20% of normal radius
+                            if (distance < radius * 0.1) { // Reduced to 10% of normal radius
                                 return {
                                     collision: true,
                                     tower: tower,
@@ -3251,8 +3251,8 @@
                     const halfLength = bridgeLength / 2;
                     const halfWidth = bridgeWidth / 2;
                     
-                    // Add a small buffer to prevent edge cases
-                    const buffer = 0.5;
+                    // Add a very small buffer to prevent edge cases
+                    const buffer = 0.2;
                     
                     if (Math.abs(localPos.x) <= halfLength + buffer && 
                         Math.abs(localPos.z) <= halfWidth + buffer) {
