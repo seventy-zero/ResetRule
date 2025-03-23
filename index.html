@@ -3287,11 +3287,6 @@
             }
         }
 
-        // Update the collision checks in the animation loop
-        // Replace the existing collision handling code with:
-        const collisionResult = checkCollision(camera.position, playerRadius);
-        handleCollision(collisionResult, isFlinging);
-
         // Set up event listeners after camera is initialized
         function setupEventListeners() {
             if (!camera) {
