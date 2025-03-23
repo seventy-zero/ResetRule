@@ -272,6 +272,19 @@
         const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
         const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
 
+        // Shooting system constants
+        const SHOTGUN_COOLDOWN = 500; // ms between shots
+        const SHOTGUN_RANGE = 30; // Short range for shotgun
+        const PELLET_COUNT = 8; // Number of pellets per shot
+        const PELLET_SPREAD = 0.3; // Spread angle in radians
+        const SHOTGUN_DAMAGE = 25; // Damage per pellet
+        const PELLET_SPEED = 8; // Speed of pellets
+        const PELLET_LIFETIME = 2000; // How long pellets last in ms
+        const PELLET_GRAVITY = 0.008; // Gravity effect on pellets
+        let lastShotTime = 0;
+        let playerHealth = 100;
+        let isDead = false;
+
         // Add object pooling system
         const objectPool = {
             vectors: [],
@@ -2903,8 +2916,8 @@
         // Handle shotgun firing
         function fireShotgun() {
             // Guard clause to prevent firing before camera is initialized
-            if (!camera) {
-                console.log('Camera not initialized yet');
+            if (!camera || !camera.position || !camera.getWorldDirection) {
+                console.log('Camera not fully initialized yet');
                 return;
             }
             
@@ -2917,63 +2930,48 @@
                 // Calculate muzzle position based on camera direction
                 const muzzleOffset = 20;
                 const muzzlePosition = new THREE.Vector3();
-                muzzlePosition.copy(camera.position);
-                muzzlePosition.add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(muzzleOffset));
+                const cameraDirection = new THREE.Vector3();
+                camera.getWorldDirection(cameraDirection);
+                muzzlePosition.copy(camera.position).add(cameraDirection.multiplyScalar(muzzleOffset));
                 
-                // Create muzzle flash
-                const flashGeometry = new THREE.SphereGeometry(2, 8, 8);
-                const flashMaterial = new THREE.MeshBasicMaterial({ 
-                    color: 0xffff00,
-                    transparent: true,
-                    opacity: 1.0
-                });
-                const muzzleFlash = new THREE.Mesh(flashGeometry, flashMaterial);
+                // Update muzzle flash position
                 muzzleFlash.position.copy(muzzlePosition);
-                scene.add(muzzleFlash);
+                muzzleFlash.visible = true;
+                outerFlash.position.copy(muzzlePosition);
+                outerFlash.visible = true;
                 
                 // Animate muzzle flash
-                const flashDuration = 50;
-                const flashStartTime = currentTime;
-                
-                function animateFlash() {
-                    const elapsed = Date.now() - flashStartTime;
-                    const progress = elapsed / flashDuration;
-                    
-                    if (progress < 1) {
-                        muzzleFlash.material.opacity = 1 - progress;
-                        requestAnimationFrame(animateFlash);
-                    } else {
-                        scene.remove(muzzleFlash);
-                    }
-                }
-                
-                animateFlash();
-                
-                // Play shotgun sound
-                playShotgunSound();
+                setTimeout(() => {
+                    muzzleFlash.visible = false;
+                    outerFlash.visible = false;
+                }, 50);
                 
                 // Fire pellets
                 for (let i = 0; i < PELLET_COUNT; i++) {
                     const pellet = pelletPool.get();
+                    if (!pellet) continue; // Skip if no pellet available
+                    
                     pellet.position.copy(muzzlePosition);
                     
                     // Calculate spread direction
                     const spreadDirection = new THREE.Vector3();
-                    spreadDirection.copy(camera.getWorldDirection(new THREE.Vector3()));
+                    camera.getWorldDirection(spreadDirection);
                     
                     // Add random spread
                     const spreadAngle = (Math.random() - 0.5) * PELLET_SPREAD;
-                    const spreadAxis = new THREE.Vector3();
-                    spreadAxis.crossVectors(spreadDirection, new THREE.Vector3(0, 1, 0));
+                    const spreadAxis = new THREE.Vector3(0, 1, 0);
                     spreadDirection.applyAxisAngle(spreadAxis, spreadAngle);
                     
-                    // Set initial velocity with increased speed
-                    pellet.velocity.copy(spreadDirection).multiplyScalar(PELLET_SPEED * 2);
-                    pellet.velocity.y += 2; // Add slight upward velocity
+                    // Add vertical spread
+                    const verticalSpread = (Math.random() - 0.5) * PELLET_SPREAD * 0.5;
+                    spreadDirection.y += verticalSpread;
+                    spreadDirection.normalize();
                     
-                    // Set spawn time and initialize trail
+                    // Set initial velocity
+                    pellet.velocity = spreadDirection.multiplyScalar(PELLET_SPEED);
                     pellet.spawnTime = currentTime;
                     pellet.trail = [];
+                    pellet.visible = true;
                     
                     scene.add(pellet);
                 }
@@ -2983,7 +2981,7 @@
                     const shotData = {
                         type: 'shotgun_shot',
                         position: muzzlePosition.toArray(),
-                        direction: camera.getWorldDirection(new THREE.Vector3()).toArray()
+                        direction: cameraDirection.toArray()
                     };
                     ws.send(JSON.stringify(shotData));
                 }
