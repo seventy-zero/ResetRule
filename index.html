@@ -2225,17 +2225,20 @@
                 originalAnimate();
             };
 
-            // Animation loop with collision detection, star rotation, and nebula animation
-            function animate() {
+            // Add camera rotation and pellet updates to animation loop
+            let baseAnimate = animate;
+            animate = function() {
                 requestAnimationFrame(animate);
                 
-                const deltaTime = clock.getDelta();
-                const currentTime = performance.now();
-                
-                // Update pellets
-                updatePellets();
-                
                 if (gameStarted) {
+                    if (controls.isLocked) {
+                        updateCameraRotation();
+                    }
+                    updatePellets();
+                    
+                    const deltaTime = clock.getDelta();
+                    const currentTime = performance.now();
+                    
                     // Update other players' positions with throttling
                     if (currentTime - lastCollisionCheck > COLLISION_CHECK_INTERVAL) {
                         playerStates.forEach((playerState, username) => {
@@ -2623,11 +2626,9 @@
                         if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
                     }
                 }
-
-                // Always render the scene
+                
                 renderer.render(scene, camera);
-            }
-            animate();
+            };
 
             // Send position updates
             function sendPositionUpdate() {
@@ -2956,7 +2957,7 @@
         }
 
         // Store the original animate function
-        let pelletAnimate = animate;
+        const pelletAnimate = animate;
 
         // Override the animate function to include pellet updates
         animate = function() {
