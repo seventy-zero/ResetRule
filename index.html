@@ -752,23 +752,20 @@
             // Create a more precise box collider for the bridge
             const collisionBox = new THREE.Box3();
             const collisionMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(distance, bridgeWidth * 0.5, bridgeWidth * 0.5) // Reduced height to 0.5x
+                new THREE.BoxGeometry(distance, bridgeWidth, bridgeWidth) // Use full bridge dimensions
             );
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
             collisionBox.setFromObject(collisionMesh);
-            
-            // Adjust collision box to be centered on the bridge's top surface
-            const boxHeight = bridgeWidth * 0.5;
-            collisionBox.min.y = bridgeData.height - boxHeight * 0.5;
-            collisionBox.max.y = bridgeData.height + boxHeight * 0.5;
             
             // Add bridge data to collision box for better collision handling
             collisionBox.userData = {
                 isBridge: true,
                 height: bridgeData.height,
                 width: bridgeWidth,
-                length: distance
+                length: distance,
+                startPos: startPos,
+                endPos: endPos
             };
             
             towers.push({
@@ -3218,9 +3215,10 @@
             
             // Special handling for bridges
             if (collisionResult.isBridge) {
-                const bridgeHeight = collisionResult.bridgeHeight;
-                const bridgeWidth = 2; // Match the actual bridge width from the model
-                const bridgeLength = 10; // Match the actual bridge length from the model
+                const bridgeData = collisionResult.collisionBox.userData;
+                const bridgeHeight = bridgeData.height;
+                const bridgeWidth = bridgeData.width;
+                const bridgeLength = bridgeData.length;
                 
                 // If we're below the bridge and moving up, let us pass through
                 if (camera.position.y < bridgeHeight && verticalVelocity > 0) {
@@ -3231,18 +3229,18 @@
                 if (camera.position.y >= bridgeHeight) {
                     // Calculate distance from bridge center
                     const bridgeCenter = new THREE.Vector3(
-                        Math.floor(camera.position.x / 20) * 20 + 10,
-                        0,
-                        Math.floor(camera.position.z / 20) * 20 + 10
+                        (bridgeData.startPos.x + bridgeData.endPos.x) / 2,
+                        bridgeHeight,
+                        (bridgeData.startPos.z + bridgeData.endPos.z) / 2
                     );
                     
-                    const distanceFromCenter = new THREE.Vector2(
-                        Math.abs(camera.position.x - bridgeCenter.x),
-                        Math.abs(camera.position.z - bridgeCenter.z)
-                    );
+                    // Calculate distance from bridge center in bridge's local space
+                    const localPos = camera.position.clone().sub(bridgeCenter);
+                    const bridgeAngle = Math.atan2(bridgeData.endPos.z - bridgeData.startPos.z, bridgeData.endPos.x - bridgeData.startPos.x);
+                    localPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), -bridgeAngle);
                     
                     // Check if we're within the bridge's actual dimensions
-                    if (distanceFromCenter.x <= bridgeWidth && distanceFromCenter.y <= bridgeLength) {
+                    if (Math.abs(localPos.x) <= bridgeLength/2 && Math.abs(localPos.z) <= bridgeWidth/2) {
                         const pushDistance = playerRadius - collisionResult.distance;
                         camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
                         camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
