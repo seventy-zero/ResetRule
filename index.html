@@ -3218,8 +3218,6 @@
             if (collisionResult.isBridge) {
                 const bridgeData = collisionResult.collisionBox.userData;
                 const bridgeHeight = bridgeData.height;
-                const bridgeWidth = bridgeData.width;
-                const bridgeLength = bridgeData.length;
                 
                 // If we're below bridge and moving up, let us pass through
                 if (camera.position.y < bridgeHeight && verticalVelocity > 0) {
@@ -3228,54 +3226,20 @@
                 
                 // If we're above the bridge, apply normal collision response
                 if (camera.position.y >= bridgeHeight) {
-                    // Calculate distance from bridge center in bridge's local space
-                    const localPos = camera.position.clone();
-                    localPos.y = bridgeHeight; // Project position onto bridge plane
+                    // Calculate push distance based on which edge we're closest to
+                    let pushDistance = playerRadius - collisionResult.distance;
                     
-                    // Transform position to bridge's local space
-                    const bridgeCenter = new THREE.Vector3(
-                        (bridgeData.startPos.x + bridgeData.endPos.x) / 2,
-                        bridgeHeight,
-                        (bridgeData.startPos.z + bridgeData.endPos.z) / 2
-                    );
+                    // Apply push in world space
+                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
                     
-                    localPos.sub(bridgeCenter);
-                    localPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), -bridgeData.angle);
-                    
-                    // Check if we're within the bridge's actual dimensions
-                    const halfLength = bridgeLength / 2;
-                    const halfWidth = bridgeWidth / 2;
-                    
-                    // Add a very small buffer to prevent edge cases
-                    const buffer = 0.2;
-                    
-                    if (Math.abs(localPos.x) <= halfLength + buffer && 
-                        Math.abs(localPos.z) <= halfWidth + buffer) {
-                        
-                        // Calculate push distance based on which edge we're closest to
-                        let pushDistance = playerRadius - collisionResult.distance;
-                        
-                        // If we're near the edge of the bridge, push more strongly
-                        if (Math.abs(localPos.x) > halfLength - buffer || 
-                            Math.abs(localPos.z) > halfWidth - buffer) {
-                            pushDistance *= 1.5;
-                        }
-                        
-                        // Apply push in world space
-                        const worldPushDir = pushDir.clone();
-                        worldPushDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), bridgeData.angle);
-                        
-                        camera.position.x += worldPushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                        camera.position.z += worldPushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                        
-                        if (isFlinging) {
-                            const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                            flingVelocity.x = worldPushDir.x * speed * 0.8;
-                            flingVelocity.z = worldPushDir.z * speed * 0.8;
-                        } else {
-                            velocity.x = worldPushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
-                            velocity.z = worldPushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
-                        }
+                    if (isFlinging) {
+                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                        flingVelocity.x = pushDir.x * speed * 0.8;
+                        flingVelocity.z = pushDir.z * speed * 0.8;
+                    } else {
+                        velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
+                        velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
                     }
                 }
             } else {
