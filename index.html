@@ -3318,6 +3318,51 @@
             oscillator.start();
             oscillator.stop(audioContext.currentTime + 0.1);
         }
+
+        // ... existing code ...
+        function checkMissileCollisions() {
+            // Check each missile
+            for (let i = missiles.length - 1; i >= 0; i--) {
+                const missile = missiles[i];
+                const missileBox = new THREE.Box3().setFromObject(missile);
+                let missileHit = false;
+
+                // Check collisions with other players
+                otherPlayers.forEach((otherPlane, planeId) => {
+                    if (missileHit) return; // Skip if missile already hit something
+                    
+                    const otherPlaneBox = new THREE.Box3().setFromObject(otherPlane);
+                    if (missileBox.intersectsBox(otherPlaneBox)) {
+                        missileHit = true;
+                        scene.remove(missile);
+                        missiles.splice(i, 1);
+                        
+                        // Send hit data to server
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            const hitData = {
+                                type: 'hit',
+                                targetId: planeId,
+                                damage: 10
+                            };
+                            ws.send(JSON.stringify(hitData));
+                        }
+                    }
+                });
+
+                // Check collisions with buildings
+                buildings.forEach(building => {
+                    if (missileHit) return; // Skip if missile already hit something
+                    
+                    const buildingBox = new THREE.Box3().setFromObject(building);
+                    if (missileBox.intersectsBox(buildingBox)) {
+                        missileHit = true;
+                        scene.remove(missile);
+                        missiles.splice(i, 1);
+                    }
+                });
+            }
+        }
+        // ... existing code ...
     </script>
 </body>
 </html>
