@@ -164,8 +164,14 @@ function generateWorld() {
             // Check if position is too close to any bridge
             let tooCloseToBridge = false;
             for (const bridge of bridges) {
-                const bridgeStart = bridge.start;
-                const bridgeEnd = bridge.end;
+                const bridgeStart = {
+                    x: bridge.startX,
+                    z: bridge.startZ
+                };
+                const bridgeEnd = {
+                    x: bridge.endX,
+                    z: bridge.endZ
+                };
                 
                 // Calculate distance from point to line segment
                 const dx = bridgeEnd.x - bridgeStart.x;
