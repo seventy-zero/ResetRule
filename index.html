@@ -142,13 +142,15 @@
             right: 10px;
             background-color: rgba(0, 0, 0, 0.7);
             color: #4CAF50;
-            padding: 10px;
+            padding: 10px 15px;  /* Increased horizontal padding */
             border-radius: 5px;
             z-index: 1000;
             font-family: Arial, sans-serif;
             font-size: 16px;
             font-weight: bold;
             text-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+            min-width: 120px;  /* Added minimum width */
+            text-align: center;  /* Center the text */
         }
 
         #playerList {
@@ -1074,21 +1076,9 @@
                         handlePlayerLeft(data.username);
                         break;
 
-                    case 'item_collected':
-                        handleItemCollection(data.itemId, data.username);
-                        break;
-
-                    case 'orb_collected':
-                        if (data.username === playerUsername) {
-                            // Update local orb count
-                            const currentOrbs = playerOrbs.get(playerUsername) || 0;
-                            playerOrbs.set(playerUsername, currentOrbs + 1);
-                            updateOrbCount(); // Add this line to update the UI
-                        }
-                        break;
-
                     case 'shotgun_shot':
                         if (data.username !== playerUsername && gameStarted) {
+                            console.log('Received shotgun shot from:', data.username);
                             // Check if any pellets hit the current player
                             const playerState = playerStates.get(data.username);
                             if (playerState) {
@@ -1121,6 +1111,19 @@
                     case 'player_damaged':
                         if (data.username === playerUsername) {
                             takeDamage(data.damage);
+                        }
+                        break;
+
+                    case 'item_collected':
+                        handleItemCollection(data.itemId, data.username);
+                        break;
+
+                    case 'orb_collected':
+                        if (data.username === playerUsername) {
+                            // Update local orb count
+                            const currentOrbs = playerOrbs.get(playerUsername) || 0;
+                            playerOrbs.set(playerUsername, currentOrbs + 1);
+                            updateOrbCount(); // Add this line to update the UI
                         }
                         break;
                 }
@@ -2733,6 +2736,7 @@
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     type: 'shotgun_shot',
+                    username: playerUsername,
                     position: camera.position.toArray(),
                     directions: pelletDirections.map(dir => dir.toArray()),
                     timestamp: currentTime
@@ -2836,6 +2840,7 @@
             // Add shotgun firing to mouse controls
             document.addEventListener('mousedown', (event) => {
                 if (event.button === 1) { // Middle mouse button
+                    console.log('Firing shotgun (middle mouse button)');
                     fireShotgun();
                 }
             });
@@ -2872,6 +2877,7 @@
             // Add shotgun button event listeners
             shotgunButton.addEventListener('touchstart', function(e) {
                 e.preventDefault();
+                console.log('Firing shotgun (mobile button)');
                 fireShotgun();
             }, { passive: false });
         }
