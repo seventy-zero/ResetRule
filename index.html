@@ -796,58 +796,36 @@
                     if (collisionBox.userData && collisionBox.userData.isBridge) {
                         const bridgeHeight = collisionBox.userData.height;
                         
-                        // Get bridge dimensions from the collision box
-                        const bridgeWidth = Math.abs(collisionBox.max.x - collisionBox.min.x) / 2;
-                        const bridgeLength = Math.abs(collisionBox.max.z - collisionBox.min.z) / 2;
-                        
-                        // Get bridge center point
-                        const bridgeCenter = new THREE.Vector3(
-                            (collisionBox.min.x + collisionBox.max.x) / 2,
-                            bridgeHeight,
-                            (collisionBox.min.z + collisionBox.max.z) / 2
-                        );
-                        
-                        // Calculate distance from bridge center
-                        const distanceFromCenter = new THREE.Vector2(
-                            Math.abs(position.x - bridgeCenter.x),
-                            Math.abs(position.z - bridgeCenter.z)
-                        );
-                        
-                        // Check if we're within the bridge's dimensions
-                        if (distanceFromCenter.x <= bridgeWidth && distanceFromCenter.y <= bridgeLength) {
-                            // If below bridge, only check horizontal distance
-                            if (position.y < bridgeHeight) {
-                                const horizontalDistance = Math.sqrt(
-                                    Math.pow(position.x - bridgeCenter.x, 2) + 
-                                    Math.pow(position.z - bridgeCenter.z, 2)
-                                );
-                                
-                                // Only return collision if we're within the bridge's width
-                                if (horizontalDistance < radius) {
-                                    return {
-                                        collision: true,
-                                        tower: tower,
-                                        collisionBox: collisionBox,
-                                        distance: horizontalDistance,
-                                        closestPoint: bridgeCenter,
-                                        isBridge: true,
-                                        bridgeHeight: bridgeHeight
-                                    };
-                                }
-                            } else {
-                                // If above bridge, check full 3D distance
-                                const distance = position.distanceTo(bridgeCenter);
-                                if (distance < radius) {
-                                    return {
-                                        collision: true,
-                                        tower: tower,
-                                        collisionBox: collisionBox,
-                                        distance: distance,
-                                        closestPoint: bridgeCenter,
-                                        isBridge: true,
-                                        bridgeHeight: bridgeHeight
-                                    };
-                                }
+                        // If below bridge, only check horizontal distance
+                        if (position.y < bridgeHeight) {
+                            const horizontalDistance = Math.sqrt(
+                                Math.pow(position.x - closestPoint.x, 2) + 
+                                Math.pow(position.z - closestPoint.z, 2)
+                            );
+                            
+                            if (horizontalDistance < radius) {
+                                return {
+                                    collision: true,
+                                    tower: tower,
+                                    collisionBox: collisionBox,
+                                    distance: horizontalDistance,
+                                    closestPoint: closestPoint,
+                                    isBridge: true,
+                                    bridgeHeight: bridgeHeight
+                                };
+                            }
+                        } else {
+                            // If above bridge, check full 3D distance
+                            if (distance < radius) {
+                                return {
+                                    collision: true,
+                                    tower: tower,
+                                    collisionBox: collisionBox,
+                                    distance: distance,
+                                    closestPoint: closestPoint,
+                                    isBridge: true,
+                                    bridgeHeight: bridgeHeight
+                                };
                             }
                         }
                     } else {
