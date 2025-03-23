@@ -3099,8 +3099,8 @@
             
             for (const pellet of pelletPool.active) {
                 // Update position based on velocity and gravity
-                pellet.position.add(pellet.velocity.clone().multiplyScalar(deltaTime));
-                pellet.velocity.y -= PELLET_GRAVITY * deltaTime;
+                pellet.position.add(pellet.velocity.clone().multiplyScalar(clock.getDelta()));
+                pellet.velocity.y -= PELLET_GRAVITY * clock.getDelta();
                 
                 // Update trail
                 pellet.trailPoints.push(pellet.position.clone());
