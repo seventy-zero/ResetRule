@@ -3260,6 +3260,12 @@
 
         // Define the shotgun firing handler
         function handleShotgunFire(event) {
+            if (event.button === 2) { // Right mouse button
+                console.log('Firing shotgun (right mouse button)');
+                fireShotgun();
+            }
+        }
+
         // Call setupEventListeners after camera initialization
         setupEventListeners();
     </script>
