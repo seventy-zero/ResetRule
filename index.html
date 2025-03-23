@@ -3219,6 +3219,25 @@
         // Replace the existing collision handling code with:
         const collisionResult = checkCollision(camera.position, playerRadius);
         handleCollision(collisionResult, isFlinging);
+
+        // Set up event listeners after camera is initialized
+        function setupEventListeners() {
+            if (!camera) {
+                console.log('Waiting for camera initialization...');
+                setTimeout(setupEventListeners, 100);
+                return;
+            }
+            
+            document.addEventListener('mousedown', (event) => {
+                if (event.button === 2) { // Right mouse button
+                    console.log('Firing shotgun (right mouse button)');
+                    fireShotgun();
+                }
+            });
+        }
+
+        // Call setupEventListeners after camera initialization
+        setupEventListeners();
     </script>
 </body>
 </html>
