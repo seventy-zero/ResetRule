@@ -182,6 +182,7 @@ class GameRoom {
         this.isActive = true;
         this.lastActivity = Date.now();
         this.world = generateWorld(); // Generate world when room is created
+        console.log(`Room ${this.name} created with ${this.world.orbs.length} orbs`);
     }
 
     addPlayer(ws, username) {
@@ -192,6 +193,13 @@ class GameRoom {
             lastActivity: Date.now()
         });
         this.lastActivity = Date.now();
+        
+        // Log world data before sending
+        console.log(`Sending world data to ${username}:`, {
+            towers: this.world.towers.length,
+            bridges: this.world.bridges.length,
+            orbs: this.world.orbs.length
+        });
         
         // Send world data to the new player
         ws.send(JSON.stringify({

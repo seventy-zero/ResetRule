@@ -2289,6 +2289,8 @@
 
         // Function to create an orb
         function createOrb(orbData) {
+            console.log('Creating orb with data:', orbData);
+            
             const geometry = new THREE.SphereGeometry(orbData.size, 16, 16);
             const material = new THREE.MeshPhongMaterial({
                 color: orbData.color,
@@ -2312,6 +2314,8 @@
             
             scene.add(orb);
             orbs.set(orbData.id, orb);
+            
+            console.log('Orb created successfully:', orb);
             return orb;
         }
     </script>
