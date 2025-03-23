@@ -1,6 +1,7 @@
 const express = require('express');
 const WebSocket = require('ws');
 const path = require('path');
+const THREE = require('three');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -456,52 +457,55 @@ socket.on('shotgunShot', (data) => {
     players.forEach((player, playerId) => {
         if (playerId === socket.id) return; // Skip shooter
 
-        // Check if any pellet hits the player
-        const hit = data.pellets.some(pellet => {
-            const pelletPos = {
-                x: data.position.x + pellet.x,
-                y: data.position.y + pellet.y,
-                z: data.position.z + pellet.z
-            };
-            const distance = Math.sqrt(
-                Math.pow(pelletPos.x - player.position.x, 2) +
-                Math.pow(pelletPos.y - player.position.y, 2) +
-                Math.pow(pelletPos.z - player.position.z, 2)
-            );
-            return distance < 5; // Hit detection radius
-        });
+        // Check if player is within the cone of effect
+        const playerPos = new THREE.Vector3(player.position.x, player.position.y, player.position.z);
+        const shooterPos = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
+        const direction = new THREE.Vector3(data.direction.x, data.direction.y, data.direction.z);
+        
+        // Calculate vector from shooter to player
+        const toPlayer = playerPos.clone().sub(shooterPos);
+        const distance = toPlayer.length();
+        
+        // Check if player is within the cone's range (10 units)
+        if (distance <= 10) {
+            // Calculate angle between shot direction and player
+            toPlayer.normalize();
+            const angle = direction.angleTo(toPlayer);
+            
+            // Cone angle is about 45 degrees (0.785 radians)
+            if (angle <= 0.785) {
+                // Player is hit, apply damage
+                player.health -= 20; // Shotgun damage per pellet
+                if (player.health <= 0) {
+                    // Player died, drop their orbs
+                    const dropOrbs = player.orbs; // Drop 100% of orbs
+                    if (dropOrbs > 0) {
+                        // Drop orbs in a spread pattern around death location
+                        for (let i = 0; i < dropOrbs; i++) {
+                            const spread = 10; // Spread radius
+                            const angle = (Math.PI * 2 * i) / dropOrbs; // Evenly distribute in a circle
+                            const x = player.position.x + Math.cos(angle) * spread;
+                            const z = player.position.z + Math.sin(angle) * spread;
+                            const y = Math.random() * 100 + 50; // Random height between 50 and 150
 
-        if (hit) {
-            player.health -= 20; // Shotgun damage per pellet
-            if (player.health <= 0) {
-                // Player died, drop their orbs
-                const dropOrbs = player.orbs; // Drop 100% of orbs
-                if (dropOrbs > 0) {
-                    // Drop orbs in a spread pattern around death location
-                    for (let i = 0; i < dropOrbs; i++) {
-                        const spread = 10; // Spread radius
-                        const angle = (Math.PI * 2 * i) / dropOrbs; // Evenly distribute in a circle
-                        const x = player.position.x + Math.cos(angle) * spread;
-                        const z = player.position.z + Math.sin(angle) * spread;
-                        const y = Math.random() * 100 + 50; // Random height between 50 and 150
+                            const color = Math.floor(Math.random() * 0xFFFFFF);
+                            const size = Math.random() * 0.5 + 0.5;
 
-                        const color = Math.floor(Math.random() * 0xFFFFFF);
-                        const size = Math.random() * 0.5 + 0.5;
-
-                        const orb = {
-                            id: orbs.length,
-                            position: { x, y, z },
-                            color,
-                            size
-                        };
-                        orbs.push(orb);
+                            const orb = {
+                                id: orbs.length,
+                                position: { x, y, z },
+                                color,
+                                size
+                            };
+                            orbs.push(orb);
+                        }
+                        player.orbs = 0; // Set to 0 since all orbs were dropped
                     }
-                    player.orbs = 0; // Set to 0 since all orbs were dropped
+                    player.health = 100;
+                    player.position = getRandomSpawnPoint();
                 }
-                player.health = 100;
-                player.position = getRandomSpawnPoint();
+                io.emit('playerHealthUpdate', { id: playerId, health: player.health });
             }
-            io.emit('playerHealthUpdate', { id: playerId, health: player.health });
         }
     });
 }); 
