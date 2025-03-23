@@ -272,7 +272,9 @@
         const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
         const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
 
-        // Shooting system constants
+        // Add movement smoothing constants
+        const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
+        // Shooting system constants and variables
         const SHOTGUN_COOLDOWN = 500; // ms between shots
         const SHOTGUN_RANGE = 30; // Short range for shotgun
         const PELLET_COUNT = 8; // Number of pellets per shot
@@ -284,6 +286,28 @@
         let lastShotTime = 0;
         let playerHealth = 100;
         let isDead = false;
+
+        // Create shotgun muzzle flash effect
+        const muzzleFlashGeometry = new THREE.SphereGeometry(8, 16, 16);
+        const muzzleFlashMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffff00,
+            transparent: true,
+            opacity: 1.0
+        });
+        const muzzleFlash = new THREE.Mesh(muzzleFlashGeometry, muzzleFlashMaterial);
+        muzzleFlash.visible = false;
+        scene.add(muzzleFlash);
+
+        // Add a second, larger flash for better visibility
+        const outerFlashGeometry = new THREE.SphereGeometry(12, 16, 16);
+        const outerFlashMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff6600,
+            transparent: true,
+            opacity: 0.9
+        });
+        const outerFlash = new THREE.Mesh(outerFlashGeometry, outerFlashMaterial);
+        outerFlash.visible = false;
+        scene.add(outerFlash);
 
         // Add object pooling system
         const objectPool = {
