@@ -205,6 +205,9 @@
     </div>
     
     <div id="playerList"></div>
+    <div id="orbCount" style="position: fixed; top: 10px; left: 50%; transform: translateX(-50%); background-color: rgba(0, 0, 0, 0.7); color: #4CAF50; padding: 10px; border-radius: 5px; z-index: 1000; font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; text-shadow: 0 0 5px rgba(76, 175, 80, 0.5);">
+        Orbs: 0
+    </div>
     <div id="roomInfo"></div>
     
     <!-- Mobile Controls -->
@@ -741,7 +744,7 @@
 
         // Add after the checkCollision function
         function checkOrbCollision(position, radius) {
-            const playerCollider = new THREE.Sphere(position, radius);
+            const playerCollider = new THREE.Sphere(position, radius * 2); // Double the collection radius
             let closestOrb = null;
             let minDistance = Infinity;
             
@@ -749,7 +752,7 @@
                 const orbPosition = orb.position;
                 const distance = position.distanceTo(orbPosition);
                 
-                if (distance < radius + orb.userData.originalScale) {
+                if (distance < (radius * 2) + orb.userData.originalScale) { // Double the collection radius
                     if (distance < minDistance) {
                         minDistance = distance;
                         closestOrb = { orb, orbId };
@@ -903,6 +906,7 @@
                             // Update local orb count
                             const currentOrbs = playerOrbs.get(playerUsername) || 0;
                             playerOrbs.set(playerUsername, currentOrbs + 1);
+                            updateOrbCount(); // Add this line to update the UI
                         }
                         break;
                 }
@@ -2177,6 +2181,7 @@
                             // Update local orb count
                             const currentOrbs = playerOrbs.get(playerUsername) || 0;
                             playerOrbs.set(playerUsername, currentOrbs + 1);
+                            updateOrbCount(); // Add this line to update the UI
                             
                             // Play collection sound
                             const audio = new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU');
@@ -2378,6 +2383,13 @@
             });
             
             return orb;
+        }
+
+        // Add after the playerOrbs Map declaration
+        function updateOrbCount() {
+            const orbCountElement = document.getElementById('orbCount');
+            const currentOrbs = playerOrbs.get(playerUsername) || 0;
+            orbCountElement.textContent = `Orbs: ${currentOrbs}`;
         }
     </script>
 </body>
