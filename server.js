@@ -143,7 +143,7 @@ function generateWorld() {
     for (let i = 0; i < NUM_ORBS; i++) {
         let validPosition = false;
         let attempts = 0;
-        const maxAttempts = 50; // Reduced since we're being more lenient
+        const maxAttempts = 100; // Increased max attempts
         
         while (!validPosition && attempts < maxAttempts) {
             const x = (Math.random() - 0.5) * MAX_RADIUS * 2;
@@ -152,14 +152,14 @@ function generateWorld() {
             // Simple height distribution
             const y = Math.random() * 200 + 50; // Height between 50 and 250
             
-            // Only check if we're inside a tower
+            // Check if we're inside a tower with more lenient distance
             let insideTower = false;
             for (const tower of towers) {
                 const distance = Math.sqrt(
                     Math.pow(x - tower.x, 2) + 
                     Math.pow(z - tower.z, 2)
                 );
-                if (distance < 0.5) { // Reduced from 1 to 0.5 to be even more lenient
+                if (distance < 2) { // Increased from 0.5 to 2 to be more lenient
                     insideTower = true;
                     break;
                 }
@@ -189,7 +189,24 @@ function generateWorld() {
         }
         
         if (!validPosition) {
-            console.warn(`Failed to find valid position for orb ${i} after ${maxAttempts} attempts`);
+            // If we couldn't find a valid position after max attempts,
+            // force place the orb at a random position
+            const x = (Math.random() - 0.5) * MAX_RADIUS * 2;
+            const z = (Math.random() - 0.5) * MAX_RADIUS * 2;
+            const y = Math.random() * 200 + 50;
+            const color = Math.floor(Math.random() * 0xFFFFFF);
+            const size = Math.random() * 0.5 + 0.5;
+
+            const orb = {
+                id: i,
+                position: { x, y, z },
+                color,
+                size
+            };
+            
+            orbs.push(orb);
+            successfulOrbs++;
+            console.log(`Force placed orb ${successfulOrbs}/${NUM_ORBS} after failed attempts:`, orb);
         }
     }
     
