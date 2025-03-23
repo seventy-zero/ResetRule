@@ -432,6 +432,12 @@
             
             // Add to scene
             scene.add(playerMesh);
+            console.log('Added player mesh to scene:', {
+                username: username,
+                mesh: playerMesh,
+                position: playerMesh.position,
+                visible: playerMesh.visible
+            });
             
             // Create and store player state
             const playerState = new PlayerState(username, playerMesh);
@@ -880,24 +886,27 @@
         function setupWebSocket() {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${wsProtocol}//${window.location.host}`;
+            console.log('Attempting to connect to WebSocket at:', wsUrl);
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                console.log('Connected to server');
+                console.log('WebSocket connection established');
                 // Send join message with username
-                ws.send(JSON.stringify({
+                const joinMessage = {
                     type: 'join',
                     username: playerUsername
-                }));
+                };
+                console.log('Sending join message:', joinMessage);
+                ws.send(JSON.stringify(joinMessage));
             };
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                console.log('Received message:', data.type);
+                console.log('Received WebSocket message:', data.type, data);
                 
                 switch (data.type) {
                     case 'world_data':
-                        console.log('Received world data');
+                        console.log('Received world data with players:', data.players);
                         console.log('World data contents:', {
                             towers: data.towers?.length || 0,
                             bridges: data.bridges?.length || 0,
@@ -954,11 +963,18 @@
 
                     case 'player_joined':
                         console.log('Player joined:', data.username);
-                        handlePlayerJoined(data.username);
+                        if (data.username !== playerUsername && gameStarted) {
+                            console.log('Creating player model for:', data.username);
+                            if (!playerStates.has(data.username)) {
+                                createPlayerModel(data.username);
+                            }
+                            updatePlayerList();
+                        }
                         break;
 
                     case 'position':
                         if (data.username !== playerUsername && gameStarted) {
+                            console.log('Received position update for:', data.username, data.position);
                             // Ensure player model exists before updating position
                             if (!playerStates.has(data.username)) {
                                 console.log('Creating missing player model for:', data.username);
@@ -968,6 +984,7 @@
                             // Update player state with new data
                             const playerState = playerStates.get(data.username);
                             if (playerState) {
+                                console.log('Updating player state for:', data.username);
                                 // Update position
                                 if (data.position) {
                                     playerState.position.fromArray(data.position);
@@ -990,6 +1007,13 @@
                                 }
                                 
                                 playerState.lastUpdateTime = Date.now();
+                                console.log('Player state updated:', {
+                                    username: data.username,
+                                    position: playerState.position,
+                                    rotation: playerState.rotation
+                                });
+                            } else {
+                                console.warn('No player state found for username:', data.username);
                             }
                         }
                         break;
