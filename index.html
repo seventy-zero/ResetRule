@@ -712,19 +712,28 @@
             
             scene.add(bridgeGroup);
             
-            // Create a single box collider for the bridge with more appropriate dimensions
+            // Create a more precise collision system for the bridge
             const collisionBox = new THREE.Box3();
             const collisionMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(distance, bridgeWidth * 1.5, bridgeWidth * 1.5) // Reduced from 2x to 1.5x
+                new THREE.BoxGeometry(distance, bridgeWidth * 1.2, bridgeWidth * 1.2) // Slightly larger than visual bridge
             );
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
             collisionBox.setFromObject(collisionMesh);
             
-            towers.push({
+            // Store bridge-specific collision data
+            const bridgeCollisionData = {
                 mesh: bridgeGroup,
-                collisionBoxes: [collisionBox]
-            });
+                collisionBox: collisionBox,
+                height: bridgeData.height,
+                width: bridgeWidth,
+                length: distance,
+                startPos: startPos,
+                endPos: endPos,
+                isBridge: true
+            };
+            
+            towers.push(bridgeCollisionData);
         }
 
         // Update collision check function
@@ -734,24 +743,50 @@
             let minDistance = Infinity;
             
             for (const tower of towers) {
-                for (const collisionBox of tower.collisionBoxes) {
-                    // Get the closest point on the collision box to the player
-                    const closestPoint = new THREE.Vector3();
-                    collisionBox.clampPoint(position, closestPoint);
+                if (tower.isBridge) {
+                    // Special handling for bridges
+                    const bridge = tower;
+                    const bridgeHeight = bridge.height;
+                    const bridgeWidth = bridge.width;
                     
-                    // Calculate distance to closest point
+                    // Only check collision if player is within the bridge's height range
+                    if (position.y >= bridgeHeight - bridgeWidth && position.y <= bridgeHeight + bridgeWidth) {
+                        // Get the closest point on the bridge's collision box
+                        const closestPoint = new THREE.Vector3();
+                        bridge.collisionBox.clampPoint(position, closestPoint);
+                        
+                        // Calculate distance to closest point
+                        const distance = position.distanceTo(closestPoint);
+                        
+                        // If this is closer than our current closest collision
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            closestCollision = {
+                                collision: true,
+                                tower: bridge,
+                                collisionBox: bridge.collisionBox,
+                                distance: distance,
+                                closestPoint: closestPoint,
+                                isBridge: true
+                            };
+                        }
+                    }
+                } else {
+                    // Normal tower collision check
+                    const closestPoint = new THREE.Vector3();
+                    tower.collisionBox.clampPoint(position, closestPoint);
+                    
                     const distance = position.distanceTo(closestPoint);
                     
-                    // If this is closer than our current closest collision
                     if (distance < minDistance) {
                         minDistance = distance;
                         closestCollision = {
                             collision: true,
                             tower: tower,
-                            collisionBox: collisionBox,
+                            collisionBox: tower.collisionBox,
                             distance: distance,
                             closestPoint: closestPoint,
-                            isBridge: tower.mesh.name === 'bridge' // Add flag to identify bridges
+                            isBridge: false
                         };
                     }
                 }
