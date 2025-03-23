@@ -2129,6 +2129,9 @@
                 const deltaTime = clock.getDelta();
                 const currentTime = performance.now();
                 
+                // Update pellets
+                updatePellets();
+                
                 if (gameStarted) {
                     // Update other players' positions with throttling
                     if (currentTime - lastCollisionCheck > COLLISION_CHECK_INTERVAL) {
@@ -2144,7 +2147,7 @@
                         });
                         lastCollisionCheck = currentTime;
                     }
-
+                    
                     // Update nebula animations with reduced frequency
                     if (currentTime % 2 === 0) { // Update every other frame
                         const time = currentTime * 0.001;
@@ -3089,6 +3092,86 @@
         // Replace the existing collision handling code with:
         const collisionResult = checkCollision(camera.position, playerRadius);
         handleCollision(collisionResult, isFlinging);
+
+        // Update the updatePellets function to properly handle physics
+        function updatePellets() {
+            const currentTime = Date.now();
+            
+            for (const pellet of pelletPool.active) {
+                // Update position based on velocity and gravity
+                pellet.position.add(pellet.velocity.clone().multiplyScalar(deltaTime));
+                pellet.velocity.y -= PELLET_GRAVITY * deltaTime;
+                
+                // Update trail
+                pellet.trailPoints.push(pellet.position.clone());
+                if (pellet.trailPoints.length > PELLET_TRAIL_LENGTH) {
+                    pellet.trailPoints.shift();
+                }
+                
+                // Update trail geometry
+                const positions = new Float32Array(pellet.trailPoints.length * 3);
+                for (let i = 0; i < pellet.trailPoints.length; i++) {
+                    positions[i * 3] = pellet.trailPoints[i].x;
+                    positions[i * 3 + 1] = pellet.trailPoints[i].y;
+                    positions[i * 3 + 2] = pellet.trailPoints[i].z;
+                }
+                pellet.trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                
+                // Check collisions with other players
+                for (const otherPlayer of otherPlayers) {
+                    if (!otherPlayer.visible) continue;
+                    
+                    const distance = pellet.position.distanceTo(otherPlayer.position);
+                    if (distance < 5) { // Collision radius
+                        // Create hit effect
+                        createHitEffect(pellet.position);
+                        
+                        // Play hit sound
+                        playHitSound();
+                        
+                        // Reduce player health
+                        otherPlayer.userData.health -= SHOTGUN_DAMAGE;
+                        
+                        // Check for kill
+                        if (otherPlayer.userData.health <= 0) {
+                            currentKills++;
+                            updateScoreDisplay(true);
+                            
+                            // Create kill indicator
+                            const killIndicator = document.createElement('div');
+                            killIndicator.style.position = 'fixed';
+                            killIndicator.style.top = '0';
+                            killIndicator.style.left = '0';
+                            killIndicator.style.width = '100%';
+                            killIndicator.style.height = '100%';
+                            killIndicator.style.border = '10px solid #00ff00';
+                            killIndicator.style.boxSizing = 'border-box';
+                            killIndicator.style.pointerEvents = 'none';
+                            killIndicator.style.zIndex = '1000';
+                            killIndicator.style.opacity = '0.7';
+                            document.body.appendChild(killIndicator);
+                            
+                            setTimeout(() => {
+                                killIndicator.style.transition = 'opacity 0.5s';
+                                killIndicator.style.opacity = '0';
+                                setTimeout(() => {
+                                    document.body.removeChild(killIndicator);
+                                }, 500);
+                            }, 1000);
+                        }
+                        
+                        // Remove pellet
+                        pelletPool.release(pellet);
+                        break;
+                    }
+                }
+                
+                // Check if pellet has expired
+                if (currentTime - pellet.spawnTime > PELLET_LIFETIME) {
+                    pelletPool.release(pellet);
+                }
+            }
+        }
     </script>
 </body>
 </html>
