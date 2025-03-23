@@ -327,6 +327,13 @@
                 this.verticalSpeed = 0;
                 this.lastUpdateTime = Date.now();
                 this.isVisible = true;
+                
+                // Add movement prediction and reconciliation
+                this.predictedPosition = new THREE.Vector3();
+                this.predictedRotation = new THREE.Euler();
+                this.pendingUpdates = [];
+                this.lastProcessedUpdate = null;
+                this.interpolationDelay = 100; // ms of interpolation delay
             }
 
             update(deltaTime) {
@@ -341,25 +348,62 @@
                 // Make sure mesh is visible
                 this.mesh.visible = true;
 
+                // Process pending updates
+                while (this.pendingUpdates.length > 0) {
+                    const update = this.pendingUpdates[0];
+                    if (currentTime - update.timestamp > this.interpolationDelay) {
+                        this.pendingUpdates.shift();
+                        this.lastProcessedUpdate = update;
+                        this.position.copy(update.position);
+                        this.rotation.copy(update.rotation);
+                        this.speed = update.speed;
+                        this.heading = update.heading;
+                        this.verticalSpeed = update.verticalSpeed;
+                    } else {
+                        break;
+                    }
+                }
+
                 // Calculate movement based on speed and heading
                 const headingRad = (this.heading * Math.PI) / 180;
                 const distanceMoved = this.speed * deltaTime;
 
-                // Calculate target positions
+                // Calculate target positions with prediction
                 const targetX = this.position.x - Math.sin(headingRad) * distanceMoved;
                 const targetZ = this.position.z - Math.cos(headingRad) * distanceMoved;
                 const targetY = this.position.y + this.verticalSpeed * deltaTime;
 
-                // Use exponential smoothing for interpolation
-                const lerpFactor = 1 - Math.exp(-10 * deltaTime);
+                // Use cubic interpolation for smoother movement
+                const lerpFactor = 1 - Math.exp(-15 * deltaTime); // Increased from 10 to 15 for faster response
 
-                // Smoothly interpolate position
+                // Smoothly interpolate position with prediction
                 this.mesh.position.x += (targetX - this.mesh.position.x) * lerpFactor;
                 this.mesh.position.z += (targetZ - this.mesh.position.z) * lerpFactor;
                 this.mesh.position.y += (targetY - this.mesh.position.y) * lerpFactor;
 
-                // Update rotation
+                // Update rotation with prediction
                 this.mesh.rotation.y = -headingRad;
+            }
+
+            // Add new method to handle incoming updates
+            handleUpdate(update) {
+                const currentTime = Date.now();
+                
+                // Add timestamp to update
+                update.timestamp = currentTime;
+                
+                // Add to pending updates
+                this.pendingUpdates.push(update);
+                
+                // Sort updates by timestamp
+                this.pendingUpdates.sort((a, b) => a.timestamp - b.timestamp);
+                
+                // Limit pending updates to prevent memory issues
+                if (this.pendingUpdates.length > 10) {
+                    this.pendingUpdates.shift();
+                }
+                
+                this.lastUpdateTime = currentTime;
             }
         }
 
@@ -931,28 +975,17 @@
                             // Update player state with new data
                             const playerState = playerStates.get(data.username);
                             if (playerState) {
-                                // Update position
-                                if (data.position) {
-                                    playerState.position.fromArray(data.position);
-                                }
+                                // Create update object with all necessary data
+                                const update = {
+                                    position: new THREE.Vector3().fromArray(data.position),
+                                    rotation: new THREE.Euler().fromArray(data.rotation),
+                                    speed: data.speed,
+                                    heading: data.heading,
+                                    verticalSpeed: data.verticalSpeed
+                                };
                                 
-                                // Update rotation
-                                if (data.rotation) {
-                                    playerState.rotation.fromArray(data.rotation);
-                                }
-                                
-                                // Update speed and heading if provided
-                                if (data.speed !== undefined) {
-                                    playerState.speed = data.speed;
-                                }
-                                if (data.heading !== undefined) {
-                                    playerState.heading = data.heading;
-                                }
-                                if (data.verticalSpeed !== undefined) {
-                                    playerState.verticalSpeed = data.verticalSpeed;
-                                }
-                                
-                                playerState.lastUpdateTime = Date.now();
+                                // Handle the update with the new system
+                                playerState.handleUpdate(update);
                             }
                         }
                         break;
@@ -2343,28 +2376,28 @@
             // Send position updates
             function sendPositionUpdate() {
                 if (ws.readyState === WebSocket.OPEN && gameStarted) {
-                    // Calculate speed and heading
+                    // Calculate speed and heading with more precision
                     const dx = camera.position.x - lastSentPosition.x;
                     const dz = camera.position.z - lastSentPosition.z;
                     const speed = Math.sqrt(dx * dx + dz * dz) / (0.016); // Assuming 60fps
                     const heading = Math.atan2(-dx, -dz) * 180 / Math.PI;
                     const verticalSpeed = (camera.position.y - lastSentPosition.y) / 0.016;
 
-                    // Round position data to 2 decimal places
+                    // Round position data to 3 decimal places for more precision
                     const positionData = {
                         position: [
-                            Math.round(camera.position.x * 100) / 100,
-                            Math.round(camera.position.y * 100) / 100,
-                            Math.round(camera.position.z * 100) / 100
+                            Math.round(camera.position.x * 1000) / 1000,
+                            Math.round(camera.position.y * 1000) / 1000,
+                            Math.round(camera.position.z * 1000) / 1000
                         ],
                         rotation: [
-                            Math.round(camera.rotation.x * 100) / 100,
-                            Math.round(camera.rotation.y * 100) / 100,
-                            Math.round(camera.rotation.z * 100) / 100
+                            Math.round(camera.rotation.x * 1000) / 1000,
+                            Math.round(camera.rotation.y * 1000) / 1000,
+                            Math.round(camera.rotation.z * 1000) / 1000
                         ],
-                        speed: Math.round(speed),
-                        heading: Math.round(heading),
-                        verticalSpeed: Math.round(verticalSpeed * 100) / 100
+                        speed: Math.round(speed * 100) / 100, // More precise speed
+                        heading: Math.round(heading * 100) / 100, // More precise heading
+                        verticalSpeed: Math.round(verticalSpeed * 1000) / 1000 // More precise vertical speed
                     };
 
                     ws.send(JSON.stringify({
@@ -2377,8 +2410,8 @@
                 }
             }
 
-            // Update position more frequently (16ms = ~60fps)
-            setInterval(sendPositionUpdate, 16);
+            // Update position more frequently (8ms = ~120fps for smoother movement)
+            setInterval(sendPositionUpdate, 8);
 
             // Add periodic player list updates
             setInterval(() => {
