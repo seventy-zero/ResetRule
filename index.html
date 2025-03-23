@@ -2215,11 +2215,20 @@
                 orbs.forEach(orb => {
                     const time = currentTime * 0.001;
                     const scale = orb.userData.originalScale * 
-                        (1 + Math.sin(time * orb.userData.pulseSpeed + orb.userData.pulseOffset) * 0.2);
+                        (1 + Math.sin(time * orb.userData.pulseSpeed + orb.userData.pulseOffset) * 0.3); // Increased pulse effect
                     orb.scale.set(scale, scale, scale);
                     
-                    // Add slight floating motion
-                    orb.position.y += Math.sin(time + orb.userData.pulseOffset) * 0.05;
+                    // Add more noticeable floating motion
+                    orb.position.y += Math.sin(time + orb.userData.pulseOffset) * 0.1;
+                    
+                    // Debug logging for first orb only
+                    if (orb.userData.id === 0) {
+                        console.log('Orb animation:', {
+                            position: orb.position,
+                            scale: orb.scale,
+                            visible: orb.visible
+                        });
+                    }
                 });
 
                 // Always render the scene
@@ -2291,13 +2300,17 @@
         function createOrb(orbData) {
             console.log('Creating orb with data:', orbData);
             
-            const geometry = new THREE.SphereGeometry(orbData.size, 16, 16);
+            // Increase base size for better visibility
+            const baseSize = orbData.size * 2; // Double the size
+            
+            const geometry = new THREE.SphereGeometry(baseSize, 32, 32); // Increased segments for smoother appearance
             const material = new THREE.MeshPhongMaterial({
                 color: orbData.color,
                 emissive: orbData.color,
-                emissiveIntensity: 0.5,
+                emissiveIntensity: 1.0, // Increased from 0.5
                 transparent: true,
-                opacity: 0.8
+                opacity: 1.0, // Increased from 0.8
+                shininess: 100 // Added shininess
             });
             
             const orb = new THREE.Mesh(geometry, material);
@@ -2307,15 +2320,26 @@
                 orbData.position.z
             );
             
-            // Add a pulsing animation
-            orb.userData.originalScale = orbData.size;
+            // Add a pulsing animation with more noticeable effect
+            orb.userData.originalScale = baseSize;
             orb.userData.pulseSpeed = 0.5 + Math.random() * 0.5;
             orb.userData.pulseOffset = Math.random() * Math.PI * 2;
             
+            // Add to scene and store in orbs collection
             scene.add(orb);
             orbs.set(orbData.id, orb);
             
-            console.log('Orb created successfully:', orb);
+            // Debug logging for position and visibility
+            console.log('Orb created successfully:', {
+                id: orbData.id,
+                position: orb.position,
+                size: baseSize,
+                color: orbData.color,
+                visible: orb.visible,
+                parent: orb.parent,
+                inScene: scene.children.includes(orb)
+            });
+            
             return orb;
         }
     </script>
