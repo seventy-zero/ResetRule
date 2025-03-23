@@ -2721,11 +2721,18 @@
             const cameraDirection = new THREE.Vector3();
             camera.getWorldDirection(cameraDirection);
             
-            // Show muzzle flash
-            muzzleFlash.position.copy(camera.position);
+            // Calculate offset position for muzzle flash and pellets
+            const rightVector = new THREE.Vector3();
+            rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
+            const muzzleOffset = 3; // Offset distance from player
+            const muzzlePosition = camera.position.clone().add(rightVector.multiplyScalar(muzzleOffset));
+            muzzlePosition.y = camera.position.y - 1; // Slightly lower than player view
+            
+            // Show muzzle flash at offset position
+            muzzleFlash.position.copy(muzzlePosition);
             muzzleFlash.visible = true;
             
-            // Create pellets
+            // Create pellets at offset position
             const pelletDirections = [];
             for (let i = 0; i < PELLET_COUNT; i++) {
                 // Calculate spread direction
@@ -2737,8 +2744,8 @@
                 pelletDir.applyAxisAngle(spreadAxis, spreadAngle);
                 pelletDirections.push(pelletDir);
                 
-                // Show pellet
-                pellets[i].position.copy(camera.position);
+                // Show pellet at offset position
+                pellets[i].position.copy(muzzlePosition);
                 pellets[i].visible = true;
             }
             
