@@ -2211,26 +2211,6 @@
                     }
                 }
 
-                // Animate orbs
-                orbs.forEach(orb => {
-                    const time = currentTime * 0.001;
-                    const scale = orb.userData.originalScale * 
-                        (1 + Math.sin(time * orb.userData.pulseSpeed + orb.userData.pulseOffset) * 0.3); // Increased pulse effect
-                    orb.scale.set(scale, scale, scale);
-                    
-                    // Add more noticeable floating motion
-                    orb.position.y += Math.sin(time + orb.userData.pulseOffset) * 0.1;
-                    
-                    // Debug logging for first orb only
-                    if (orb.userData.id === 0) {
-                        console.log('Orb animation:', {
-                            position: orb.position,
-                            scale: orb.scale,
-                            visible: orb.visible
-                        });
-                    }
-                });
-
                 // Always render the scene
                 renderer.render(scene, camera);
             }
@@ -2300,10 +2280,10 @@
         function createOrb(orbData) {
             console.log('Creating orb with data:', orbData);
             
-            // Increase base size for better visibility (10x larger)
-            const baseSize = orbData.size * 20; // Increased from 2x to 20x
+            // Make orbs smaller (5x instead of 20x)
+            const baseSize = orbData.size * 5;
             
-            const geometry = new THREE.SphereGeometry(baseSize, 32, 32); // Increased segments for smoother appearance
+            const geometry = new THREE.SphereGeometry(baseSize, 32, 32);
             const material = new THREE.MeshPhongMaterial({
                 color: orbData.color,
                 emissive: orbData.color,
@@ -2320,10 +2300,8 @@
                 orbData.position.z
             );
             
-            // Add a pulsing animation with more noticeable effect
+            // Remove animation properties since we don't want them to move
             orb.userData.originalScale = baseSize;
-            orb.userData.pulseSpeed = 0.5 + Math.random() * 0.5;
-            orb.userData.pulseOffset = Math.random() * Math.PI * 2;
             
             // Add to scene and store in orbs collection
             scene.add(orb);
