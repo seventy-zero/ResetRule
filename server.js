@@ -138,10 +138,12 @@ function generateWorld() {
 
     // Generate orbs
     console.log(`Starting orb generation (${NUM_ORBS} orbs)...`);
+    let successfulOrbs = 0;
+    
     for (let i = 0; i < NUM_ORBS; i++) {
         let validPosition = false;
         let attempts = 0;
-        const maxAttempts = 50; // Maximum number of attempts to find a valid position
+        const maxAttempts = 100; // Increased from 50 to 100
         
         while (!validPosition && attempts < maxAttempts) {
             const x = (Math.random() - 0.5) * MAX_RADIUS * 2;
@@ -155,7 +157,7 @@ function generateWorld() {
                     Math.pow(x - tower.x, 2) + 
                     Math.pow(z - tower.z, 2)
                 );
-                if (distance < 30) { // Minimum distance from towers
+                if (distance < 15) { // Reduced from 30 to 15
                     tooCloseToTower = true;
                     break;
                 }
@@ -189,7 +191,7 @@ function generateWorld() {
                     Math.pow(z - projZ, 2)
                 );
                 
-                if (distance < 20) { // Minimum distance from bridges
+                if (distance < 10) { // Reduced from 20 to 10
                     tooCloseToBridge = true;
                     break;
                 }
@@ -208,8 +210,10 @@ function generateWorld() {
                 };
                 
                 orbs.push(orb);
-                if (i % 20 === 0) { // Log every 20th orb
-                    console.log(`Generated orb ${i}:`, orb);
+                successfulOrbs++;
+                
+                if (i % 10 === 0) { // Log more frequently
+                    console.log(`Generated orb ${successfulOrbs}/${NUM_ORBS}:`, orb);
                 }
             }
             
@@ -221,7 +225,7 @@ function generateWorld() {
         }
     }
     
-    console.log(`Generated ${orbs.length} orbs`);
+    console.log(`Successfully generated ${successfulOrbs} out of ${NUM_ORBS} orbs`);
     console.log('World generation complete');
     
     return { towers, bridges, orbs };
