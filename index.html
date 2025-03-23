@@ -272,43 +272,6 @@
         const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
         const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
 
-        // Add movement smoothing constants
-        const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
-        // Shooting system constants and variables
-        const SHOTGUN_COOLDOWN = 500; // ms between shots
-        const SHOTGUN_RANGE = 30; // Short range for shotgun
-        const PELLET_COUNT = 8; // Number of pellets per shot
-        const PELLET_SPREAD = 0.3; // Spread angle in radians
-        const SHOTGUN_DAMAGE = 25; // Damage per pellet
-        const PELLET_SPEED = 8; // Speed of pellets
-        const PELLET_LIFETIME = 2000; // How long pellets last in ms
-        const PELLET_GRAVITY = 0.008; // Gravity effect on pellets
-        let lastShotTime = 0;
-        let playerHealth = 100;
-        let isDead = false;
-
-        // Create shotgun muzzle flash effect
-        const muzzleFlashGeometry = new THREE.SphereGeometry(8, 16, 16);
-        const muzzleFlashMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffff00,
-            transparent: true,
-            opacity: 1.0
-        });
-        const muzzleFlash = new THREE.Mesh(muzzleFlashGeometry, muzzleFlashMaterial);
-        muzzleFlash.visible = false;
-        scene.add(muzzleFlash);
-
-        // Add a second, larger flash for better visibility
-        const outerFlashGeometry = new THREE.SphereGeometry(12, 16, 16);
-        const outerFlashMaterial = new THREE.MeshBasicMaterial({
-            color: 0xff6600,
-            transparent: true,
-            opacity: 0.9
-        });
-        const outerFlash = new THREE.Mesh(outerFlashGeometry, outerFlashMaterial);
-        outerFlash.visible = false;
-        scene.add(outerFlash);
-
         // Add object pooling system
         const objectPool = {
             vectors: [],
@@ -2141,57 +2104,60 @@
             const pelletPool = {
                 pool: [],
                 active: [],
-                size: PELLET_COUNT * 2,
-                init: function() {
-                    // Create initial pellet pool
+                size: 100,
+                
+                init() {
                     for (let i = 0; i < this.size; i++) {
-                        const geometry = new THREE.SphereGeometry(0.2, 8, 8);
-                        const material = new THREE.MeshBasicMaterial({ 
-                            color: 0xffff00,
-                            transparent: true,
-                            opacity: 0.8
-                        });
-                        const pellet = new THREE.Mesh(geometry, material);
-                        pellet.velocity = new THREE.Vector3();
-                        pellet.spawnTime = 0;
-                        pellet.lifetime = 2000;
-                        pellet.trail = [];
-                        pellet.maxTrailLength = 10;
+                        const pellet = this.createPellet();
                         this.pool.push(pellet);
                     }
                 },
-                get: function() {
-                    let pellet = this.pool.pop();
-                    if (!pellet) {
-                        // Create new pellet if pool is empty
-                        const geometry = new THREE.SphereGeometry(0.2, 8, 8);
-                        const material = new THREE.MeshBasicMaterial({ 
-                            color: 0xffff00,
-                            transparent: true,
-                            opacity: 0.8
-                        });
-                        pellet = new THREE.Mesh(geometry, material);
-                        pellet.velocity = new THREE.Vector3();
-                        pellet.spawnTime = 0;
-                        pellet.lifetime = 2000;
-                        pellet.trail = [];
-                        pellet.maxTrailLength = 10;
-                    }
-                    pellet.visible = true;
-                    this.active.add(pellet);
+                
+                createPellet() {
+                    const geometry = new THREE.SphereGeometry(0.2, 8, 8);
+                    const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                    const pellet = new THREE.Mesh(geometry, material);
+                    
+                    // Create trail
+                    const trailGeometry = new THREE.BufferGeometry();
+                    const trailMaterial = new THREE.LineBasicMaterial({ color: 0xffff00 });
+                    const trail = new THREE.Line(trailGeometry, trailMaterial);
+                    pellet.add(trail);
+                    
+                    pellet.trailPoints = [];
+                    pellet.trailGeometry = trailGeometry;
+                    pellet.velocity = new THREE.Vector3();
+                    pellet.spawnTime = 0;
+                    
                     return pellet;
                 },
-                release: function(pellet) {
+                
+                get() {
+                    let pellet;
+                    if (this.pool.length > 0) {
+                        pellet = this.pool.pop();
+                    } else {
+                        pellet = this.createPellet();
+                    }
+                    
+                    pellet.visible = true;
+                    pellet.trailPoints = [];
+                    pellet.spawnTime = Date.now();
+                    this.active.push(pellet);
+                    return pellet;
+                },
+                
+                release(pellet) {
+                    const index = this.active.indexOf(pellet);
+                    if (index > -1) {
+                        this.active.splice(index, 1);
+                    }
                     pellet.visible = false;
-                    pellet.position.set(0, 0, 0);
-                    pellet.velocity = new THREE.Vector3();
-                    pellet.trail = [];
-                    this.active.delete(pellet);
                     this.pool.push(pellet);
                 }
             };
 
-            // Initialize pellet pool
+            // Initialize the pellet pool
             pelletPool.init();
 
             // Define updatePellets function after pelletPool is initialized
@@ -2882,29 +2848,10 @@
 
         // Create shotgun pellets with object pooling
         const pelletPool = {
-            pool: [],
+            pellets: [],
             active: new Set(),
-            size: PELLET_COUNT * 2,
-            init: function() {
-                // Create initial pellet pool
-                for (let i = 0; i < this.size; i++) {
-                    const geometry = new THREE.SphereGeometry(0.2, 8, 8);
-                    const material = new THREE.MeshBasicMaterial({ 
-                        color: 0xffff00,
-                        transparent: true,
-                        opacity: 0.8
-                    });
-                    const pellet = new THREE.Mesh(geometry, material);
-                    pellet.velocity = new THREE.Vector3();
-                    pellet.spawnTime = 0;
-                    pellet.lifetime = 2000;
-                    pellet.trail = [];
-                    pellet.maxTrailLength = 10;
-                    this.pool.push(pellet);
-                }
-            },
             get: function() {
-                let pellet = this.pool.pop();
+                const pellet = this.pellets.pop();
                 if (!pellet) {
                     // Create new pellet if pool is empty
                     const geometry = new THREE.SphereGeometry(0.2, 8, 8);
@@ -2916,9 +2863,9 @@
                     pellet = new THREE.Mesh(geometry, material);
                     pellet.velocity = new THREE.Vector3();
                     pellet.spawnTime = 0;
-                    pellet.lifetime = 2000;
+                    pellet.lifetime = 2000; // Increased from 1000 to 2000ms
                     pellet.trail = [];
-                    pellet.maxTrailLength = 10;
+                    pellet.maxTrailLength = 10; // Increased from 5 to 10
                 }
                 pellet.visible = true;
                 this.active.add(pellet);
@@ -2930,18 +2877,21 @@
                 pellet.velocity = new THREE.Vector3();
                 pellet.trail = [];
                 this.active.delete(pellet);
-                this.pool.push(pellet);
+                this.pellets.push(pellet);
             }
         };
 
-        // Initialize pellet pool
-        pelletPool.init();
+        // Create initial pellet pool
+        for (let i = 0; i < PELLET_COUNT * 2; i++) {
+            const pellet = pelletPool.get();
+            pelletPool.release(pellet);
+        }
 
         // Handle shotgun firing
         function fireShotgun() {
             // Guard clause to prevent firing before camera is initialized
-            if (!camera || !camera.position || !camera.getWorldDirection) {
-                console.log('Camera not fully initialized yet');
+            if (!camera) {
+                console.log('Camera not initialized yet');
                 return;
             }
             
@@ -2954,48 +2904,63 @@
                 // Calculate muzzle position based on camera direction
                 const muzzleOffset = 20;
                 const muzzlePosition = new THREE.Vector3();
-                const cameraDirection = new THREE.Vector3();
-                camera.getWorldDirection(cameraDirection);
-                muzzlePosition.copy(camera.position).add(cameraDirection.multiplyScalar(muzzleOffset));
+                muzzlePosition.copy(camera.position);
+                muzzlePosition.add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(muzzleOffset));
                 
-                // Update muzzle flash position
+                // Create muzzle flash
+                const flashGeometry = new THREE.SphereGeometry(2, 8, 8);
+                const flashMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xffff00,
+                    transparent: true,
+                    opacity: 1.0
+                });
+                const muzzleFlash = new THREE.Mesh(flashGeometry, flashMaterial);
                 muzzleFlash.position.copy(muzzlePosition);
-                muzzleFlash.visible = true;
-                outerFlash.position.copy(muzzlePosition);
-                outerFlash.visible = true;
+                scene.add(muzzleFlash);
                 
                 // Animate muzzle flash
-                setTimeout(() => {
-                    muzzleFlash.visible = false;
-                    outerFlash.visible = false;
-                }, 50);
+                const flashDuration = 50;
+                const flashStartTime = currentTime;
+                
+                function animateFlash() {
+                    const elapsed = Date.now() - flashStartTime;
+                    const progress = elapsed / flashDuration;
+                    
+                    if (progress < 1) {
+                        muzzleFlash.material.opacity = 1 - progress;
+                        requestAnimationFrame(animateFlash);
+                    } else {
+                        scene.remove(muzzleFlash);
+                    }
+                }
+                
+                animateFlash();
+                
+                // Play shotgun sound
+                playShotgunSound();
                 
                 // Fire pellets
                 for (let i = 0; i < PELLET_COUNT; i++) {
                     const pellet = pelletPool.get();
-                    if (!pellet) continue; // Skip if no pellet available
-                    
                     pellet.position.copy(muzzlePosition);
                     
                     // Calculate spread direction
                     const spreadDirection = new THREE.Vector3();
-                    camera.getWorldDirection(spreadDirection);
+                    spreadDirection.copy(camera.getWorldDirection(new THREE.Vector3()));
                     
                     // Add random spread
                     const spreadAngle = (Math.random() - 0.5) * PELLET_SPREAD;
-                    const spreadAxis = new THREE.Vector3(0, 1, 0);
+                    const spreadAxis = new THREE.Vector3();
+                    spreadAxis.crossVectors(spreadDirection, new THREE.Vector3(0, 1, 0));
                     spreadDirection.applyAxisAngle(spreadAxis, spreadAngle);
                     
-                    // Add vertical spread
-                    const verticalSpread = (Math.random() - 0.5) * PELLET_SPREAD * 0.5;
-                    spreadDirection.y += verticalSpread;
-                    spreadDirection.normalize();
+                    // Set initial velocity with increased speed
+                    pellet.velocity.copy(spreadDirection).multiplyScalar(PELLET_SPEED * 2); // Doubled speed
+                    pellet.velocity.y += 2; // Add slight upward velocity
                     
-                    // Set initial velocity
-                    pellet.velocity = spreadDirection.multiplyScalar(PELLET_SPEED);
+                    // Set spawn time and initialize trail
                     pellet.spawnTime = currentTime;
                     pellet.trail = [];
-                    pellet.visible = true;
                     
                     scene.add(pellet);
                 }
@@ -3005,7 +2970,7 @@
                     const shotData = {
                         type: 'shotgun_shot',
                         position: muzzlePosition.toArray(),
-                        direction: cameraDirection.toArray()
+                        direction: camera.getWorldDirection(new THREE.Vector3()).toArray()
                     };
                     ws.send(JSON.stringify(shotData));
                 }
