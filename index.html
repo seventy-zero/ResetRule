@@ -2122,6 +2122,66 @@
                 document.addEventListener('keyup', onKeyUp);
             }
 
+            // Initialize pellet pool before animation loop
+            const pelletPool = {
+                pool: [],
+                active: [],
+                size: 100,
+                
+                init() {
+                    for (let i = 0; i < this.size; i++) {
+                        const pellet = this.createPellet();
+                        this.pool.push(pellet);
+                    }
+                },
+                
+                createPellet() {
+                    const geometry = new THREE.SphereGeometry(0.2, 8, 8);
+                    const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                    const pellet = new THREE.Mesh(geometry, material);
+                    
+                    // Create trail
+                    const trailGeometry = new THREE.BufferGeometry();
+                    const trailMaterial = new THREE.LineBasicMaterial({ color: 0xffff00 });
+                    const trail = new THREE.Line(trailGeometry, trailMaterial);
+                    pellet.add(trail);
+                    
+                    pellet.trailPoints = [];
+                    pellet.trailGeometry = trailGeometry;
+                    pellet.velocity = new THREE.Vector3();
+                    pellet.spawnTime = 0;
+                    
+                    return pellet;
+                },
+                
+                get() {
+                    let pellet;
+                    if (this.pool.length > 0) {
+                        pellet = this.pool.pop();
+                    } else {
+                        pellet = this.createPellet();
+                    }
+                    
+                    pellet.visible = true;
+                    pellet.trailPoints = [];
+                    pellet.spawnTime = Date.now();
+                    this.active.push(pellet);
+                    return pellet;
+                },
+                
+                release(pellet) {
+                    const index = this.active.indexOf(pellet);
+                    if (index > -1) {
+                        this.active.splice(index, 1);
+                    }
+                    pellet.visible = false;
+                    this.pool.push(pellet);
+                }
+            };
+
+            // Initialize the pellet pool
+            pelletPool.init();
+
             // Animation loop with collision detection, star rotation, and nebula animation
             function animate() {
                 requestAnimationFrame(animate);
@@ -2734,18 +2794,6 @@
             pellets: [],
             active: new Set(),
             get: function() {
-                if (this.pellets.length === 0) {
-                    const geometry = new THREE.SphereGeometry(2, 8, 8);
-                    const material = new THREE.MeshBasicMaterial({
-                        color: 0xffff00,
-                        transparent: true,
-                        opacity: 1.0
-                    });
-                    const pellet = new THREE.Mesh(geometry, material);
-                    pellet.visible = false;
-                    scene.add(pellet);
-                    this.pellets.push(pellet);
-                }
                 return this.pellets.pop();
             },
             release: function(pellet) {
