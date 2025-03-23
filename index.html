@@ -271,6 +271,7 @@
         const clock = new THREE.Clock();
         const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
         const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
+        let ws = null; // Initialize WebSocket variable
 
         // Add object pooling system
         const objectPool = {
@@ -317,7 +318,6 @@
         let showLine = false;
         let lineCollisionPoint = null;
         let verticalVelocity = 0;
-        let ws = null;
 
         // Movement state variables
         let moveForward = false;
@@ -3232,6 +3232,23 @@
                     // Apply push in world space
                     camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
                     camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                    
+                    // Apply stronger push when near edges
+                    const edgeThreshold = 0.5; // Distance from edge to apply stronger push
+                    const distanceFromEdge = Math.min(
+                        Math.abs(camera.position.x - bridgeData.start.x),
+                        Math.abs(camera.position.x - bridgeData.end.x),
+                        Math.abs(camera.position.z - bridgeData.start.z),
+                        Math.abs(camera.position.z - bridgeData.end.z)
+                    );
+                    
+                    if (distanceFromEdge < edgeThreshold) {
+                        // Apply extra push away from edge
+                        const edgePushDir = new THREE.Vector3();
+                        edgePushDir.copy(camera.position).sub(bridgeData.start).normalize();
+                        camera.position.x += edgePushDir.x * COLLISION_PUSH_FORCE * 2;
+                        camera.position.z += edgePushDir.z * COLLISION_PUSH_FORCE * 2;
+                    }
                     
                     if (isFlinging) {
                         const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
