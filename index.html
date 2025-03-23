@@ -1578,6 +1578,7 @@
                 if (usernameInput.value.trim()) {
                     playerUsername = usernameInput.value.trim();
                     gameStarted = true;
+                    console.log('Game started with username:', playerUsername);
                     instructions.classList.add('hidden');
                     
                     // Send join message to server
@@ -1594,6 +1595,7 @@
                         initializeMobileControls();
                     }
                     controls.lock();
+                    console.log('Controls locked after game start');
                 }
             });
 
@@ -3272,6 +3274,10 @@
                 return;
             }
             
+            console.log('Setting up event listeners...');
+            console.log('Game started:', gameStarted);
+            console.log('Controls locked:', controls.isLocked);
+            
             // Remove any existing listeners to prevent duplicates
             document.removeEventListener('mousedown', handleShotgunFire);
             document.removeEventListener('contextmenu', handleContextMenu);
@@ -3285,7 +3291,21 @@
 
         // Define the shotgun firing handler
         function handleShotgunFire(event) {
+            console.log('Shotgun fire attempted:', {
+                button: event.button,
+                gameStarted: gameStarted,
+                controlsLocked: controls.isLocked
+            });
+            
             if (event.button === 2) { // Right mouse button
+                if (!gameStarted) {
+                    console.log('Cannot fire: Game not started');
+                    return;
+                }
+                if (!controls.isLocked) {
+                    console.log('Cannot fire: Controls not locked');
+                    return;
+                }
                 console.log('Firing shotgun (right mouse button)');
                 event.preventDefault(); // Prevent context menu
                 fireShotgun();
