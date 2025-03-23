@@ -751,22 +751,33 @@
             
             // Create collision box directly from the bridge mesh
             const collisionBox = new THREE.Box3();
-            collisionBox.setFromObject(bridgeMesh);
             
-            // Adjust collision box to be centered on the bridge's top surface
-            const boxHeight = bridgeWidth * 0.05;
-            collisionBox.min.y = bridgeData.height - boxHeight * 0.5;
-            collisionBox.max.y = bridgeData.height + boxHeight * 0.5;
+            // Create a more precise box collider for the bridge
+            const bridgeLength = distance;
+            const bridgeHeight = bridgeWidth * 0.25; // Thinner height for better precision
+            
+            // Set the collision box dimensions
+            collisionBox.min.set(-bridgeLength/2, -bridgeHeight/2, -bridgeWidth/2);
+            collisionBox.max.set(bridgeLength/2, bridgeHeight/2, bridgeWidth/2);
+            
+            // Create a matrix to transform the collision box
+            const matrix = new THREE.Matrix4();
+            matrix.makeRotationY(angle);
+            matrix.setPosition(midPoint.x, bridgeData.height, midPoint.z);
+            
+            // Apply the transformation to the collision box
+            collisionBox.applyMatrix4(matrix);
             
             // Add bridge data to collision box for better collision handling
             collisionBox.userData = {
                 isBridge: true,
                 height: bridgeData.height,
                 width: bridgeWidth,
-                length: distance,
-                startPos: startPos,
-                endPos: endPos,
-                angle: angle
+                length: bridgeLength,
+                startPos: startPos.clone(),
+                endPos: endPos.clone(),
+                angle: angle,
+                matrix: matrix.clone()
             };
             
             towers.push({
@@ -3226,30 +3237,40 @@
                 
                 // If we're above the bridge, apply normal collision response
                 if (camera.position.y >= bridgeHeight) {
+                    // Transform player position to bridge's local space
+                    const localPos = new THREE.Vector3();
+                    localPos.copy(camera.position);
+                    localPos.applyMatrix4(bridgeData.matrix.clone().invert());
+                    
                     // Calculate push distance based on which edge we're closest to
                     let pushDistance = playerRadius - collisionResult.distance;
                     
-                    // Apply push in world space
-                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                    // Apply push in bridge's local space
+                    const localPushDir = new THREE.Vector3();
+                    localPushDir.copy(pushDir);
+                    localPushDir.applyMatrix4(bridgeData.matrix.clone().invert());
                     
                     // Apply stronger push when near edges
-                    const edgeThreshold = 0.5; // Distance from edge to apply stronger push
+                    const edgeThreshold = bridgeData.width * 0.5; // Half bridge width
                     const distanceFromEdge = Math.min(
-                        Math.abs(camera.position.x - bridgeData.start.x),
-                        Math.abs(camera.position.x - bridgeData.end.x),
-                        Math.abs(camera.position.z - bridgeData.start.z),
-                        Math.abs(camera.position.z - bridgeData.end.z)
+                        Math.abs(localPos.x - bridgeData.length/2),
+                        Math.abs(localPos.x + bridgeData.length/2),
+                        Math.abs(localPos.z - bridgeData.width/2),
+                        Math.abs(localPos.z + bridgeData.width/2)
                     );
                     
                     if (distanceFromEdge < edgeThreshold) {
                         // Apply extra push away from edge
                         const edgePushDir = new THREE.Vector3();
-                        edgePushDir.copy(camera.position).sub(bridgeData.start).normalize();
-                        camera.position.x += edgePushDir.x * COLLISION_PUSH_FORCE * 2;
-                        camera.position.z += edgePushDir.z * COLLISION_PUSH_FORCE * 2;
+                        edgePushDir.copy(localPos).normalize();
+                        localPos.add(edgePushDir.multiplyScalar(COLLISION_PUSH_FORCE * 2));
                     }
                     
+                    // Transform back to world space
+                    localPos.applyMatrix4(bridgeData.matrix);
+                    camera.position.copy(localPos);
+                    
+                    if (isFlinging) {
                     if (isFlinging) {
                         const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
                         flingVelocity.x = pushDir.x * speed * 0.8;
