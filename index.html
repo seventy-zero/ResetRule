@@ -713,12 +713,17 @@
 
         // Function to create bridge from server data
         function createBridgeFromData(bridgeData) {
-            // Calculate bridge dimensions
-            const bridgeWidth = 8;
-            const startPos = new THREE.Vector3(bridgeData.startX, bridgeData.height, bridgeData.startZ);
-            const endPos = new THREE.Vector3(bridgeData.endX, bridgeData.height, bridgeData.endZ);
+            const startPos = new THREE.Vector3(bridgeData.start.x, bridgeData.start.y, bridgeData.start.z);
+            const endPos = new THREE.Vector3(bridgeData.end.x, bridgeData.end.y, bridgeData.end.z);
             const distance = startPos.distanceTo(endPos);
-            
+            const angle = Math.atan2(endPos.x - startPos.x, endPos.z - startPos.z);
+            const midPoint = new THREE.Vector3().addVectors(startPos, endPos).multiplyScalar(0.5);
+            const bridgeWidth = 8;
+            const bridgeLength = distance; // Define bridgeLength at the start
+
+            // Create bridge group
+            const bridgeGroup = new THREE.Group();
+
             // Create bridge geometry
             const bridgeGeometry = new THREE.BoxGeometry(distance, bridgeWidth, bridgeWidth);
             
@@ -736,18 +741,10 @@
                 bridgeMaterials[1]
             );
             
-            // Create bridge group
-            const bridgeGroup = new THREE.Group();
+            // Position bridge
             bridgeGroup.add(bridgeMesh);
             bridgeGroup.add(bridgeEdges);
-            
-            // Position bridge
-            const midPoint = startPos.clone().add(endPos).multiplyScalar(0.5);
             bridgeGroup.position.copy(midPoint);
-            
-            // Rotate bridge to point from start to end
-            const direction = endPos.clone().sub(startPos);
-            const angle = Math.atan2(direction.z, direction.x);
             bridgeGroup.rotation.y = angle;
             
             scene.add(bridgeGroup);
@@ -942,13 +939,15 @@
 
             ws.onopen = () => {
                 console.log('WebSocket connection established');
-                // Send join message with username
-                const joinMessage = {
-                    type: 'join',
-                    username: playerUsername
-                };
-                console.log('Sending join message:', joinMessage);
-                ws.send(JSON.stringify(joinMessage));
+                // Only send join message if we have a username
+                if (playerUsername) {
+                    const joinMessage = {
+                        type: 'join',
+                        username: playerUsername
+                    };
+                    console.log('Sending join message:', joinMessage);
+                    ws.send(JSON.stringify(joinMessage));
+                }
             };
 
             ws.onmessage = (event) => {
