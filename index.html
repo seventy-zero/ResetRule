@@ -268,6 +268,7 @@
         const towers = [];
         const nebulas = [];
         const playerStates = new Map();
+        const orbs = new Map(); // Add orbs collection
 
         // Vectors and other THREE.js objects
         const velocity = new THREE.Vector3();
@@ -784,6 +785,15 @@
                         // Create bridges from server data
                         data.bridges.forEach(bridgeData => {
                             createBridgeFromData(bridgeData);
+                        });
+
+                        // Clear existing orbs
+                        orbs.forEach(orb => scene.remove(orb));
+                        orbs.clear();
+                        
+                        // Create new orbs
+                        data.orbs.forEach(orbData => {
+                            createOrb(orbData);
                         });
                         break;
 
@@ -2178,6 +2188,17 @@
                     }
                 }
 
+                // Animate orbs
+                orbs.forEach(orb => {
+                    const time = currentTime * 0.001;
+                    const scale = orb.userData.originalScale * 
+                        (1 + Math.sin(time * orb.userData.pulseSpeed + orb.userData.pulseOffset) * 0.2);
+                    orb.scale.set(scale, scale, scale);
+                    
+                    // Add slight floating motion
+                    orb.position.y += Math.sin(time + orb.userData.pulseOffset) * 0.05;
+                });
+
                 // Always render the scene
                 renderer.render(scene, camera);
             }
@@ -2242,6 +2263,34 @@
 
         // Initialize WebSocket connection AFTER scene is set up
         setupWebSocket();
+
+        // Function to create an orb
+        function createOrb(orbData) {
+            const geometry = new THREE.SphereGeometry(orbData.size, 16, 16);
+            const material = new THREE.MeshPhongMaterial({
+                color: orbData.color,
+                emissive: orbData.color,
+                emissiveIntensity: 0.5,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            const orb = new THREE.Mesh(geometry, material);
+            orb.position.set(
+                orbData.position.x,
+                orbData.position.y,
+                orbData.position.z
+            );
+            
+            // Add a pulsing animation
+            orb.userData.originalScale = orbData.size;
+            orb.userData.pulseSpeed = 0.5 + Math.random() * 0.5;
+            orb.userData.pulseOffset = Math.random() * Math.PI * 2;
+            
+            scene.add(orb);
+            orbs.set(orbData.id, orb);
+            return orb;
+        }
     </script>
 </body>
 </html>
