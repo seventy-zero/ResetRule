@@ -2883,8 +2883,8 @@
             const direction = new THREE.Vector3();
             camera.getWorldDirection(direction);
 
-            // Calculate muzzle position (slightly in front of camera)
-            const muzzleOffset = new THREE.Vector3(0, 0, 2); // 2 units in front
+            // Calculate muzzle position (further in front of camera)
+            const muzzleOffset = new THREE.Vector3(0, 0, 5); // Increased from 2 to 5 units in front
             muzzleOffset.applyQuaternion(camera.quaternion);
             const muzzlePosition = cameraPosition.clone().add(muzzleOffset);
 
@@ -2949,7 +2949,7 @@
             playShotgunSound();
 
             // Send shot data to server
-            if (socket && socket.readyState === WebSocket.OPEN) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 const shotData = {
                     position: {
                         x: cameraPosition.x,
@@ -2967,7 +2967,7 @@
                         z: 1 + Math.random() * 2 // Random distance within cone
                     }))
                 };
-                socket.send(JSON.stringify({
+                ws.send(JSON.stringify({
                     type: 'shotgunShot',
                     ...shotData
                 }));
