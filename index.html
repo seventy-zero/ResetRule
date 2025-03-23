@@ -2877,16 +2877,16 @@
             if (now - lastShotTime < SHOTGUN_COOLDOWN) return;
             lastShotTime = now;
 
-            // Get player position and direction
-            const playerPosition = new THREE.Vector3();
-            player.getWorldPosition(playerPosition);
+            // Get camera position and direction
+            const cameraPosition = new THREE.Vector3();
+            camera.getWorldPosition(cameraPosition);
             const direction = new THREE.Vector3();
             camera.getWorldDirection(direction);
 
-            // Calculate muzzle position (slightly in front of player)
+            // Calculate muzzle position (slightly in front of camera)
             const muzzleOffset = new THREE.Vector3(0, 0, 2); // 2 units in front
-            muzzleOffset.applyQuaternion(player.quaternion);
-            const muzzlePosition = playerPosition.clone().add(muzzleOffset);
+            muzzleOffset.applyQuaternion(camera.quaternion);
+            const muzzlePosition = cameraPosition.clone().add(muzzleOffset);
 
             // Create muzzle flash
             const flashGeometry = new THREE.SphereGeometry(0.5, 8, 8);
@@ -2926,7 +2926,7 @@
             const blastCone = new THREE.Mesh(coneGeometry, coneMaterial);
             blastCone.position.copy(muzzlePosition);
             blastCone.rotation.x = -Math.PI / 2; // Point cone forward
-            blastCone.rotation.z = Math.PI / 2; // Align with player direction
+            blastCone.rotation.z = Math.PI / 2; // Align with camera direction
             scene.add(blastCone);
 
             // Animate blast cone
@@ -2952,9 +2952,9 @@
             if (socket && socket.readyState === WebSocket.OPEN) {
                 const shotData = {
                     position: {
-                        x: playerPosition.x,
-                        y: playerPosition.y,
-                        z: playerPosition.z
+                        x: cameraPosition.x,
+                        y: cameraPosition.y,
+                        z: cameraPosition.z
                     },
                     direction: {
                         x: direction.x,
