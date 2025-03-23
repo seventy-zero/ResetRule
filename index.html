@@ -2646,24 +2646,39 @@
 
             // Send position updates
             function sendPositionUpdate() {
-                if (!ws || ws.readyState !== WebSocket.OPEN) return; // Add null check and connection state check
-                
-                const position = camera.position;
-                const rotation = camera.rotation;
-                
-                ws.send(JSON.stringify({
-                    type: 'position',
-                    position: {
-                        x: position.x,
-                        y: position.y,
-                        z: position.z
-                    },
-                    rotation: {
-                        x: rotation.x,
-                        y: rotation.y,
-                        z: rotation.z
-                    }
-                }));
+                if (ws.readyState === WebSocket.OPEN && gameStarted) {
+                    // Calculate speed and heading
+                    const dx = camera.position.x - lastSentPosition.x;
+                    const dz = camera.position.z - lastSentPosition.z;
+                    const speed = Math.sqrt(dx * dx + dz * dz) / (0.016); // Assuming 60fps
+                    const heading = Math.atan2(-dx, -dz) * 180 / Math.PI;
+                    const verticalSpeed = (camera.position.y - lastSentPosition.y) / 0.016;
+
+                    // Round position data to 2 decimal places
+                    const positionData = {
+                        position: [
+                            Math.round(camera.position.x * 100) / 100,
+                            Math.round(camera.position.y * 100) / 100,
+                            Math.round(camera.position.z * 100) / 100
+                        ],
+                        rotation: [
+                            Math.round(camera.rotation.x * 100) / 100,
+                            Math.round(camera.rotation.y * 100) / 100,
+                            Math.round(camera.rotation.z * 100) / 100
+                        ],
+                        speed: Math.round(speed),
+                        heading: Math.round(heading),
+                        verticalSpeed: Math.round(verticalSpeed * 100) / 100
+                    };
+
+                    ws.send(JSON.stringify({
+                        type: 'position',
+                        ...positionData
+                    }));
+
+                    lastSentPosition.copy(camera.position);
+                    lastSentRotation.copy(camera.rotation);
+                }
             }
 
             // Update position more frequently (16ms = ~60fps)
@@ -2671,52 +2686,10 @@
 
             // Add periodic player list updates
             setInterval(() => {
-                const playerList = document.getElementById('playerList');
-                if (playerList && playerList.classList.contains('visible')) {
+                if (document.getElementById('playerList').classList.contains('visible')) {
                     updatePlayerList();
                 }
             }, 100); // Update every 100ms when visible
-
-            // Create bridges
-            const BRIDGE_LENGTH = 100;
-            const BRIDGE_WIDTH = 20;
-            const BRIDGE_HEIGHT = 5;
-            const BRIDGE_COUNT = 3;
-            const bridges = [];
-
-            for (let i = 0; i < BRIDGE_COUNT; i++) {
-                const bridgeGeometry = new THREE.BoxGeometry(BRIDGE_LENGTH, BRIDGE_HEIGHT, BRIDGE_WIDTH);
-                const bridgeMaterial = new THREE.MeshPhongMaterial({ color: 0x808080 });
-                const bridge = new THREE.Mesh(bridgeGeometry, bridgeMaterial);
-                
-                // Position bridges at different heights and angles
-                const height = 50 + i * 30;
-                const angle = (Math.PI * 2 * i) / BRIDGE_COUNT;
-                const radius = 150;
-                
-                bridge.position.set(
-                    Math.cos(angle) * radius,
-                    height,
-                    Math.sin(angle) * radius
-                );
-                bridge.rotation.y = angle + Math.PI / 2;
-                
-                scene.add(bridge);
-                bridges.push(bridge);
-
-                // Create more precise collider for the bridge
-                const colliderGeometry = new THREE.BoxGeometry(
-                    BRIDGE_LENGTH,  // Length
-                    BRIDGE_HEIGHT,  // Height
-                    BRIDGE_WIDTH    // Width
-                );
-                const collider = new THREE.Mesh(colliderGeometry);
-                collider.position.copy(bridge.position);
-                collider.rotation.copy(bridge.rotation);
-                collider.visible = false;
-                scene.add(collider);
-                bridgeColliders.push(collider);
-            }
         } catch (error) {
             console.error('Error during initialization:', error);
             document.body.innerHTML = `
@@ -3159,20 +3132,21 @@
 
         // Update health display
         function updateHealthDisplay() {
-            const healthDisplay = document.getElementById('health-display');
-            if (!healthDisplay) return; // Add null check
+            const segments = healthDisplay.children;
+            const healthPerSegment = 20; // 100 health / 5 segments
             
-            const healthSegments = healthDisplay.querySelectorAll('.health-segment');
-            if (!healthSegments) return; // Add null check
-            
-            healthSegments.forEach((segment, index) => {
-                const healthThreshold = 100 - (index * 10);
-                if (playerHealth > healthThreshold) {
-                    segment.classList.add('active');
+            for (let i = 0; i < segments.length; i++) {
+                const segmentHealth = Math.max(0, playerHealth - (i * healthPerSegment));
+                const segmentPercentage = Math.min(100, (segmentHealth / healthPerSegment) * 100);
+                
+                if (segmentPercentage <= 0) {
+                    segments[i].style.backgroundColor = '#ff0000'; // Brighter red when empty
+                    segments[i].style.boxShadow = '0 0 10px rgba(255, 0, 0, 0.5)';
                 } else {
-                    segment.classList.remove('active');
+                    segments[i].style.backgroundColor = '#00ff00'; // Brighter green when full
+                    segments[i].style.boxShadow = '0 0 10px rgba(0, 255, 0, 0.5)';
                 }
-            });
+            }
         }
 
         // Add health display update to animation loop
