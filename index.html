@@ -787,6 +787,12 @@
             let minDistance = Infinity;
             
             for (const tower of towers) {
+                // Skip if tower or its collision box is undefined
+                if (!tower || !tower.collisionBox) {
+                    console.warn('Invalid tower or missing collision box:', tower);
+                    continue;
+                }
+
                 if (tower.isBridge) {
                     // Special handling for bridges
                     const bridge = tower;
