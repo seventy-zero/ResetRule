@@ -795,8 +795,10 @@
                     // Special handling for bridges
                     if (collisionBox.userData && collisionBox.userData.isBridge) {
                         const bridgeHeight = collisionBox.userData.height;
-                        const bridgeWidth = 2; // Match the actual bridge width from the model
-                        const bridgeLength = 10; // Match the actual bridge length from the model
+                        
+                        // Get bridge dimensions from the collision box
+                        const bridgeWidth = Math.abs(collisionBox.max.x - collisionBox.min.x) / 2;
+                        const bridgeLength = Math.abs(collisionBox.max.z - collisionBox.min.z) / 2;
                         
                         // Get bridge center point
                         const bridgeCenter = new THREE.Vector3(
@@ -811,7 +813,7 @@
                             Math.abs(position.z - bridgeCenter.z)
                         );
                         
-                        // Check if we're within the bridge's actual dimensions
+                        // Check if we're within the bridge's dimensions
                         if (distanceFromCenter.x <= bridgeWidth && distanceFromCenter.y <= bridgeLength) {
                             // If below bridge, only check horizontal distance
                             if (position.y < bridgeHeight) {
