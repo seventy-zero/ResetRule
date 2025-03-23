@@ -3200,6 +3200,8 @@
             // Special handling for bridges
             if (collisionResult.isBridge) {
                 const bridgeHeight = collisionResult.bridgeHeight;
+                const bridgeWidth = 2; // Match the actual bridge width from the model
+                const bridgeLength = 10; // Match the actual bridge length from the model
                 
                 // If we're below the bridge and moving up, let us pass through
                 if (camera.position.y < bridgeHeight && verticalVelocity > 0) {
@@ -3208,17 +3210,32 @@
                 
                 // If we're above the bridge, apply normal collision response
                 if (camera.position.y >= bridgeHeight) {
-                    const pushDistance = playerRadius - collisionResult.distance;
-                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                    // Calculate distance from bridge center
+                    const bridgeCenter = new THREE.Vector3(
+                        Math.floor(camera.position.x / 20) * 20 + 10,
+                        0,
+                        Math.floor(camera.position.z / 20) * 20 + 10
+                    );
                     
-                    if (isFlinging) {
-                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                        flingVelocity.x = pushDir.x * speed * 0.8;
-                        flingVelocity.z = pushDir.z * speed * 0.8;
-                    } else {
-                        velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
-                        velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
+                    const distanceFromCenter = new THREE.Vector2(
+                        Math.abs(camera.position.x - bridgeCenter.x),
+                        Math.abs(camera.position.z - bridgeCenter.z)
+                    );
+                    
+                    // Check if we're within the bridge's actual dimensions
+                    if (distanceFromCenter.x <= bridgeWidth && distanceFromCenter.y <= bridgeLength) {
+                        const pushDistance = playerRadius - collisionResult.distance;
+                        camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                        camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                        
+                        if (isFlinging) {
+                            const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                            flingVelocity.x = pushDir.x * speed * 0.8;
+                            flingVelocity.z = pushDir.z * speed * 0.8;
+                        } else {
+                            velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
+                            velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
+                        }
                     }
                 }
             } else {
