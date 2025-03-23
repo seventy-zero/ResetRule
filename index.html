@@ -2681,19 +2681,21 @@
             }
         }
 
-        // Add after the global variables section
-        const SHOTGUN_COOLDOWN = 500; // Reduced from 1000 to 500ms
+        // Shooting system constants
+        const SHOTGUN_COOLDOWN = 500; // ms between shots
         const SHOTGUN_RANGE = 30; // Short range for shotgun
         const PELLET_COUNT = 8; // Number of pellets per shot
         const PELLET_SPREAD = 0.3; // Spread angle in radians
         const SHOTGUN_DAMAGE = 25; // Damage per pellet
+        const PELLET_SPEED = 8; // Speed of pellets
+        const PELLET_LIFETIME = 2000; // How long pellets last in ms
+        const PELLET_GRAVITY = 0.008; // Gravity effect on pellets
         let lastShotTime = 0;
         let playerHealth = 100;
         let isDead = false;
 
-        // Add after the scene setup
         // Create shotgun muzzle flash effect
-        const muzzleFlashGeometry = new THREE.SphereGeometry(8, 16, 16); // Increased from 5 to 8
+        const muzzleFlashGeometry = new THREE.SphereGeometry(8, 16, 16);
         const muzzleFlashMaterial = new THREE.MeshBasicMaterial({
             color: 0xffff00,
             transparent: true,
@@ -2704,29 +2706,47 @@
         scene.add(muzzleFlash);
 
         // Add a second, larger flash for better visibility
-        const outerFlashGeometry = new THREE.SphereGeometry(12, 16, 16); // Increased from 7 to 12
+        const outerFlashGeometry = new THREE.SphereGeometry(12, 16, 16);
         const outerFlashMaterial = new THREE.MeshBasicMaterial({
             color: 0xff6600,
             transparent: true,
-            opacity: 0.9 // Increased from 0.8 to 0.9
+            opacity: 0.9
         });
         const outerFlash = new THREE.Mesh(outerFlashGeometry, outerFlashMaterial);
         outerFlash.visible = false;
         scene.add(outerFlash);
 
-        // Create shotgun pellets
-        const pelletGeometry = new THREE.SphereGeometry(2, 8, 8); // Increased from 1.5 to 2
-        const pelletMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffff00,
-            transparent: true,
-            opacity: 1.0
-        });
-        const pellets = [];
-        for (let i = 0; i < PELLET_COUNT; i++) {
-            const pellet = new THREE.Mesh(pelletGeometry, pelletMaterial);
-            pellet.visible = false;
-            scene.add(pellet);
-            pellets.push(pellet);
+        // Create shotgun pellets with object pooling
+        const pelletPool = {
+            pellets: [],
+            active: new Set(),
+            get: function() {
+                if (this.pellets.length === 0) {
+                    const geometry = new THREE.SphereGeometry(2, 8, 8);
+                    const material = new THREE.MeshBasicMaterial({
+                        color: 0xffff00,
+                        transparent: true,
+                        opacity: 1.0
+                    });
+                    const pellet = new THREE.Mesh(geometry, material);
+                    pellet.visible = false;
+                    scene.add(pellet);
+                    this.pellets.push(pellet);
+                }
+                return this.pellets.pop();
+            },
+            release: function(pellet) {
+                pellet.visible = false;
+                pellet.position.set(0, 0, 0);
+                pellet.velocity = new THREE.Vector3();
+                this.active.delete(pellet);
+                this.pellets.push(pellet);
+            }
+        };
+
+        // Create initial pellet pool
+        for (let i = 0; i < PELLET_COUNT * 2; i++) {
+            pelletPool.get();
         }
 
         // Handle shotgun firing
@@ -2745,7 +2765,7 @@
             // Calculate offset position for muzzle flash and pellets
             const rightVector = new THREE.Vector3();
             rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
-            const muzzleOffset = 20; // Increased from 12 to 20 units to move spawn point forward
+            const muzzleOffset = 20;
             const muzzlePosition = camera.position.clone().add(rightVector.multiplyScalar(muzzleOffset));
             muzzlePosition.y = camera.position.y - 1;
             
@@ -2767,57 +2787,14 @@
                 pelletDir.applyAxisAngle(spreadAxis, spreadAngle);
                 pelletDirections.push(pelletDir);
                 
-                // Show pellet at offset position
-                pellets[i].position.copy(muzzlePosition);
-                pellets[i].visible = true;
-                
-                // Animate pellet movement with proper physics
-                const pelletSpeed = 8; // Increased from 4 to 8 for faster movement
-                const pelletDistance = 200; // Increased from 100 to 200 for longer travel
-                const startTime = currentTime;
-                
-                function animatePellet(pellet, direction, startPos) {
-                    const elapsed = Date.now() - startTime;
-                    const distance = elapsed * pelletSpeed / 1000; // Convert to seconds
-                    
-                    if (distance < pelletDistance) {
-                        // Update pellet position with proper movement
-                        const newPosition = startPos.clone().add(direction.multiplyScalar(distance));
-                        pellet.position.copy(newPosition);
-                        
-                        // Make pellet face direction of travel
-                        pellet.lookAt(newPosition.clone().add(direction));
-                        
-                        // Check for collisions with players
-                        const raycaster = new THREE.Raycaster();
-                        raycaster.set(pellet.position, direction);
-                        
-                        // Check for player collisions
-                        playerStates.forEach((playerState, username) => {
-                            if (username !== playerUsername) {
-                                const playerCollider = new THREE.Sphere(playerState.mesh.position, playerRadius);
-                                const intersects = raycaster.intersectSphere(playerCollider);
-                                
-                                if (intersects.length > 0 && intersects[0].distance < 5) {
-                                    // Player was hit
-                                    if (ws && ws.readyState === WebSocket.OPEN) {
-                                        ws.send(JSON.stringify({
-                                            type: 'player_damaged',
-                                            username: username,
-                                            damage: SHOTGUN_DAMAGE
-                                        }));
-                                    }
-                                }
-                            }
-                        });
-                        
-                        requestAnimationFrame(() => animatePellet(pellet, direction, startPos));
-                    } else {
-                        pellet.visible = false;
-                    }
-                }
-                
-                animatePellet(pellets[i], pelletDir, muzzlePosition.clone());
+                // Get pellet from pool
+                const pellet = pelletPool.get();
+                pellet.position.copy(muzzlePosition);
+                pellet.velocity = pelletDir.multiplyScalar(PELLET_SPEED);
+                pellet.velocity.y += 0.2; // Add slight upward velocity
+                pellet.visible = true;
+                pellet.spawnTime = currentTime;
+                pelletPool.active.add(pellet);
             }
             
             // Send shot data to server
@@ -2835,7 +2812,7 @@
             setTimeout(() => {
                 muzzleFlash.visible = false;
                 outerFlash.visible = false;
-            }, 200); // Increased from 150 to 200ms for longer visibility
+            }, 200);
         }
 
         // Add these new functions
@@ -2997,7 +2974,57 @@
             // Update health display
             updateHealthDisplay();
             
+            // Update pellet animations
+            animatePellets();
+            
             // ... rest of animate function ...
+        }
+
+        // Add pellet animation to the main animation loop
+        function animatePellets() {
+            const currentTime = Date.now();
+            
+            pelletPool.active.forEach(pellet => {
+                // Check if pellet has expired
+                if (currentTime - pellet.spawnTime > PELLET_LIFETIME) {
+                    pelletPool.release(pellet);
+                    return;
+                }
+                
+                // Update pellet position with physics
+                pellet.velocity.y -= PELLET_GRAVITY;
+                pellet.position.add(pellet.velocity);
+                
+                // Check for collisions with players
+                const raycaster = new THREE.Raycaster();
+                raycaster.set(pellet.position, pellet.velocity.normalize());
+                
+                // Check for player collisions
+                playerStates.forEach((playerState, username) => {
+                    if (username !== playerUsername) {
+                        const playerCollider = new THREE.Sphere(playerState.mesh.position, playerRadius);
+                        const intersects = raycaster.intersectSphere(playerCollider);
+                        
+                        if (intersects.length > 0 && intersects[0].distance < 5) {
+                            // Player was hit
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({
+                                    type: 'player_damaged',
+                                    username: username,
+                                    damage: SHOTGUN_DAMAGE
+                                }));
+                            }
+                            pelletPool.release(pellet);
+                        }
+                    }
+                });
+                
+                // Check for collisions with towers
+                const towerIntersects = raycaster.intersectObjects(towers.map(t => t.mesh));
+                if (towerIntersects.length > 0 && towerIntersects[0].distance < 5) {
+                    pelletPool.release(pellet);
+                }
+            });
         }
     </script>
 </body>
