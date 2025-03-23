@@ -774,10 +774,6 @@
             collisionBox.max.copy(localMax);
             
             // Add bridge data to collision box for better collision handling
-            // Apply the transformation to the collision box
-            collisionBox.applyMatrix4(matrix);
-            
-            // Add bridge data to collision box for better collision handling
             collisionBox.userData = {
                 isBridge: true,
                 height: bridgeData.height,
@@ -786,8 +782,13 @@
                 startPos: startPos.clone(),
                 endPos: endPos.clone(),
                 angle: angle,
-                matrix: matrix.clone()
+                matrix: matrix.clone(),
+                localMin: localMin.clone(),
+                localMax: localMax.clone()
             };
+            
+            // Remove the duplicate matrix application
+            // collisionBox.applyMatrix4(matrix); // This line was causing the double transformation
             
             towers.push({
                 mesh: bridgeGroup,
