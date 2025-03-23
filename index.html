@@ -342,6 +342,7 @@
         const playerStates = new Map();
         const orbs = new Map(); // Add orbs collection
         const playerOrbs = new Map(); // Track orbs collected by each player
+        const collisionBoxes = []; // Add collision boxes collection
 
         // Vectors and other THREE.js objects
         const velocity = new THREE.Vector3();
@@ -739,31 +740,25 @@
             const bridgeGroup = new THREE.Group();
 
             // Create bridge geometry
-            const bridgeGeometry = new THREE.BoxGeometry(distance, bridgeWidth, bridgeWidth);
-            
-            // Create materials for the bridge (matching tower style)
-            const bridgeMaterials = [
-                new THREE.MeshBasicMaterial({ color: 0x000000 }),
-                new THREE.LineBasicMaterial({ color: 0xffffff })
-            ];
-            
-            // Create bridge mesh and edges
-            const bridgeMesh = new THREE.Mesh(bridgeGeometry, bridgeMaterials[0]);
-            bridgeMesh.name = 'bridge'; // Add name to identify bridges
+            const bridgeGeometry = new THREE.BoxGeometry(bridgeLength, bridgeWidth * 0.25, bridgeWidth);
+            const bridgeMaterial = new THREE.MeshPhongMaterial({
+                color: 0x808080,
+                shininess: 30,
+                specular: 0x444444
+            });
+            const bridgeMesh = new THREE.Mesh(bridgeGeometry, bridgeMaterial);
             const bridgeEdges = new THREE.LineSegments(
                 new THREE.EdgesGeometry(bridgeGeometry),
-                bridgeMaterials[1]
+                new THREE.LineBasicMaterial({ color: 0x000000 })
             );
-            
+
             // Position bridge
             bridgeGroup.add(bridgeMesh);
             bridgeGroup.add(bridgeEdges);
             bridgeGroup.position.copy(midPoint);
             bridgeGroup.rotation.y = angle;
-            
-            scene.add(bridgeGroup);
-            
-            // Create collision box directly from the bridge mesh
+
+            // Create collision box
             const collisionBox = new THREE.Box3();
             
             // Get the actual bridge mesh from the group
@@ -810,7 +805,6 @@
                 // Fallback to the old method if mesh not found
                 console.warn('Bridge mesh not found, using fallback collision box');
                 const bridgeHeight = 0.5;
-                const bridgeLength = distance; // Use the distance parameter for bridge length
                 const localMin = new THREE.Vector3(-bridgeLength/2, -bridgeHeight/2, -bridgeWidth/2);
                 const localMax = new THREE.Vector3(bridgeLength/2, bridgeHeight/2, bridgeWidth/2);
                 localMin.applyMatrix4(matrix);
@@ -818,84 +812,73 @@
                 collisionBox.min.copy(localMin);
                 collisionBox.max.copy(localMax);
             }
-            
-            // Remove the duplicate matrix application
-            // collisionBox.applyMatrix4(matrix); // This line was causing the double transformation
-            
-            towers.push({
-                mesh: bridgeGroup,
-                collisionBoxes: [collisionBox]
-            });
+
+            // Add bridge to scene and collision boxes array
+            scene.add(bridgeGroup);
+            collisionBoxes.push(collisionBox);
+
+            return bridgeGroup;
         }
 
         // Update collision check function
         function checkCollision(position, radius) {
-            const playerCollider = new THREE.Sphere(position, radius);
             let closestCollision = null;
             let minDistance = Infinity;
-            
-            for (const tower of towers) {
-                for (const collisionBox of tower.collisionBoxes) {
-                    // Get the closest point on the collision box to the player
-                    const closestPoint = new THREE.Vector3();
-                    collisionBox.clampPoint(position, closestPoint);
-                    
-                    // Calculate distance to closest point
-                    const distance = position.distanceTo(closestPoint);
-                    
+
+            collisionBoxes.forEach(collisionBox => {
+                if (collisionBox.userData.isBridge) {
                     // Special handling for bridges
-                    if (collisionBox.userData && collisionBox.userData.isBridge) {
-                        const bridgeHeight = collisionBox.userData.height;
+                    const bridgeData = collisionBox.userData;
+                    const bridgeCenter = new THREE.Vector3().addVectors(bridgeData.startPos, bridgeData.endPos).multiplyScalar(0.5);
+                    const bridgeDirection = new THREE.Vector3().subVectors(bridgeData.endPos, bridgeData.startPos).normalize();
+                    
+                    // Project player position onto bridge line
+                    const playerToBridge = new THREE.Vector3().subVectors(position, bridgeCenter);
+                    const projectedDistance = playerToBridge.dot(bridgeDirection);
+                    
+                    // Check if player is within bridge length
+                    if (Math.abs(projectedDistance) <= bridgeData.length / 2) {
+                        // Calculate perpendicular distance from bridge line
+                        const projectedPoint = new THREE.Vector3()
+                            .copy(bridgeCenter)
+                            .add(bridgeDirection.multiplyScalar(projectedDistance));
+                        const distance = position.distanceTo(projectedPoint);
                         
-                        // If below bridge, only check horizontal distance
-                        if (position.y < bridgeHeight) {
-                            const horizontalDistance = Math.sqrt(
-                                Math.pow(position.x - closestPoint.x, 2) + 
-                                Math.pow(position.z - closestPoint.z, 2)
-                            );
-                            
-                            // Use a much narrower collision width for bridges
-                            if (horizontalDistance < radius * 0.1) { // Reduced to 10% of normal radius
-                                return {
-                                    collision: true,
-                                    tower: tower,
-                                    collisionBox: collisionBox,
-                                    distance: horizontalDistance,
-                                    closestPoint: closestPoint,
-                                    isBridge: true,
-                                    bridgeHeight: bridgeHeight
-                                };
+                        // Check if player is within bridge width
+                        if (distance < bridgeData.width / 2) {
+                            // Check if player is above bridge
+                            if (position.y >= bridgeData.height - 1) {
+                                if (distance < minDistance) {
+                                    minDistance = distance;
+                                    closestCollision = {
+                                        collision: true,
+                                        bridge: collisionBox,
+                                        distance: distance,
+                                        closestPoint: projectedPoint,
+                                        isBridge: true
+                                    };
+                                }
                             }
-                        } else {
-                            // If above bridge, check full 3D distance
-                            if (distance < radius * 0.1) { // Reduced to 10% of normal radius
-                                return {
-                                    collision: true,
-                                    tower: tower,
-                                    collisionBox: collisionBox,
-                                    distance: distance,
-                                    closestPoint: closestPoint,
-                                    isBridge: true,
-                                    bridgeHeight: bridgeHeight
-                                };
-                            }
-                        }
-                    } else {
-                        // Normal tower collision check
-                        if (distance < minDistance) {
-                            minDistance = distance;
-                            closestCollision = {
-                                collision: true,
-                                tower: tower,
-                                collisionBox: collisionBox,
-                                distance: distance,
-                                closestPoint: closestPoint,
-                                isBridge: false
-                            };
                         }
                     }
+                } else {
+                    // Normal tower collision check
+                    const closestPoint = new THREE.Vector3();
+                    collisionBox.clampPoint(position, closestPoint);
+                    const distance = position.distanceTo(closestPoint);
+                    
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestCollision = {
+                            collision: true,
+                            tower: collisionBox,
+                            distance: distance,
+                            closestPoint: closestPoint,
+                            isBridge: false
+                        };
+                    }
                 }
-            }
+            });
             
             // Only return collision if we're actually within the collision radius
             if (closestCollision && closestCollision.distance < radius) {
@@ -905,7 +888,7 @@
             return {
                 collision: false,
                 tower: null,
-                collisionBox: null,
+                bridge: null,
                 distance: Infinity,
                 closestPoint: null,
                 isBridge: false
