@@ -139,22 +139,79 @@ function generateWorld() {
     // Generate orbs
     console.log(`Starting orb generation (${NUM_ORBS} orbs)...`);
     for (let i = 0; i < NUM_ORBS; i++) {
-        const x = (Math.random() - 0.5) * MAX_RADIUS * 2;
-        const z = (Math.random() - 0.5) * MAX_RADIUS * 2;
-        const y = Math.random() * 200 + 50; // Height between 50 and 250
-        const color = Math.floor(Math.random() * 0xFFFFFF); // Random color
-        const size = Math.random() * 0.5 + 0.5; // Size between 0.5 and 1
-
-        const orb = {
-            id: i,
-            position: { x, y, z },
-            color,
-            size
-        };
+        let validPosition = false;
+        let attempts = 0;
+        const maxAttempts = 50; // Maximum number of attempts to find a valid position
         
-        orbs.push(orb);
-        if (i % 20 === 0) { // Log every 20th orb
-            console.log(`Generated orb ${i}:`, orb);
+        while (!validPosition && attempts < maxAttempts) {
+            const x = (Math.random() - 0.5) * MAX_RADIUS * 2;
+            const z = (Math.random() - 0.5) * MAX_RADIUS * 2;
+            const y = Math.random() * 200 + 50; // Height between 50 and 250
+            
+            // Check if position is too close to any tower
+            let tooCloseToTower = false;
+            for (const tower of towers) {
+                const distance = Math.sqrt(
+                    Math.pow(x - tower.x, 2) + 
+                    Math.pow(z - tower.z, 2)
+                );
+                if (distance < 30) { // Minimum distance from towers
+                    tooCloseToTower = true;
+                    break;
+                }
+            }
+            
+            // Check if position is too close to any bridge
+            let tooCloseToBridge = false;
+            for (const bridge of bridges) {
+                const bridgeStart = bridge.start;
+                const bridgeEnd = bridge.end;
+                
+                // Calculate distance from point to line segment
+                const dx = bridgeEnd.x - bridgeStart.x;
+                const dz = bridgeEnd.z - bridgeStart.z;
+                const len = Math.sqrt(dx * dx + dz * dz);
+                
+                if (len === 0) continue;
+                
+                const t = ((x - bridgeStart.x) * dx + (z - bridgeStart.z) * dz) / (len * len);
+                const projX = bridgeStart.x + t * dx;
+                const projZ = bridgeStart.z + t * dz;
+                
+                const distance = Math.sqrt(
+                    Math.pow(x - projX, 2) + 
+                    Math.pow(z - projZ, 2)
+                );
+                
+                if (distance < 20) { // Minimum distance from bridges
+                    tooCloseToBridge = true;
+                    break;
+                }
+            }
+            
+            if (!tooCloseToTower && !tooCloseToBridge) {
+                validPosition = true;
+                const color = Math.floor(Math.random() * 0xFFFFFF); // Random color
+                const size = Math.random() * 0.5 + 0.5; // Size between 0.5 and 1
+
+                const orb = {
+                    id: i,
+                    position: { x, y, z },
+                    color,
+                    size
+                };
+                
+                orbs.push(orb);
+                if (i % 20 === 0) { // Log every 20th orb
+                    console.log(`Generated orb ${i}:`, orb);
+                }
+            }
+            
+            attempts++;
+        }
+        
+        if (!validPosition) {
+            console.warn(`Failed to find valid position for orb ${i} after ${maxAttempts} attempts`);
         }
     }
     
