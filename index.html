@@ -795,33 +795,29 @@
                     // Special handling for bridges
                     if (collisionBox.userData && collisionBox.userData.isBridge) {
                         const bridgeHeight = collisionBox.userData.height;
-                        const bridgeWidth = collisionBox.userData.width;
-                        const bridgeLength = collisionBox.userData.length;
+                        const bridgeWidth = 2; // Match the actual bridge width from the model
+                        const bridgeLength = 10; // Match the actual bridge length from the model
                         
-                        // Get bridge start and end points
-                        const bridgeStart = new THREE.Vector3(
-                            collisionBox.min.x,
+                        // Get bridge center point
+                        const bridgeCenter = new THREE.Vector3(
+                            (collisionBox.min.x + collisionBox.max.x) / 2,
                             bridgeHeight,
-                            collisionBox.min.z
-                        );
-                        const bridgeEnd = new THREE.Vector3(
-                            collisionBox.max.x,
-                            bridgeHeight,
-                            collisionBox.max.z
+                            (collisionBox.min.z + collisionBox.max.z) / 2
                         );
                         
-                        // Calculate distance along bridge axis
-                        const bridgeAxis = bridgeEnd.clone().sub(bridgeStart).normalize();
-                        const playerToStart = position.clone().sub(bridgeStart);
-                        const distanceAlongBridge = playerToStart.dot(bridgeAxis);
+                        // Calculate distance from bridge center
+                        const distanceFromCenter = new THREE.Vector2(
+                            Math.abs(position.x - bridgeCenter.x),
+                            Math.abs(position.z - bridgeCenter.z)
+                        );
                         
-                        // Check if we're within the bridge's length
-                        if (distanceAlongBridge >= 0 && distanceAlongBridge <= bridgeLength) {
+                        // Check if we're within the bridge's actual dimensions
+                        if (distanceFromCenter.x <= bridgeWidth && distanceFromCenter.y <= bridgeLength) {
                             // If below bridge, only check horizontal distance
                             if (position.y < bridgeHeight) {
                                 const horizontalDistance = Math.sqrt(
-                                    Math.pow(position.x - closestPoint.x, 2) + 
-                                    Math.pow(position.z - closestPoint.z, 2)
+                                    Math.pow(position.x - bridgeCenter.x, 2) + 
+                                    Math.pow(position.z - bridgeCenter.z, 2)
                                 );
                                 
                                 // Only return collision if we're within the bridge's width
@@ -831,20 +827,21 @@
                                         tower: tower,
                                         collisionBox: collisionBox,
                                         distance: horizontalDistance,
-                                        closestPoint: closestPoint,
+                                        closestPoint: bridgeCenter,
                                         isBridge: true,
                                         bridgeHeight: bridgeHeight
                                     };
                                 }
                             } else {
                                 // If above bridge, check full 3D distance
+                                const distance = position.distanceTo(bridgeCenter);
                                 if (distance < radius) {
                                     return {
                                         collision: true,
                                         tower: tower,
                                         collisionBox: collisionBox,
                                         distance: distance,
-                                        closestPoint: closestPoint,
+                                        closestPoint: bridgeCenter,
                                         isBridge: true,
                                         bridgeHeight: bridgeHeight
                                     };
