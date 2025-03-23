@@ -2300,17 +2300,17 @@
         function createOrb(orbData) {
             console.log('Creating orb with data:', orbData);
             
-            // Increase base size for better visibility
-            const baseSize = orbData.size * 2; // Double the size
+            // Increase base size for better visibility (10x larger)
+            const baseSize = orbData.size * 20; // Increased from 2x to 20x
             
             const geometry = new THREE.SphereGeometry(baseSize, 32, 32); // Increased segments for smoother appearance
             const material = new THREE.MeshPhongMaterial({
                 color: orbData.color,
                 emissive: orbData.color,
-                emissiveIntensity: 1.0, // Increased from 0.5
+                emissiveIntensity: 1.0,
                 transparent: true,
-                opacity: 1.0, // Increased from 0.8
-                shininess: 100 // Added shininess
+                opacity: 1.0,
+                shininess: 100
             });
             
             const orb = new THREE.Mesh(geometry, material);
