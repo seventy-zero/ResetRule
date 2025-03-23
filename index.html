@@ -740,16 +740,20 @@
             const bridgeGroup = new THREE.Group();
 
             // Create bridge geometry
-            const bridgeGeometry = new THREE.BoxGeometry(bridgeLength, bridgeWidth * 0.25, bridgeWidth);
-            const bridgeMaterial = new THREE.MeshPhongMaterial({
-                color: 0x808080,
-                shininess: 30,
-                specular: 0x444444
-            });
-            const bridgeMesh = new THREE.Mesh(bridgeGeometry, bridgeMaterial);
+            const bridgeGeometry = new THREE.BoxGeometry(distance, bridgeWidth, bridgeWidth);
+            
+            // Create materials for the bridge (matching tower style)
+            const bridgeMaterials = [
+                new THREE.MeshBasicMaterial({ color: 0x000000 }),
+                new THREE.LineBasicMaterial({ color: 0xffffff })
+            ];
+            
+            // Create bridge mesh and edges
+            const bridgeMesh = new THREE.Mesh(bridgeGeometry, bridgeMaterials[0]);
+            bridgeMesh.name = 'bridge'; // Add name to identify bridges
             const bridgeEdges = new THREE.LineSegments(
                 new THREE.EdgesGeometry(bridgeGeometry),
-                new THREE.LineBasicMaterial({ color: 0x000000 })
+                bridgeMaterials[1]
             );
 
             // Position bridge
@@ -758,6 +762,8 @@
             bridgeGroup.position.copy(midPoint);
             bridgeGroup.rotation.y = angle;
 
+            scene.add(bridgeGroup);
+            
             // Create collision box
             const collisionBox = new THREE.Box3();
             
@@ -813,8 +819,7 @@
                 collisionBox.max.copy(localMax);
             }
 
-            // Add bridge to scene and collision boxes array
-            scene.add(bridgeGroup);
+            // Add bridge to collision boxes array
             collisionBoxes.push(collisionBox);
 
             return bridgeGroup;
