@@ -744,7 +744,7 @@
 
         // Add after the checkCollision function
         function checkOrbCollision(position, radius) {
-            const playerCollider = new THREE.Sphere(position, radius * 5); // Increased from 2x to 5x
+            const playerCollider = new THREE.Sphere(position, radius * 10); // Increased from 5x to 10x
             let closestOrb = null;
             let minDistance = Infinity;
             
@@ -752,7 +752,7 @@
                 const orbPosition = orb.position;
                 const distance = position.distanceTo(orbPosition);
                 
-                if (distance < (radius * 5) + orb.userData.originalScale) { // Increased from 2x to 5x
+                if (distance < (radius * 10) + orb.userData.originalScale) { // Increased from 5x to 10x
                     if (distance < minDistance) {
                         minDistance = distance;
                         closestOrb = { orb, orbId };
