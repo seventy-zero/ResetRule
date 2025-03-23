@@ -2671,7 +2671,8 @@
 
             // Add periodic player list updates
             setInterval(() => {
-                if (document.getElementById('playerList').classList.contains('visible')) {
+                const playerList = document.getElementById('playerList');
+                if (playerList && playerList.classList.contains('visible')) {
                     updatePlayerList();
                 }
             }, 100); // Update every 100ms when visible
