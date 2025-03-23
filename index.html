@@ -272,9 +272,13 @@
         const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
         const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
         let ws = null; // Initialize WebSocket variable
+        let wsConnectionAttempted = false; // Track if we've attempted to connect
 
         // Initialize WebSocket connection immediately
-        setupWebSocket();
+        if (!wsConnectionAttempted) {
+            setupWebSocket();
+            wsConnectionAttempted = true;
+        }
 
         // Add object pooling system
         const objectPool = {
@@ -941,6 +945,12 @@
         const MAX_RECONNECT_ATTEMPTS = 5;
 
         function setupWebSocket() {
+            // Don't set up if we already have a connection
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                console.log('WebSocket already connected');
+                return;
+            }
+
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${wsProtocol}//${window.location.host}`;
             console.log('Attempting to connect to WebSocket at:', wsUrl);
@@ -948,19 +958,22 @@
 
             ws.addEventListener('open', () => {
                 console.log('WebSocket connection established');
-                // Request world data immediately
-                ws.send(JSON.stringify({
-                    type: 'request_world_data'
-                }));
-                // Only send join message if we have a username
-                if (playerUsername) {
-                    const joinMessage = {
-                        type: 'join',
-                        username: playerUsername
-                    };
-                    console.log('Sending join message:', joinMessage);
-                    ws.send(JSON.stringify(joinMessage));
-                }
+                // Wait a short moment to ensure connection is fully ready
+                setTimeout(() => {
+                    // Request world data immediately
+                    ws.send(JSON.stringify({
+                        type: 'request_world_data'
+                    }));
+                    // Only send join message if we have a username
+                    if (playerUsername) {
+                        const joinMessage = {
+                            type: 'join',
+                            username: playerUsername
+                        };
+                        console.log('Sending join message:', joinMessage);
+                        ws.send(JSON.stringify(joinMessage));
+                    }
+                }, 100);
             });
 
             ws.addEventListener('message', (event) => {
