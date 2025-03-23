@@ -3274,26 +3274,42 @@
             
             // Remove any existing listeners to prevent duplicates
             document.removeEventListener('mousedown', handleShotgunFire);
+            document.removeEventListener('contextmenu', handleContextMenu);
             
-            // Add new listener
+            // Add new listeners
             document.addEventListener('mousedown', handleShotgunFire);
+            document.addEventListener('contextmenu', handleContextMenu);
             
-            // Add context menu prevention for right-click
-            document.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-            });
+            console.log('Event listeners set up successfully');
         }
 
         // Define the shotgun firing handler
         function handleShotgunFire(event) {
             if (event.button === 2) { // Right mouse button
                 console.log('Firing shotgun (right mouse button)');
+                event.preventDefault(); // Prevent context menu
                 fireShotgun();
             }
         }
 
+        // Define the context menu handler
+        function handleContextMenu(event) {
+            event.preventDefault();
+        }
+
         // Call setupEventListeners after camera initialization
         setupEventListeners();
+
+        // Remove the duplicate event listeners from the desktop controls section
+        if (!isMobile) {
+            // Remove the old shotgun firing code
+            // document.addEventListener('mousedown', (event) => {
+            //     if (event.button === 2) {
+            //         console.log('Firing shotgun (right mouse button)');
+            //         fireShotgun();
+            //     }
+            // });
+        }
 
         // Sound effects
         function playShotgunSound() {
