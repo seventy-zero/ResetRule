@@ -3088,23 +3088,44 @@
         healthDisplay.id = 'healthDisplay';
         healthDisplay.style.cssText = `
             position: fixed;
-            top: 10px;
-            right: 10px;
-            background-color: rgba(0, 0, 0, 0.7);
-            color: #ff4444;
-            padding: 10px;
-            border-radius: 5px;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            gap: 5px;
             z-index: 1000;
-            font-family: Arial, sans-serif;
-            font-size: 16px;
-            font-weight: bold;
-            text-shadow: 0 0 5px rgba(255, 68, 68, 0.5);
         `;
+
+        // Create 5 health segments
+        for (let i = 0; i < 5; i++) {
+            const segment = document.createElement('div');
+            segment.style.cssText = `
+                width: 20px;
+                height: 30px;
+                background-color: #4CAF50;
+                border: 2px solid rgba(255, 255, 255, 0.5);
+                border-radius: 3px;
+                transition: background-color 0.2s ease;
+            `;
+            healthDisplay.appendChild(segment);
+        }
+
         document.body.appendChild(healthDisplay);
 
         // Update health display
         function updateHealthDisplay() {
-            healthDisplay.textContent = `Health: ${playerHealth}`;
+            const segments = healthDisplay.children;
+            const healthPerSegment = 20; // 100 health / 5 segments
+            
+            for (let i = 0; i < segments.length; i++) {
+                const segmentHealth = Math.max(0, playerHealth - (i * healthPerSegment));
+                const segmentPercentage = Math.min(100, (segmentHealth / healthPerSegment) * 100);
+                
+                if (segmentPercentage <= 0) {
+                    segments[i].style.backgroundColor = '#ff4444'; // Red when empty
+                } else {
+                    segments[i].style.backgroundColor = '#4CAF50'; // Green when full
+                }
+            }
         }
 
         // Add health display update to animation loop
