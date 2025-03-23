@@ -752,40 +752,57 @@
             // Create collision box directly from the bridge mesh
             const collisionBox = new THREE.Box3();
             
-            // Create a more precise box collider for the bridge
-            const bridgeLength = distance;
-            const bridgeHeight = 0.5; // Much thinner height for better precision
-            
-            // Create a matrix to transform the collision box
-            const matrix = new THREE.Matrix4();
-            matrix.makeRotationY(angle);
-            matrix.setPosition(midPoint.x, bridgeData.height, midPoint.z);
-            
-            // Set the collision box dimensions in local space
-            const localMin = new THREE.Vector3(-bridgeLength/2, -bridgeHeight/2, -bridgeWidth/2);
-            const localMax = new THREE.Vector3(bridgeLength/2, bridgeHeight/2, bridgeWidth/2);
-            
-            // Transform the local space points to world space
-            localMin.applyMatrix4(matrix);
-            localMax.applyMatrix4(matrix);
-            
-            // Set the collision box to the transformed points
-            collisionBox.min.copy(localMin);
-            collisionBox.max.copy(localMax);
-            
-            // Add bridge data to collision box for better collision handling
-            collisionBox.userData = {
-                isBridge: true,
-                height: bridgeData.height,
-                width: bridgeWidth,
-                length: bridgeLength,
-                startPos: startPos.clone(),
-                endPos: endPos.clone(),
-                angle: angle,
-                matrix: matrix.clone(),
-                localMin: localMin.clone(),
-                localMax: localMax.clone()
-            };
+            // Get the actual bridge mesh from the group
+            const bridgeMeshInstance = bridgeGroup.children.find(child => child instanceof THREE.Mesh);
+            if (bridgeMeshInstance) {
+                // Create a matrix to transform the collision box
+                const matrix = new THREE.Matrix4();
+                matrix.makeRotationY(angle);
+                matrix.setPosition(midPoint.x, bridgeData.height, midPoint.z);
+                
+                // Get the bridge's geometry
+                const geometry = bridgeMeshInstance.geometry;
+                const boundingBox = new THREE.Box3();
+                boundingBox.setFromBufferAttribute(geometry.attributes.position);
+                
+                // Scale the bounding box to match the bridge's actual size
+                const scale = new THREE.Vector3(
+                    bridgeLength / (boundingBox.max.x - boundingBox.min.x),
+                    0.1, // Make it thin in height
+                    bridgeWidth / (boundingBox.max.z - boundingBox.min.z)
+                );
+                
+                // Apply the scale and transform
+                boundingBox.min.multiply(scale);
+                boundingBox.max.multiply(scale);
+                boundingBox.min.applyMatrix4(matrix);
+                boundingBox.max.applyMatrix4(matrix);
+                
+                // Set the collision box to the transformed bounding box
+                collisionBox.copy(boundingBox);
+                
+                // Add bridge data to collision box for better collision handling
+                collisionBox.userData = {
+                    isBridge: true,
+                    height: bridgeData.height,
+                    width: bridgeWidth,
+                    length: bridgeLength,
+                    startPos: startPos.clone(),
+                    endPos: endPos.clone(),
+                    angle: angle,
+                    matrix: matrix.clone()
+                };
+            } else {
+                // Fallback to the old method if mesh not found
+                console.warn('Bridge mesh not found, using fallback collision box');
+                const bridgeHeight = 0.5;
+                const localMin = new THREE.Vector3(-bridgeLength/2, -bridgeHeight/2, -bridgeWidth/2);
+                const localMax = new THREE.Vector3(bridgeLength/2, bridgeHeight/2, bridgeWidth/2);
+                localMin.applyMatrix4(matrix);
+                localMax.applyMatrix4(matrix);
+                collisionBox.min.copy(localMin);
+                collisionBox.max.copy(localMax);
+            }
             
             // Remove the duplicate matrix application
             // collisionBox.applyMatrix4(matrix); // This line was causing the double transformation
