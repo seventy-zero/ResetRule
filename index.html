@@ -749,14 +749,9 @@
             
             scene.add(bridgeGroup);
             
-            // Create a more precise box collider for the bridge
+            // Create collision box directly from the bridge mesh
             const collisionBox = new THREE.Box3();
-            const collisionMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(distance, bridgeWidth * 0.05, bridgeWidth * 0.8) // Thin height and slightly narrower width
-            );
-            collisionMesh.position.copy(bridgeGroup.position);
-            collisionMesh.rotation.copy(bridgeGroup.rotation);
-            collisionBox.setFromObject(collisionMesh);
+            collisionBox.setFromObject(bridgeMesh);
             
             // Add bridge data to collision box for better collision handling
             collisionBox.userData = {
