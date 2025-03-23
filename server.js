@@ -143,17 +143,17 @@ function generateWorld() {
     for (let i = 0; i < NUM_ORBS; i++) {
         let validPosition = false;
         let attempts = 0;
-        const maxAttempts = 200; // Increased to 200 attempts
+        const maxAttempts = 500; // Increased to 500 attempts
         
         while (!validPosition && attempts < maxAttempts) {
             const x = (Math.random() - 0.5) * MAX_RADIUS * 2;
             const z = (Math.random() - 0.5) * MAX_RADIUS * 2;
             
-            // More varied height distribution
+            // More accessible height distribution
             let y;
-            if (Math.random() < 0.3) { // 30% chance for low orbs (50-100)
+            if (Math.random() < 0.5) { // 50% chance for low orbs (50-100)
                 y = Math.random() * 50 + 50;
-            } else if (Math.random() < 0.5) { // 50% chance for medium orbs (100-200)
+            } else if (Math.random() < 0.8) { // 30% chance for medium orbs (100-200)
                 y = Math.random() * 100 + 100;
             } else { // 20% chance for high orbs (200-300)
                 y = Math.random() * 100 + 200;
@@ -166,7 +166,7 @@ function generateWorld() {
                     Math.pow(x - tower.x, 2) + 
                     Math.pow(z - tower.z, 2)
                 );
-                if (distance < 8) { // Reduced from 15 to 8
+                if (distance < 3) { // Reduced from 8 to 3
                     tooCloseToTower = true;
                     break;
                 }
@@ -200,7 +200,7 @@ function generateWorld() {
                     Math.pow(z - projZ, 2)
                 );
                 
-                if (distance < 5) { // Reduced from 10 to 5
+                if (distance < 2) { // Reduced from 5 to 2
                     tooCloseToBridge = true;
                     break;
                 }
