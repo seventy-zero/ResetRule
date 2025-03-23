@@ -2104,60 +2104,57 @@
             const pelletPool = {
                 pool: [],
                 active: [],
-                size: 100,
-                
-                init() {
+                size: PELLET_COUNT * 2,
+                init: function() {
+                    // Create initial pellet pool
                     for (let i = 0; i < this.size; i++) {
-                        const pellet = this.createPellet();
+                        const geometry = new THREE.SphereGeometry(0.2, 8, 8);
+                        const material = new THREE.MeshBasicMaterial({ 
+                            color: 0xffff00,
+                            transparent: true,
+                            opacity: 0.8
+                        });
+                        const pellet = new THREE.Mesh(geometry, material);
+                        pellet.velocity = new THREE.Vector3();
+                        pellet.spawnTime = 0;
+                        pellet.lifetime = 2000;
+                        pellet.trail = [];
+                        pellet.maxTrailLength = 10;
                         this.pool.push(pellet);
                     }
                 },
-                
-                createPellet() {
-                    const geometry = new THREE.SphereGeometry(0.2, 8, 8);
-                    const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-                    const pellet = new THREE.Mesh(geometry, material);
-                    
-                    // Create trail
-                    const trailGeometry = new THREE.BufferGeometry();
-                    const trailMaterial = new THREE.LineBasicMaterial({ color: 0xffff00 });
-                    const trail = new THREE.Line(trailGeometry, trailMaterial);
-                    pellet.add(trail);
-                    
-                    pellet.trailPoints = [];
-                    pellet.trailGeometry = trailGeometry;
-                    pellet.velocity = new THREE.Vector3();
-                    pellet.spawnTime = 0;
-                    
-                    return pellet;
-                },
-                
-                get() {
-                    let pellet;
-                    if (this.pool.length > 0) {
-                        pellet = this.pool.pop();
-                    } else {
-                        pellet = this.createPellet();
+                get: function() {
+                    let pellet = this.pool.pop();
+                    if (!pellet) {
+                        // Create new pellet if pool is empty
+                        const geometry = new THREE.SphereGeometry(0.2, 8, 8);
+                        const material = new THREE.MeshBasicMaterial({ 
+                            color: 0xffff00,
+                            transparent: true,
+                            opacity: 0.8
+                        });
+                        pellet = new THREE.Mesh(geometry, material);
+                        pellet.velocity = new THREE.Vector3();
+                        pellet.spawnTime = 0;
+                        pellet.lifetime = 2000;
+                        pellet.trail = [];
+                        pellet.maxTrailLength = 10;
                     }
-                    
                     pellet.visible = true;
-                    pellet.trailPoints = [];
-                    pellet.spawnTime = Date.now();
-                    this.active.push(pellet);
+                    this.active.add(pellet);
                     return pellet;
                 },
-                
-                release(pellet) {
-                    const index = this.active.indexOf(pellet);
-                    if (index > -1) {
-                        this.active.splice(index, 1);
-                    }
+                release: function(pellet) {
                     pellet.visible = false;
+                    pellet.position.set(0, 0, 0);
+                    pellet.velocity = new THREE.Vector3();
+                    pellet.trail = [];
+                    this.active.delete(pellet);
                     this.pool.push(pellet);
                 }
             };
 
-            // Initialize the pellet pool
+            // Initialize pellet pool
             pelletPool.init();
 
             // Define updatePellets function after pelletPool is initialized
@@ -2848,10 +2845,29 @@
 
         // Create shotgun pellets with object pooling
         const pelletPool = {
-            pellets: [],
+            pool: [],
             active: new Set(),
+            size: PELLET_COUNT * 2,
+            init: function() {
+                // Create initial pellet pool
+                for (let i = 0; i < this.size; i++) {
+                    const geometry = new THREE.SphereGeometry(0.2, 8, 8);
+                    const material = new THREE.MeshBasicMaterial({ 
+                        color: 0xffff00,
+                        transparent: true,
+                        opacity: 0.8
+                    });
+                    const pellet = new THREE.Mesh(geometry, material);
+                    pellet.velocity = new THREE.Vector3();
+                    pellet.spawnTime = 0;
+                    pellet.lifetime = 2000;
+                    pellet.trail = [];
+                    pellet.maxTrailLength = 10;
+                    this.pool.push(pellet);
+                }
+            },
             get: function() {
-                const pellet = this.pellets.pop();
+                let pellet = this.pool.pop();
                 if (!pellet) {
                     // Create new pellet if pool is empty
                     const geometry = new THREE.SphereGeometry(0.2, 8, 8);
@@ -2863,9 +2879,9 @@
                     pellet = new THREE.Mesh(geometry, material);
                     pellet.velocity = new THREE.Vector3();
                     pellet.spawnTime = 0;
-                    pellet.lifetime = 2000; // Increased from 1000 to 2000ms
+                    pellet.lifetime = 2000;
                     pellet.trail = [];
-                    pellet.maxTrailLength = 10; // Increased from 5 to 10
+                    pellet.maxTrailLength = 10;
                 }
                 pellet.visible = true;
                 this.active.add(pellet);
@@ -2877,15 +2893,12 @@
                 pellet.velocity = new THREE.Vector3();
                 pellet.trail = [];
                 this.active.delete(pellet);
-                this.pellets.push(pellet);
+                this.pool.push(pellet);
             }
         };
 
-        // Create initial pellet pool
-        for (let i = 0; i < PELLET_COUNT * 2; i++) {
-            const pellet = pelletPool.get();
-            pelletPool.release(pellet);
-        }
+        // Initialize pellet pool
+        pelletPool.init();
 
         // Handle shotgun firing
         function fireShotgun() {
@@ -2955,7 +2968,7 @@
                     spreadDirection.applyAxisAngle(spreadAxis, spreadAngle);
                     
                     // Set initial velocity with increased speed
-                    pellet.velocity.copy(spreadDirection).multiplyScalar(PELLET_SPEED * 2); // Doubled speed
+                    pellet.velocity.copy(spreadDirection).multiplyScalar(PELLET_SPEED * 2);
                     pellet.velocity.y += 2; // Add slight upward velocity
                     
                     // Set spawn time and initialize trail
