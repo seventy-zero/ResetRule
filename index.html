@@ -753,6 +753,11 @@
             const collisionBox = new THREE.Box3();
             collisionBox.setFromObject(bridgeMesh);
             
+            // Adjust collision box to be centered on the bridge's top surface
+            const boxHeight = bridgeWidth * 0.05;
+            collisionBox.min.y = bridgeData.height - boxHeight * 0.5;
+            collisionBox.max.y = bridgeData.height + boxHeight * 0.5;
+            
             // Add bridge data to collision box for better collision handling
             collisionBox.userData = {
                 isBridge: true,
