@@ -2750,44 +2750,6 @@
             }, 200);
         }
 
-        // Add to the WebSocket message handler switch statement
-        case 'shotgun_shot':
-            if (data.username !== playerUsername && gameStarted) {
-                // Check if any pellets hit the current player
-                const playerState = playerStates.get(data.username);
-                if (playerState) {
-                    const shooterPos = new THREE.Vector3().fromArray(data.position);
-                    const distance = camera.position.distanceTo(shooterPos);
-                    
-                    if (distance <= SHOTGUN_RANGE) {
-                        // Check each pellet
-                        data.directions.forEach(pelletDir => {
-                            const pelletDirection = new THREE.Vector3().fromArray(pelletDir);
-                            const pelletEnd = shooterPos.clone().add(pelletDirection.multiplyScalar(SHOTGUN_RANGE));
-                            
-                            // Create ray from shooter to pellet end
-                            const raycaster = new THREE.Raycaster(shooterPos, pelletDirection);
-                            
-                            // Check if ray intersects with player
-                            const playerCollider = new THREE.Sphere(camera.position, playerRadius);
-                            const intersects = raycaster.intersectSphere(playerCollider);
-                            
-                            if (intersects.length > 0) {
-                                // Player was hit
-                                takeDamage(SHOTGUN_DAMAGE);
-                            }
-                        });
-                    }
-                }
-            }
-            break;
-
-        case 'player_damaged':
-            if (data.username === playerUsername) {
-                takeDamage(data.damage);
-            }
-            break;
-
         // Add these new functions
         function takeDamage(damage) {
             if (isDead) return;
