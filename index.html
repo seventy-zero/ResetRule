@@ -2745,9 +2745,9 @@
             // Calculate offset position for muzzle flash and pellets
             const rightVector = new THREE.Vector3();
             rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
-            const muzzleOffset = 12; // Increased from 8 to 12 units
+            const muzzleOffset = 20; // Increased from 12 to 20 units to move spawn point forward
             const muzzlePosition = camera.position.clone().add(rightVector.multiplyScalar(muzzleOffset));
-            muzzlePosition.y = camera.position.y - 1; // Adjusted from -2 to -1 for better visibility
+            muzzlePosition.y = camera.position.y - 1;
             
             // Show muzzle flash at offset position
             muzzleFlash.position.copy(muzzlePosition);
@@ -2771,9 +2771,9 @@
                 pellets[i].position.copy(muzzlePosition);
                 pellets[i].visible = true;
                 
-                // Animate pellet movement
-                const pelletSpeed = 4; // Increased from 2 to 4 for faster movement
-                const pelletDistance = 100; // Increased from 50 to 100 for longer travel
+                // Animate pellet movement with proper physics
+                const pelletSpeed = 8; // Increased from 4 to 8 for faster movement
+                const pelletDistance = 200; // Increased from 100 to 200 for longer travel
                 const startTime = currentTime;
                 
                 function animatePellet(pellet, direction, startPos) {
@@ -2787,6 +2787,29 @@
                         
                         // Make pellet face direction of travel
                         pellet.lookAt(newPosition.clone().add(direction));
+                        
+                        // Check for collisions with players
+                        const raycaster = new THREE.Raycaster();
+                        raycaster.set(pellet.position, direction);
+                        
+                        // Check for player collisions
+                        playerStates.forEach((playerState, username) => {
+                            if (username !== playerUsername) {
+                                const playerCollider = new THREE.Sphere(playerState.mesh.position, playerRadius);
+                                const intersects = raycaster.intersectSphere(playerCollider);
+                                
+                                if (intersects.length > 0 && intersects[0].distance < 5) {
+                                    // Player was hit
+                                    if (ws && ws.readyState === WebSocket.OPEN) {
+                                        ws.send(JSON.stringify({
+                                            type: 'player_damaged',
+                                            username: username,
+                                            damage: SHOTGUN_DAMAGE
+                                        }));
+                                    }
+                                }
+                            }
+                        });
                         
                         requestAnimationFrame(() => animatePellet(pellet, direction, startPos));
                     } else {
