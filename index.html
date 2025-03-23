@@ -2903,56 +2903,79 @@
             
             lastShotTime = currentTime;
             
-            // Calculate muzzle position based on camera direction
-            const muzzleOffset = 20;
-            const muzzlePosition = new THREE.Vector3();
-            muzzlePosition.copy(camera.position);
-            muzzlePosition.add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(muzzleOffset));
-            
-            // Show muzzle flash at offset position
-            muzzleFlash.position.copy(muzzlePosition);
-            muzzleFlash.visible = true;
-            outerFlash.position.copy(muzzlePosition);
-            outerFlash.visible = true;
-            
-            // Create pellets at offset position
-            const pelletDirections = [];
-            for (let i = 0; i < PELLET_COUNT; i++) {
-                // Calculate spread direction
-                const spreadAngle = (Math.random() - 0.5) * PELLET_SPREAD;
-                const spreadAxis = new THREE.Vector3();
-                spreadAxis.crossVectors(camera.getWorldDirection(new THREE.Vector3()), new THREE.Vector3(0, 1, 0)).normalize();
+            try {
+                // Calculate muzzle position based on camera direction
+                const muzzleOffset = 20;
+                const muzzlePosition = new THREE.Vector3();
+                muzzlePosition.copy(camera.position);
+                muzzlePosition.add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(muzzleOffset));
                 
-                const pelletDir = camera.getWorldDirection(new THREE.Vector3());
-                pelletDir.applyAxisAngle(spreadAxis, spreadAngle);
-                pelletDirections.push(pelletDir);
+                // Create muzzle flash
+                const flashGeometry = new THREE.SphereGeometry(2, 8, 8);
+                const flashMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xffff00,
+                    transparent: true,
+                    opacity: 1.0
+                });
+                const muzzleFlash = new THREE.Mesh(flashGeometry, flashMaterial);
+                muzzleFlash.position.copy(muzzlePosition);
+                scene.add(muzzleFlash);
                 
-                // Get pellet from pool
-                const pellet = pelletPool.get();
-                pellet.position.copy(muzzlePosition);
-                pellet.velocity = pelletDir.multiplyScalar(PELLET_SPEED);
-                pellet.velocity.y += 0.2; // Add slight upward velocity
-                pellet.visible = true;
-                pellet.spawnTime = currentTime;
-                pelletPool.active.add(pellet);
+                // Animate muzzle flash
+                const flashDuration = 50;
+                const flashStartTime = currentTime;
+                
+                function animateFlash() {
+                    const elapsed = Date.now() - flashStartTime;
+                    const progress = elapsed / flashDuration;
+                    
+                    if (progress < 1) {
+                        muzzleFlash.material.opacity = 1 - progress;
+                        requestAnimationFrame(animateFlash);
+                    } else {
+                        scene.remove(muzzleFlash);
+                    }
+                }
+                
+                animateFlash();
+                
+                // Play shotgun sound
+                playShotgunSound();
+                
+                // Fire pellets
+                for (let i = 0; i < PELLET_COUNT; i++) {
+                    const pellet = pelletPool.get();
+                    pellet.position.copy(muzzlePosition);
+                    
+                    // Calculate spread direction
+                    const spreadDirection = new THREE.Vector3();
+                    spreadDirection.copy(camera.getWorldDirection(new THREE.Vector3()));
+                    
+                    // Add random spread
+                    const spreadAngle = (Math.random() - 0.5) * PELLET_SPREAD;
+                    const spreadAxis = new THREE.Vector3();
+                    spreadAxis.crossVectors(spreadDirection, new THREE.Vector3(0, 1, 0));
+                    spreadDirection.applyAxisAngle(spreadAxis, spreadAngle);
+                    
+                    // Set initial velocity
+                    pellet.velocity.copy(spreadDirection).multiplyScalar(PELLET_SPEED);
+                    pellet.velocity.y += 2; // Add slight upward velocity
+                    
+                    scene.add(pellet);
+                }
+                
+                // Send shot data to server
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    const shotData = {
+                        type: 'shotgun_shot',
+                        position: muzzlePosition.toArray(),
+                        direction: camera.getWorldDirection(new THREE.Vector3()).toArray()
+                    };
+                    ws.send(JSON.stringify(shotData));
+                }
+            } catch (error) {
+                console.error('Error in fireShotgun:', error);
             }
-            
-            // Send shot data to server
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'shotgun_shot',
-                    username: playerUsername,
-                    position: camera.position.toArray(),
-                    directions: pelletDirections.map(dir => dir.toArray()),
-                    timestamp: currentTime
-                }));
-            }
-            
-            // Hide muzzle flash after short delay
-            setTimeout(() => {
-                muzzleFlash.visible = false;
-                outerFlash.visible = false;
-            }, 200);
         }
 
         // Add these new functions
@@ -3228,14 +3251,15 @@
                 return;
             }
             
-            document.addEventListener('mousedown', (event) => {
-                if (event.button === 2) { // Right mouse button
-                    console.log('Firing shotgun (right mouse button)');
-                    fireShotgun();
-                }
-            });
+            // Remove any existing listeners to prevent duplicates
+            document.removeEventListener('mousedown', handleShotgunFire);
+            
+            // Add new listener
+            document.addEventListener('mousedown', handleShotgunFire);
         }
 
+        // Define the shotgun firing handler
+        function handleShotgunFire(event) {
         // Call setupEventListeners after camera initialization
         setupEventListeners();
     </script>
