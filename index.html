@@ -2700,6 +2700,9 @@
         const PELLET_SPEED = 8; // Speed of pellets
         const PELLET_LIFETIME = 2000; // How long pellets last in ms
         const PELLET_GRAVITY = 0.008; // Gravity effect on pellets
+        const PELLET_TRAIL_LENGTH = 10; // Number of trail points per pellet
+        const PELLET_TRAIL_COLOR = 0xff6600; // Orange trail color
+        const PELLET_TRAIL_OPACITY = 0.5; // Trail opacity
         let lastShotTime = 0;
         let playerHealth = 100;
         let isDead = false;
@@ -2726,7 +2729,7 @@
         outerFlash.visible = false;
         scene.add(outerFlash);
 
-        // Create shotgun pellets with object pooling
+        // Create shotgun pellets with object pooling and trails
         const pelletPool = {
             pellets: [],
             active: new Set(),
@@ -2740,7 +2743,21 @@
                     });
                     const pellet = new THREE.Mesh(geometry, material);
                     pellet.visible = false;
+                    
+                    // Add trail
+                    const trailGeometry = new THREE.BufferGeometry();
+                    const trailMaterial = new THREE.LineBasicMaterial({
+                        color: PELLET_TRAIL_COLOR,
+                        transparent: true,
+                        opacity: PELLET_TRAIL_OPACITY
+                    });
+                    const trail = new THREE.Line(trailGeometry, trailMaterial);
+                    pellet.trail = trail;
+                    pellet.trailPoints = [];
+                    pellet.trailGeometry = trailGeometry;
+                    
                     scene.add(pellet);
+                    scene.add(trail);
                     this.pellets.push(pellet);
                 }
                 return this.pellets.pop();
@@ -2749,6 +2766,8 @@
                 pellet.visible = false;
                 pellet.position.set(0, 0, 0);
                 pellet.velocity = new THREE.Vector3();
+                pellet.trail.visible = false;
+                pellet.trailPoints = [];
                 this.active.delete(pellet);
                 this.pellets.push(pellet);
             }
@@ -2767,6 +2786,9 @@
             if (currentTime - lastShotTime < SHOTGUN_COOLDOWN) return;
             
             lastShotTime = currentTime;
+            
+            // Play shoot sound
+            playShootSound();
             
             // Get camera direction
             const cameraDirection = new THREE.Vector3();
@@ -2803,6 +2825,7 @@
                 pellet.velocity = pelletDir.multiplyScalar(PELLET_SPEED);
                 pellet.velocity.y += 0.2; // Add slight upward velocity
                 pellet.visible = true;
+                pellet.trail.visible = true;
                 pellet.spawnTime = currentTime;
                 pelletPool.active.add(pellet);
             }
@@ -2823,6 +2846,139 @@
                 muzzleFlash.visible = false;
                 outerFlash.visible = false;
             }, 200);
+        }
+
+        // Add hit effect function
+        function createHitEffect(position) {
+            const particles = new THREE.Group();
+            
+            for(let i = 0; i < 20; i++) {
+                const geometry = new THREE.SphereGeometry(0.2, 8, 8);
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0xffff00,
+                    emissive: 0xffaa00
+                });
+                
+                const particle = new THREE.Mesh(geometry, material);
+                particle.position.copy(position);
+                
+                // Random velocity
+                particle.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.3,
+                    (Math.random() - 0.5) * 0.3,
+                    (Math.random() - 0.5) * 0.3
+                );
+                
+                particles.add(particle);
+            }
+            
+            scene.add(particles);
+            
+            // Animate particles
+            let elapsedTime = 0;
+            function animateHit() {
+                elapsedTime += deltaTime;
+                
+                particles.children.forEach(particle => {
+                    particle.position.add(particle.velocity.clone().multiplyScalar(deltaTime * 60));
+                    particle.material.opacity = 1 - elapsedTime;
+                    particle.material.transparent = true;
+                });
+                
+                if(elapsedTime < 1) {
+                    requestAnimationFrame(animateHit);
+                } else {
+                    scene.remove(particles);
+                }
+            }
+            animateHit();
+        }
+
+        // Update pellet positions and trails
+        function updatePellets() {
+            const currentTime = Date.now();
+            
+            for (const pellet of pelletPool.active) {
+                // Update position based on velocity and gravity
+                pellet.position.add(pellet.velocity);
+                pellet.velocity.y -= PELLET_GRAVITY;
+                
+                // Update trail
+                pellet.trailPoints.push(pellet.position.clone());
+                if (pellet.trailPoints.length > PELLET_TRAIL_LENGTH) {
+                    pellet.trailPoints.shift();
+                }
+                
+                // Update trail geometry
+                const positions = new Float32Array(pellet.trailPoints.length * 3);
+                for (let i = 0; i < pellet.trailPoints.length; i++) {
+                    positions[i * 3] = pellet.trailPoints[i].x;
+                    positions[i * 3 + 1] = pellet.trailPoints[i].y;
+                    positions[i * 3 + 2] = pellet.trailPoints[i].z;
+                }
+                pellet.trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                
+                // Check collisions with other players
+                for (const otherPlayer of otherPlayers) {
+                    if (!otherPlayer.visible) continue;
+                    
+                    const distance = pellet.position.distanceTo(otherPlayer.position);
+                    if (distance < 5) { // Collision radius
+                        // Create hit effect
+                        createHitEffect(pellet.position);
+                        
+                        // Play hit sound
+                        playHitSound();
+                        
+                        // Reduce player health
+                        otherPlayer.userData.health -= SHOTGUN_DAMAGE;
+                        
+                        // Check for kill
+                        if (otherPlayer.userData.health <= 0) {
+                            currentKills++;
+                            updateScoreDisplay(true);
+                            
+                            // Create kill indicator
+                            const killIndicator = document.createElement('div');
+                            killIndicator.style.position = 'fixed';
+                            killIndicator.style.top = '0';
+                            killIndicator.style.left = '0';
+                            killIndicator.style.width = '100%';
+                            killIndicator.style.height = '100%';
+                            killIndicator.style.border = '10px solid #00ff00';
+                            killIndicator.style.boxSizing = 'border-box';
+                            killIndicator.style.pointerEvents = 'none';
+                            killIndicator.style.zIndex = '1000';
+                            killIndicator.style.opacity = '0.7';
+                            document.body.appendChild(killIndicator);
+                            
+                            setTimeout(() => {
+                                killIndicator.style.transition = 'opacity 0.5s';
+                                killIndicator.style.opacity = '0';
+                                setTimeout(() => {
+                                    document.body.removeChild(killIndicator);
+                                }, 500);
+                            }, 1000);
+                        }
+                        
+                        // Remove pellet
+                        pelletPool.release(pellet);
+                        break;
+                    }
+                }
+                
+                // Check if pellet has expired
+                if (currentTime - pellet.spawnTime > PELLET_LIFETIME) {
+                    pelletPool.release(pellet);
+                }
+            }
+        }
+
+        // Add updatePellets to the animation loop
+        function animate() {
+            // ... existing animation code ...
+            updatePellets();
+            // ... rest of animation code ...
         }
 
         // Add these new functions
@@ -3089,6 +3245,80 @@
         // Replace the existing collision handling code with:
         const collisionResult = checkCollision(camera.position, playerRadius);
         handleCollision(collisionResult, isFlinging);
+
+        // Add sound effects
+        let shootSound;
+        let hitSound;
+
+        function createShootSound() {
+            const duration = 0.15;
+            const audioCtx = window.audioContext;
+            
+            // Create buffer for the shoot sound
+            const shootSoundBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * duration, audioCtx.sampleRate);
+            const channelData = shootSoundBuffer.getChannelData(0);
+            
+            // Generate a punchy "doof" sound
+            for (let i = 0; i < shootSoundBuffer.length; i++) {
+                const t = i / audioCtx.sampleRate;
+                const baseFreq = 30;
+                const amplitude = Math.exp(-1 * t);
+                const noise = (Math.random() * 2 - 1) * Math.exp(-5 * t);
+                
+                channelData[i] = amplitude * (
+                    Math.sin(2 * Math.PI * baseFreq * t) +
+                    1.5 * Math.sin(4 * Math.PI * baseFreq * t) +
+                    1.25 * Math.sin(8 * Math.PI * baseFreq * t) +
+                    1.5 * noise
+                );
+            }
+            
+            shootSound = shootSoundBuffer;
+        }
+
+        function createHitSound() {
+            const duration = 0.5;
+            const audioCtx = window.audioContext;
+            
+            // Create buffer for hit sound
+            const hitSoundBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * duration, audioCtx.sampleRate);
+            const channelData = hitSoundBuffer.getChannelData(0);
+            
+            // Generate a deep boom with noise
+            for (let i = 0; i < hitSoundBuffer.length; i++) {
+                const t = i / audioCtx.sampleRate;
+                const baseFreq = 30;
+                const amplitude = Math.exp(-15 * t);
+                const noise = (Math.random() * 2 - 1) * Math.exp(-5 * t);
+                
+                channelData[i] = amplitude * (
+                    Math.sin(2 * Math.PI * baseFreq * t) +
+                    0.5 * Math.sin(4 * Math.PI * baseFreq * t) +
+                    0.25 * Math.sin(8 * Math.PI * baseFreq * t) +
+                    0.5 * noise
+                );
+            }
+            
+            hitSound = hitSoundBuffer;
+        }
+
+        function playShootSound() {
+            if (!shootSound) createShootSound();
+            
+            const source = window.audioContext.createBufferSource();
+            source.buffer = shootSound;
+            source.connect(window.audioContext.destination);
+            source.start(0);
+        }
+
+        function playHitSound() {
+            if (!hitSound) createHitSound();
+            
+            const source = window.audioContext.createBufferSource();
+            source.buffer = hitSound;
+            source.connect(window.audioContext.destination);
+            source.start(0);
+        }
     </script>
 </body>
 </html>
