@@ -241,8 +241,8 @@
     <div id="orbPopup" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(0, 0, 0, 0.9); padding: 30px; border-radius: 10px; z-index: 2000; text-align: center; border: 2px solid #4CAF50;">
         <h2 style="color: #4CAF50; margin-bottom: 20px;">You've collected 30 orbs!</h2>
         <div style="display: flex; gap: 20px; justify-content: center;">
-            <button id="resetButton" class="popupButton" style="background-color: #ff4444;">Reset</button>
-            <button id="ruleButton" class="popupButton" style="background-color: #4CAF50;">Rule</button>
+            <button id="resetButton" class="popupButton" style="background-color: #ff4444;">Reset (C)</button>
+            <button id="ruleButton" class="popupButton" style="background-color: #4CAF50;">Rule (V)</button>
         </div>
     </div>
 
@@ -2426,18 +2426,49 @@
                 const popup = document.getElementById('orbPopup');
                 popup.style.display = 'block';
                 
-                // Add button event listeners
-                document.getElementById('resetButton').onclick = () => {
-                    // Reset orb count
+                // Function to handle reset
+                const handleReset = () => {
                     playerOrbs.set(playerUsername, 0);
                     updateOrbCount();
                     popup.style.display = 'none';
                 };
                 
-                document.getElementById('ruleButton').onclick = () => {
-                    // Handle rule button click
+                // Function to handle rule
+                const handleRule = () => {
                     console.log('Rule button clicked');
                     popup.style.display = 'none';
+                };
+                
+                // Add button event listeners
+                document.getElementById('resetButton').onclick = handleReset;
+                document.getElementById('ruleButton').onclick = handleRule;
+                
+                // Add keyboard event listeners
+                const handleKeyPress = (event) => {
+                    if (event.key.toLowerCase() === 'c') {
+                        handleReset();
+                    } else if (event.key.toLowerCase() === 'v') {
+                        handleRule();
+                    }
+                };
+                
+                // Add keyboard listener when popup is shown
+                document.addEventListener('keydown', handleKeyPress);
+                
+                // Remove keyboard listener when popup is closed
+                const removeKeyListener = () => {
+                    document.removeEventListener('keydown', handleKeyPress);
+                };
+                
+                // Update button click handlers to also remove keyboard listener
+                document.getElementById('resetButton').onclick = () => {
+                    handleReset();
+                    removeKeyListener();
+                };
+                
+                document.getElementById('ruleButton').onclick = () => {
+                    handleRule();
+                    removeKeyListener();
                 };
             }
         }
