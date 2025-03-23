@@ -754,17 +754,26 @@
             
             // Create a more precise box collider for the bridge
             const bridgeLength = distance;
-            const bridgeHeight = bridgeWidth * 0.25; // Thinner height for better precision
-            
-            // Set the collision box dimensions
-            collisionBox.min.set(-bridgeLength/2, -bridgeHeight/2, -bridgeWidth/2);
-            collisionBox.max.set(bridgeLength/2, bridgeHeight/2, bridgeWidth/2);
+            const bridgeHeight = bridgeWidth * 0.1; // Much thinner height for better precision
             
             // Create a matrix to transform the collision box
             const matrix = new THREE.Matrix4();
             matrix.makeRotationY(angle);
             matrix.setPosition(midPoint.x, bridgeData.height, midPoint.z);
             
+            // Set the collision box dimensions in local space
+            const localMin = new THREE.Vector3(-bridgeLength/2, -bridgeHeight/2, -bridgeWidth/2);
+            const localMax = new THREE.Vector3(bridgeLength/2, bridgeHeight/2, bridgeWidth/2);
+            
+            // Transform the local space points to world space
+            localMin.applyMatrix4(matrix);
+            localMax.applyMatrix4(matrix);
+            
+            // Set the collision box to the transformed points
+            collisionBox.min.copy(localMin);
+            collisionBox.max.copy(localMax);
+            
+            // Add bridge data to collision box for better collision handling
             // Apply the transformation to the collision box
             collisionBox.applyMatrix4(matrix);
             
@@ -3264,6 +3273,9 @@
                         const edgePushDir = new THREE.Vector3();
                         edgePushDir.copy(localPos).normalize();
                         localPos.add(edgePushDir.multiplyScalar(COLLISION_PUSH_FORCE * 2));
+                    } else {
+                        // Normal push in local space
+                        localPos.add(localPushDir.multiplyScalar(pushDistance * COLLISION_PUSH_FORCE));
                     }
                     
                     // Transform back to world space
