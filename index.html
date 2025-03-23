@@ -558,7 +558,7 @@
             ];
 
             let geometry;
-            let towerHeight = height; // Store the height for orb placement
+            let towerHeight = height;
             
             switch(towerData.type) {
                 case 0: // Cylindrical tower
@@ -625,17 +625,20 @@
                     group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
 
                     // Create a single box collider for the entire tower
-                    const collisionBox = new THREE.Box3();
+                    const collisionBox = objectPool.getBox();
                     const collisionMesh = new THREE.Mesh(
                         new THREE.BoxGeometry(38, height, 38)
                     );
                     collisionMesh.position.copy(group.position);
                     collisionBox.setFromObject(collisionMesh);
                     
-                    towers.push({
+                    const tower = {
                         mesh: group,
-                        collisionBoxes: [collisionBox]
-                    });
+                        collisionBox: collisionBox
+                    };
+                    
+                    towers.push(tower);
+                    spatialGrid.add(tower);
 
                     scene.add(group);
                     return;
@@ -658,17 +661,20 @@
             scene.add(group);
 
             // Create a single box collider for the tower
-            const collisionBox = new THREE.Box3();
+            const collisionBox = objectPool.getBox();
             const collisionMesh = new THREE.Mesh(
                 new THREE.BoxGeometry(36, height, 36)
             );
             collisionMesh.position.copy(group.position);
             collisionBox.setFromObject(collisionMesh);
             
-            towers.push({
+            const tower = {
                 mesh: group,
-                collisionBoxes: [collisionBox]
-            });
+                collisionBox: collisionBox
+            };
+            
+            towers.push(tower);
+            spatialGrid.add(tower);
         }
 
         // Function to create bridge from server data
@@ -690,7 +696,7 @@
             
             // Create bridge mesh and edges
             const bridgeMesh = new THREE.Mesh(bridgeGeometry, bridgeMaterials[0]);
-            bridgeMesh.name = 'bridge'; // Add name to identify bridges
+            bridgeMesh.name = 'bridge';
             const bridgeEdges = new THREE.LineSegments(
                 new THREE.EdgesGeometry(bridgeGeometry),
                 bridgeMaterials[1]
@@ -713,16 +719,16 @@
             scene.add(bridgeGroup);
             
             // Create a more precise collision system for the bridge
-            const collisionBox = new THREE.Box3();
+            const collisionBox = objectPool.getBox();
             const collisionMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(distance, bridgeWidth * 1.2, bridgeWidth * 1.2) // Slightly larger than visual bridge
+                new THREE.BoxGeometry(distance, bridgeWidth * 1.2, bridgeWidth * 1.2)
             );
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
             collisionBox.setFromObject(collisionMesh);
             
             // Store bridge-specific collision data
-            const bridgeCollisionData = {
+            const bridge = {
                 mesh: bridgeGroup,
                 collisionBox: collisionBox,
                 height: bridgeData.height,
@@ -733,66 +739,43 @@
                 isBridge: true
             };
             
-            towers.push(bridgeCollisionData);
+            towers.push(bridge);
+            spatialGrid.add(bridge);
         }
 
         // Update collision check function
         function checkCollision(position, radius) {
-            const playerCollider = new THREE.Sphere(position, radius);
+            const playerCollider = objectPool.getSphere();
+            playerCollider.set(position, radius);
+            
             let closestCollision = null;
             let minDistance = Infinity;
             
-            for (const tower of towers) {
-                if (tower.isBridge) {
-                    // Special handling for bridges
-                    const bridge = tower;
-                    const bridgeHeight = bridge.height;
-                    const bridgeWidth = bridge.width;
-                    
-                    // Only check collision if player is within the bridge's height range
-                    if (position.y >= bridgeHeight - bridgeWidth && position.y <= bridgeHeight + bridgeWidth) {
-                        // Get the closest point on the bridge's collision box
-                        const closestPoint = new THREE.Vector3();
-                        bridge.collisionBox.clampPoint(position, closestPoint);
-                        
-                        // Calculate distance to closest point
-                        const distance = position.distanceTo(closestPoint);
-                        
-                        // If this is closer than our current closest collision
-                        if (distance < minDistance) {
-                            minDistance = distance;
-                            closestCollision = {
-                                collision: true,
-                                tower: bridge,
-                                collisionBox: bridge.collisionBox,
-                                distance: distance,
-                                closestPoint: closestPoint,
-                                isBridge: true
-                            };
-                        }
-                    }
-                } else {
-                    // Normal tower collision check
-                    const closestPoint = new THREE.Vector3();
-                    tower.collisionBox.clampPoint(position, closestPoint);
-                    
-                    const distance = position.distanceTo(closestPoint);
-                    
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestCollision = {
-                            collision: true,
-                            tower: tower,
-                            collisionBox: tower.collisionBox,
-                            distance: distance,
-                            closestPoint: closestPoint,
-                            isBridge: false
-                        };
-                    }
+            // Use spatial grid to get only nearby objects
+            const nearbyObjects = spatialGrid.getNearbyObjects(position, radius * 2);
+            
+            for (const tower of nearbyObjects) {
+                if (!tower || !tower.collisionBox) continue;
+
+                const closestPoint = objectPool.getVector();
+                tower.collisionBox.clampPoint(position, closestPoint);
+                
+                const distance = position.distanceTo(closestPoint);
+                objectPool.releaseVector(closestPoint);
+                
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestCollision = {
+                        collision: true,
+                        tower: tower,
+                        distance: distance,
+                        closestPoint: closestPoint.clone()
+                    };
                 }
             }
             
-            // Only return collision if we're actually within the collision radius
+            objectPool.releaseSphere(playerCollider);
+            
             if (closestCollision && closestCollision.distance < radius) {
                 return closestCollision;
             }
@@ -800,10 +783,8 @@
             return {
                 collision: false,
                 tower: null,
-                collisionBox: null,
                 distance: Infinity,
-                closestPoint: null,
-                isBridge: false
+                closestPoint: null
             };
         }
 
