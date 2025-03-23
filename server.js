@@ -69,6 +69,8 @@ function generateWorld() {
     const orbs = [];
     const towerPositions = [];
     
+    console.log('Starting world generation...');
+    
     // Create a grid of towers with some random offset
     const gridSize = Math.sqrt(NUM_TOWERS);
     const spacing = (MAX_RADIUS * 2) / gridSize;
@@ -96,6 +98,8 @@ function generateWorld() {
             });
         }
     }
+    
+    console.log(`Generated ${towers.length} towers`);
     
     // Generate bridges between nearby towers
     const maxBridgeDistance = spacing * 2;
@@ -129,8 +133,11 @@ function generateWorld() {
             }
         }
     }
+    
+    console.log(`Generated ${bridges.length} bridges`);
 
     // Generate orbs
+    console.log(`Starting orb generation (${NUM_ORBS} orbs)...`);
     for (let i = 0; i < NUM_ORBS; i++) {
         const x = (Math.random() - 0.5) * MAX_RADIUS * 2;
         const z = (Math.random() - 0.5) * MAX_RADIUS * 2;
@@ -138,13 +145,21 @@ function generateWorld() {
         const color = Math.floor(Math.random() * 0xFFFFFF); // Random color
         const size = Math.random() * 0.5 + 0.5; // Size between 0.5 and 1
 
-        orbs.push({
+        const orb = {
             id: i,
             position: { x, y, z },
             color,
             size
-        });
+        };
+        
+        orbs.push(orb);
+        if (i % 20 === 0) { // Log every 20th orb
+            console.log(`Generated orb ${i}:`, orb);
+        }
     }
+    
+    console.log(`Generated ${orbs.length} orbs`);
+    console.log('World generation complete');
     
     return { towers, bridges, orbs };
 }

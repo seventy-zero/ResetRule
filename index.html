@@ -771,6 +771,12 @@
                 switch (data.type) {
                     case 'world_data':
                         console.log('Received world data');
+                        console.log('World data contents:', {
+                            towers: data.towers?.length || 0,
+                            bridges: data.bridges?.length || 0,
+                            orbs: data.orbs?.length || 0
+                        });
+                        
                         // Clear existing towers
                         towers.forEach(tower => {
                             scene.remove(tower.mesh);
@@ -787,14 +793,31 @@
                             createBridgeFromData(bridgeData);
                         });
 
+                        // Debug logging for orbs
+                        console.log('Processing orbs data:', data.orbs);
+                        
                         // Clear existing orbs
-                        orbs.forEach(orb => scene.remove(orb));
+                        orbs.forEach(orb => {
+                            console.log('Removing existing orb:', orb);
+                            scene.remove(orb);
+                        });
                         orbs.clear();
                         
                         // Create new orbs
-                        data.orbs.forEach(orbData => {
-                            createOrb(orbData);
-                        });
+                        if (data.orbs && data.orbs.length > 0) {
+                            console.log('Creating orbs:', data.orbs.length);
+                            data.orbs.forEach((orbData, index) => {
+                                console.log(`Creating orb ${index}:`, orbData);
+                                try {
+                                    const orb = createOrb(orbData);
+                                    console.log(`Successfully created orb ${index}:`, orb);
+                                } catch (error) {
+                                    console.error(`Error creating orb ${index}:`, error);
+                                }
+                            });
+                        } else {
+                            console.warn('No orbs data received from server');
+                        }
                         break;
 
                     case 'room_info':
