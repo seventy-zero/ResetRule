@@ -752,11 +752,16 @@
             // Create a more precise box collider for the bridge
             const collisionBox = new THREE.Box3();
             const collisionMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(distance, bridgeWidth, bridgeWidth) // Use full bridge dimensions
+                new THREE.BoxGeometry(distance, bridgeWidth * 0.5, bridgeWidth) // Reduced height to 0.5x
             );
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
             collisionBox.setFromObject(collisionMesh);
+            
+            // Adjust collision box to be centered on the bridge's top surface
+            const boxHeight = bridgeWidth * 0.5;
+            collisionBox.min.y = bridgeData.height - boxHeight * 0.5;
+            collisionBox.max.y = bridgeData.height + boxHeight * 0.5;
             
             // Add bridge data to collision box for better collision handling
             collisionBox.userData = {
