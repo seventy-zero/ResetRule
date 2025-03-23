@@ -2646,39 +2646,24 @@
 
             // Send position updates
             function sendPositionUpdate() {
-                if (ws.readyState === WebSocket.OPEN && gameStarted) {
-                    // Calculate speed and heading
-                    const dx = camera.position.x - lastSentPosition.x;
-                    const dz = camera.position.z - lastSentPosition.z;
-                    const speed = Math.sqrt(dx * dx + dz * dz) / (0.016); // Assuming 60fps
-                    const heading = Math.atan2(-dx, -dz) * 180 / Math.PI;
-                    const verticalSpeed = (camera.position.y - lastSentPosition.y) / 0.016;
-
-                    // Round position data to 2 decimal places
-                    const positionData = {
-                        position: [
-                            Math.round(camera.position.x * 100) / 100,
-                            Math.round(camera.position.y * 100) / 100,
-                            Math.round(camera.position.z * 100) / 100
-                        ],
-                        rotation: [
-                            Math.round(camera.rotation.x * 100) / 100,
-                            Math.round(camera.rotation.y * 100) / 100,
-                            Math.round(camera.rotation.z * 100) / 100
-                        ],
-                        speed: Math.round(speed),
-                        heading: Math.round(heading),
-                        verticalSpeed: Math.round(verticalSpeed * 100) / 100
-                    };
-
-                    ws.send(JSON.stringify({
-                        type: 'position',
-                        ...positionData
-                    }));
-
-                    lastSentPosition.copy(camera.position);
-                    lastSentRotation.copy(camera.rotation);
-                }
+                if (!ws || ws.readyState !== WebSocket.OPEN) return; // Add null check and connection state check
+                
+                const position = camera.position;
+                const rotation = camera.rotation;
+                
+                ws.send(JSON.stringify({
+                    type: 'position',
+                    position: {
+                        x: position.x,
+                        y: position.y,
+                        z: position.z
+                    },
+                    rotation: {
+                        x: rotation.x,
+                        y: rotation.y,
+                        z: rotation.z
+                    }
+                }));
             }
 
             // Update position more frequently (16ms = ~60fps)
@@ -3173,21 +3158,20 @@
 
         // Update health display
         function updateHealthDisplay() {
-            const segments = healthDisplay.children;
-            const healthPerSegment = 20; // 100 health / 5 segments
+            const healthDisplay = document.getElementById('health-display');
+            if (!healthDisplay) return; // Add null check
             
-            for (let i = 0; i < segments.length; i++) {
-                const segmentHealth = Math.max(0, playerHealth - (i * healthPerSegment));
-                const segmentPercentage = Math.min(100, (segmentHealth / healthPerSegment) * 100);
-                
-                if (segmentPercentage <= 0) {
-                    segments[i].style.backgroundColor = '#ff0000'; // Brighter red when empty
-                    segments[i].style.boxShadow = '0 0 10px rgba(255, 0, 0, 0.5)';
+            const healthSegments = healthDisplay.querySelectorAll('.health-segment');
+            if (!healthSegments) return; // Add null check
+            
+            healthSegments.forEach((segment, index) => {
+                const healthThreshold = 100 - (index * 10);
+                if (playerHealth > healthThreshold) {
+                    segment.classList.add('active');
                 } else {
-                    segments[i].style.backgroundColor = '#00ff00'; // Brighter green when full
-                    segments[i].style.boxShadow = '0 0 10px rgba(0, 255, 0, 0.5)';
+                    segment.classList.remove('active');
                 }
-            }
+            });
         }
 
         // Add health display update to animation loop
