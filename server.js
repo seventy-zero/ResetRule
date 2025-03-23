@@ -143,7 +143,7 @@ function generateWorld() {
     for (let i = 0; i < NUM_ORBS; i++) {
         let validPosition = false;
         let attempts = 0;
-        const maxAttempts = 100; // Reduced since we're being more lenient
+        const maxAttempts = 50; // Reduced since we're being more lenient
         
         while (!validPosition && attempts < maxAttempts) {
             const x = (Math.random() - 0.5) * MAX_RADIUS * 2;
@@ -159,7 +159,7 @@ function generateWorld() {
                     Math.pow(x - tower.x, 2) + 
                     Math.pow(z - tower.z, 2)
                 );
-                if (distance < 1) { // Only prevent spawning inside towers
+                if (distance < 0.5) { // Reduced from 1 to 0.5 to be even more lenient
                     insideTower = true;
                     break;
                 }
