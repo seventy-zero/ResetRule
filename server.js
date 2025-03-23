@@ -435,4 +435,73 @@ const objectPool = {
 
 // Add to renderer setup
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1)); // Limit pixel ratio
-renderer.shadowMap.enabled = false; // Disable shadows if not needed 
+renderer.shadowMap.enabled = false; // Disable shadows if not needed
+
+// Handle shotgun shot
+socket.on('shotgunShot', (data) => {
+    const shooter = players.get(socket.id);
+    if (!shooter) return;
+
+    const shotData = {
+        position: data.position,
+        direction: data.direction,
+        shooterId: socket.id,
+        pellets: data.pellets
+    };
+
+    // Broadcast to all players
+    io.emit('shotgunShot', shotData);
+
+    // Check for hits on other players
+    players.forEach((player, playerId) => {
+        if (playerId === socket.id) return; // Skip shooter
+
+        // Check if any pellet hits the player
+        const hit = data.pellets.some(pellet => {
+            const pelletPos = {
+                x: data.position.x + pellet.x,
+                y: data.position.y + pellet.y,
+                z: data.position.z + pellet.z
+            };
+            const distance = Math.sqrt(
+                Math.pow(pelletPos.x - player.position.x, 2) +
+                Math.pow(pelletPos.y - player.position.y, 2) +
+                Math.pow(pelletPos.z - player.position.z, 2)
+            );
+            return distance < 5; // Hit detection radius
+        });
+
+        if (hit) {
+            player.health -= 20; // Shotgun damage per pellet
+            if (player.health <= 0) {
+                // Player died, drop their orbs
+                const dropOrbs = player.orbs; // Drop 100% of orbs
+                if (dropOrbs > 0) {
+                    // Drop orbs in a spread pattern around death location
+                    for (let i = 0; i < dropOrbs; i++) {
+                        const spread = 10; // Spread radius
+                        const angle = (Math.PI * 2 * i) / dropOrbs; // Evenly distribute in a circle
+                        const x = player.position.x + Math.cos(angle) * spread;
+                        const z = player.position.z + Math.sin(angle) * spread;
+                        const y = Math.random() * 100 + 50; // Random height between 50 and 150
+
+                        const color = Math.floor(Math.random() * 0xFFFFFF);
+                        const size = Math.random() * 0.5 + 0.5;
+
+                        const orb = {
+                            id: orbs.length,
+                            position: { x, y, z },
+                            color,
+                            size
+                        };
+                        orbs.push(orb);
+                    }
+                    player.orbs = 0; // Set to 0 since all orbs were dropped
+                }
+                player.health = 100;
+                player.position = getRandomSpawnPoint();
+            }
+            io.emit('playerHealthUpdate', { id: playerId, health: player.health });
+        }
+    });
+}); 
