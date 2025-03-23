@@ -2672,7 +2672,7 @@
 
         // Add after the scene setup
         // Create shotgun muzzle flash effect
-        const muzzleFlashGeometry = new THREE.SphereGeometry(2, 16, 16); // Increased size from 0.5 to 2
+        const muzzleFlashGeometry = new THREE.SphereGeometry(3, 16, 16); // Increased from 2 to 3
         const muzzleFlashMaterial = new THREE.MeshBasicMaterial({
             color: 0xffff00,
             transparent: true,
@@ -2683,7 +2683,7 @@
         scene.add(muzzleFlash);
 
         // Add a second, larger flash for better visibility
-        const outerFlashGeometry = new THREE.SphereGeometry(3, 16, 16);
+        const outerFlashGeometry = new THREE.SphereGeometry(4, 16, 16); // Increased from 3 to 4
         const outerFlashMaterial = new THREE.MeshBasicMaterial({
             color: 0xff6600,
             transparent: true,
@@ -2694,7 +2694,7 @@
         scene.add(outerFlash);
 
         // Create shotgun pellets
-        const pelletGeometry = new THREE.SphereGeometry(0.5, 8, 8); // Increased size from 0.2 to 0.5
+        const pelletGeometry = new THREE.SphereGeometry(0.8, 8, 8); // Increased from 0.5 to 0.8
         const pelletMaterial = new THREE.MeshBasicMaterial({
             color: 0xffff00,
             transparent: true,
@@ -2724,13 +2724,15 @@
             // Calculate offset position for muzzle flash and pellets
             const rightVector = new THREE.Vector3();
             rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
-            const muzzleOffset = 3; // Offset distance from player
+            const muzzleOffset = 8; // Increased from 3 to 8 units
             const muzzlePosition = camera.position.clone().add(rightVector.multiplyScalar(muzzleOffset));
-            muzzlePosition.y = camera.position.y - 1; // Slightly lower than player view
+            muzzlePosition.y = camera.position.y - 2; // Lowered from -1 to -2 for better visibility
             
             // Show muzzle flash at offset position
             muzzleFlash.position.copy(muzzlePosition);
             muzzleFlash.visible = true;
+            outerFlash.position.copy(muzzlePosition);
+            outerFlash.visible = true;
             
             // Create pellets at offset position
             const pelletDirections = [];
@@ -2747,6 +2749,25 @@
                 // Show pellet at offset position
                 pellets[i].position.copy(muzzlePosition);
                 pellets[i].visible = true;
+                
+                // Animate pellet movement
+                const pelletSpeed = 2; // Speed of pellet movement
+                const pelletDistance = 50; // Distance pellets travel
+                const startTime = currentTime;
+                
+                function animatePellet(pellet, direction, startPos) {
+                    const elapsed = Date.now() - startTime;
+                    const distance = elapsed * pelletSpeed / 1000; // Convert to seconds
+                    
+                    if (distance < pelletDistance) {
+                        pellet.position.copy(startPos).add(direction.multiplyScalar(distance));
+                        requestAnimationFrame(() => animatePellet(pellet, direction, startPos));
+                    } else {
+                        pellet.visible = false;
+                    }
+                }
+                
+                animatePellet(pellets[i], pelletDir, muzzlePosition.clone());
             }
             
             // Send shot data to server
@@ -2763,12 +2784,8 @@
             // Hide muzzle flash after short delay
             setTimeout(() => {
                 muzzleFlash.visible = false;
-            }, 100);
-            
-            // Hide pellets after short delay
-            setTimeout(() => {
-                pellets.forEach(pellet => pellet.visible = false);
-            }, 200);
+                outerFlash.visible = false;
+            }, 150); // Increased from 100 to 150ms
         }
 
         // Add these new functions
