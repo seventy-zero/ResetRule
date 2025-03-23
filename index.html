@@ -1578,7 +1578,6 @@
                 if (usernameInput.value.trim()) {
                     playerUsername = usernameInput.value.trim();
                     gameStarted = true;
-                    console.log('Game started with username:', playerUsername);
                     instructions.classList.add('hidden');
                     
                     // Send join message to server
@@ -1595,7 +1594,6 @@
                         initializeMobileControls();
                     }
                     controls.lock();
-                    console.log('Controls locked after game start');
                 }
             });
 
@@ -2104,32 +2102,58 @@
 
             // Initialize pellet pool before any functions that use it
             const pelletPool = {
-                pellets: [],
-                get() {
-                    if (this.pellets.length > 0) {
-                        return this.pellets.pop();
+                pool: [],
+                active: [],
+                size: 100,
+                
+                init() {
+                    for (let i = 0; i < this.size; i++) {
+                        const pellet = this.createPellet();
+                        this.pool.push(pellet);
                     }
-                    return this.createNewPellet();
                 },
-                release(pellet) {
-                    pellet.position.set(0, 0, 0);
-                    pellet.velocity.set(0, 0, 0);
-                    pellet.spawnTime = 0;
-                    pellet.trail = [];
-                    this.pellets.push(pellet);
-                },
-                createNewPellet() {
-                    const pelletGeometry = new THREE.SphereGeometry(0.2, 8, 8);
-                    const pelletMaterial = new THREE.MeshBasicMaterial({ 
-                        color: 0xffff00,
-                        transparent: true,
-                        opacity: 1.0
-                    });
-                    const pellet = new THREE.Mesh(pelletGeometry, pelletMaterial);
+                
+                createPellet() {
+                    const geometry = new THREE.SphereGeometry(0.2, 8, 8);
+                    const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                    const pellet = new THREE.Mesh(geometry, material);
+                    
+                    // Create trail
+                    const trailGeometry = new THREE.BufferGeometry();
+                    const trailMaterial = new THREE.LineBasicMaterial({ color: 0xffff00 });
+                    const trail = new THREE.Line(trailGeometry, trailMaterial);
+                    pellet.add(trail);
+                    
+                    pellet.trailPoints = [];
+                    pellet.trailGeometry = trailGeometry;
                     pellet.velocity = new THREE.Vector3();
                     pellet.spawnTime = 0;
-                    pellet.trail = [];
+                    
                     return pellet;
+                },
+                
+                get() {
+                    let pellet;
+                    if (this.pool.length > 0) {
+                        pellet = this.pool.pop();
+                    } else {
+                        pellet = this.createPellet();
+                    }
+                    
+                    pellet.visible = true;
+                    pellet.trailPoints = [];
+                    pellet.spawnTime = Date.now();
+                    this.active.push(pellet);
+                    return pellet;
+                },
+                
+                release(pellet) {
+                    const index = this.active.indexOf(pellet);
+                    if (index > -1) {
+                        this.active.splice(index, 1);
+                    }
+                    pellet.visible = false;
+                    this.pool.push(pellet);
                 }
             };
 
@@ -2140,105 +2164,93 @@
             function updatePellets() {
                 const currentTime = Date.now();
                 
-                for (let i = scene.children.length - 1; i >= 0; i--) {
-                    const object = scene.children[i];
-                    if (object instanceof THREE.Mesh && object.material.color.getHex() === 0xffff00) {
-                        // Update pellet position
-                        object.position.add(object.velocity);
+                for (const pellet of pelletPool.active) {
+                    // Update position based on velocity and gravity
+                    pellet.position.add(pellet.velocity.clone().multiplyScalar(clock.getDelta()));
+                    pellet.velocity.y -= PELLET_GRAVITY * clock.getDelta();
+                    
+                    // Update trail
+                    pellet.trailPoints.push(pellet.position.clone());
+                    if (pellet.trailPoints.length > PELLET_TRAIL_LENGTH) {
+                        pellet.trailPoints.shift();
+                    }
+                    
+                    // Update trail geometry
+                    const positions = new Float32Array(pellet.trailPoints.length * 3);
+                    for (let i = 0; i < pellet.trailPoints.length; i++) {
+                        positions[i * 3] = pellet.trailPoints[i].x;
+                        positions[i * 3 + 1] = pellet.trailPoints[i].y;
+                        positions[i * 3 + 2] = pellet.trailPoints[i].z;
+                    }
+                    pellet.trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                    
+                    // Check collisions with other players
+                    for (const otherPlayer of otherPlayers) {
+                        if (!otherPlayer.visible) continue;
                         
-                        // Apply gravity
-                        object.velocity.y -= PELLET_GRAVITY;
-                        
-                        // Add to trail
-                        object.trail.push(object.position.clone());
-                        if (object.trail.length > 5) {
-                            object.trail.shift();
-                        }
-                        
-                        // Check collisions with other players
-                        for (const otherPlayer of otherPlayers) {
-                            if (!otherPlayer.visible) continue;
+                        const distance = pellet.position.distanceTo(otherPlayer.position);
+                        if (distance < 5) { // Collision radius
+                            // Create hit effect
+                            createHitEffect(pellet.position);
                             
-                            const distance = object.position.distanceTo(otherPlayer.position);
-                            if (distance < 5) { // Collision radius
-                                // Create hit effect
-                                createHitEffect(object.position);
+                            // Play hit sound
+                            playHitSound();
+                            
+                            // Reduce player health
+                            otherPlayer.userData.health -= SHOTGUN_DAMAGE;
+                            
+                            // Check for kill
+                            if (otherPlayer.userData.health <= 0) {
+                                currentKills++;
+                                updateScoreDisplay(true);
                                 
-                                // Play hit sound
-                                playHitSound();
+                                // Create kill indicator
+                                const killIndicator = document.createElement('div');
+                                killIndicator.style.position = 'fixed';
+                                killIndicator.style.top = '0';
+                                killIndicator.style.left = '0';
+                                killIndicator.style.width = '100%';
+                                killIndicator.style.height = '100%';
+                                killIndicator.style.border = '10px solid #00ff00';
+                                killIndicator.style.boxSizing = 'border-box';
+                                killIndicator.style.pointerEvents = 'none';
+                                killIndicator.style.zIndex = '1000';
+                                killIndicator.style.opacity = '0.7';
+                                document.body.appendChild(killIndicator);
                                 
-                                // Reduce player health
-                                otherPlayer.userData.health -= SHOTGUN_DAMAGE;
-                                
-                                // Check for kill
-                                if (otherPlayer.userData.health <= 0) {
-                                    currentKills++;
-                                    updateScoreDisplay(true);
-                                    
-                                    // Create kill indicator
-                                    const killIndicator = document.createElement('div');
-                                    killIndicator.style.position = 'fixed';
-                                    killIndicator.style.top = '0';
-                                    killIndicator.style.left = '0';
-                                    killIndicator.style.width = '100%';
-                                    killIndicator.style.height = '100%';
-                                    killIndicator.style.border = '10px solid #00ff00';
-                                    killIndicator.style.boxSizing = 'border-box';
-                                    killIndicator.style.pointerEvents = 'none';
-                                    killIndicator.style.zIndex = '1000';
-                                    killIndicator.style.opacity = '0.7';
-                                    document.body.appendChild(killIndicator);
-                                    
+                                setTimeout(() => {
+                                    killIndicator.style.transition = 'opacity 0.5s';
+                                    killIndicator.style.opacity = '0';
                                     setTimeout(() => {
-                                        killIndicator.style.transition = 'opacity 0.5s';
-                                        killIndicator.style.opacity = '0';
-                                        setTimeout(() => {
-                                            document.body.removeChild(killIndicator);
-                                        }, 500);
-                                    }, 1000);
-                                }
-                                
-                                // Remove pellet
-                                scene.remove(object);
-                                pelletPool.release(object);
-                                break;
+                                        document.body.removeChild(killIndicator);
+                                    }, 500);
+                                }, 1000);
                             }
+                            
+                            // Remove pellet
+                            pelletPool.release(pellet);
+                            break;
                         }
-                        
-                        // Remove old pellets
-                        if (currentTime - object.spawnTime > PELLET_LIFETIME) {
-                            scene.remove(object);
-                            pelletPool.release(object);
-                        }
+                    }
+                    
+                    // Check if pellet has expired
+                    if (currentTime - pellet.spawnTime > PELLET_LIFETIME) {
+                        pelletPool.release(pellet);
                     }
                 }
             }
 
-            // Store the original animate function
-            const originalAnimate = animate;
-
-            // Override the animate function to include pellet updates
-            animate = function() {
-                if (gameStarted) {
-                    updatePellets();
-                }
-                originalAnimate();
-            };
-
-            // Add camera rotation and pellet updates to animation loop
-            let baseAnimate = animate;
-            animate = function() {
+            // Animation loop with collision detection, star rotation, and nebula animation
+            function animate() {
                 requestAnimationFrame(animate);
                 
+                const deltaTime = clock.getDelta();
+                const currentTime = performance.now();
+                
+                // Update pellets
+                updatePellets();
+                
                 if (gameStarted) {
-                    if (controls.isLocked) {
-                        updateCameraRotation();
-                    }
-                    updatePellets();
-                    
-                    const deltaTime = clock.getDelta();
-                    const currentTime = performance.now();
-                    
                     // Update other players' positions with throttling
                     if (currentTime - lastCollisionCheck > COLLISION_CHECK_INTERVAL) {
                         playerStates.forEach((playerState, username) => {
@@ -2626,9 +2638,11 @@
                         if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
                     }
                 }
-                
+
+                // Always render the scene
                 renderer.render(scene, camera);
-            };
+            }
+            animate();
 
             // Send position updates
             function sendPositionUpdate() {
@@ -2833,139 +2847,25 @@
         scene.add(outerFlash);
 
         // Create shotgun pellets with object pooling
-        let pelletPool;
-
-        function initializePelletPool() {
-            if (pelletPool) return; // Only initialize once
-
-            pelletPool = {
-                pellets: [],
-                get() {
-                    if (this.pellets.length > 0) {
-                        return this.pellets.pop();
-                    }
-                    return this.createNewPellet();
-                },
-                release(pellet) {
-                    pellet.position.set(0, 0, 0);
-                    pellet.velocity.set(0, 0, 0);
-                    pellet.spawnTime = 0;
-                    pellet.trail = [];
-                    this.pellets.push(pellet);
-                },
-                createNewPellet() {
-                    const pelletGeometry = new THREE.SphereGeometry(0.2, 8, 8);
-                    const pelletMaterial = new THREE.MeshBasicMaterial({ 
-                        color: 0xffff00,
-                        transparent: true,
-                        opacity: 1.0
-                    });
-                    const pellet = new THREE.Mesh(pelletGeometry, pelletMaterial);
-                    pellet.velocity = new THREE.Vector3();
-                    pellet.spawnTime = 0;
-                    pellet.trail = [];
-                    return pellet;
-                }
-            };
-
-            // Create initial pellet pool
-            for (let i = 0; i < PELLET_COUNT * 2; i++) {
-                const pellet = pelletPool.get();
-                pelletPool.release(pellet);
+        const pelletPool = {
+            pellets: [],
+            active: new Set(),
+            get: function() {
+                return this.pellets.pop();
+            },
+            release: function(pellet) {
+                pellet.visible = false;
+                pellet.position.set(0, 0, 0);
+                pellet.velocity = new THREE.Vector3();
+                this.active.delete(pellet);
+                this.pellets.push(pellet);
             }
-        }
-
-        // Initialize pellet pool before any functions that use it
-        initializePelletPool();
-
-        // Update pellets in animation loop
-        function updatePellets() {
-            const currentTime = Date.now();
-            
-            for (let i = scene.children.length - 1; i >= 0; i--) {
-                const object = scene.children[i];
-                if (object instanceof THREE.Mesh && object.material.color.getHex() === 0xffff00) {
-                    // Update pellet position
-                    object.position.add(object.velocity);
-                    
-                    // Apply gravity
-                    object.velocity.y -= PELLET_GRAVITY;
-                    
-                    // Add to trail
-                    object.trail.push(object.position.clone());
-                    if (object.trail.length > 5) {
-                        object.trail.shift();
-                    }
-                    
-                    // Check collisions with other players
-                    for (const otherPlayer of otherPlayers) {
-                        if (!otherPlayer.visible) continue;
-                        
-                        const distance = object.position.distanceTo(otherPlayer.position);
-                        if (distance < 5) { // Collision radius
-                            // Create hit effect
-                            createHitEffect(object.position);
-                            
-                            // Play hit sound
-                            playHitSound();
-                            
-                            // Reduce player health
-                            otherPlayer.userData.health -= SHOTGUN_DAMAGE;
-                            
-                            // Check for kill
-                            if (otherPlayer.userData.health <= 0) {
-                                currentKills++;
-                                updateScoreDisplay(true);
-                                
-                                // Create kill indicator
-                                const killIndicator = document.createElement('div');
-                                killIndicator.style.position = 'fixed';
-                                killIndicator.style.top = '0';
-                                killIndicator.style.left = '0';
-                                killIndicator.style.width = '100%';
-                                killIndicator.style.height = '100%';
-                                killIndicator.style.border = '10px solid #00ff00';
-                                killIndicator.style.boxSizing = 'border-box';
-                                killIndicator.style.pointerEvents = 'none';
-                                killIndicator.style.zIndex = '1000';
-                                killIndicator.style.opacity = '0.7';
-                                document.body.appendChild(killIndicator);
-                                
-                                setTimeout(() => {
-                                    killIndicator.style.transition = 'opacity 0.5s';
-                                    killIndicator.style.opacity = '0';
-                                    setTimeout(() => {
-                                        document.body.removeChild(killIndicator);
-                                    }, 500);
-                                }, 1000);
-                            }
-                            
-                            // Remove pellet
-                            scene.remove(object);
-                            pelletPool.release(object);
-                            break;
-                        }
-                    }
-                    
-                    // Remove old pellets
-                    if (currentTime - object.spawnTime > PELLET_LIFETIME) {
-                        scene.remove(object);
-                        pelletPool.release(object);
-                    }
-                }
-            }
-        }
-
-        // Store the original animate function
-        const pelletAnimate = animate;
-
-        // Override the animate function to include pellet updates
-        animate = function() {
-            if (gameStarted) {
-                updatePellets();
-            }
-            pelletAnimate();
         };
+
+        // Create initial pellet pool
+        for (let i = 0; i < PELLET_COUNT * 2; i++) {
+            pelletPool.get();
+        }
 
         // Handle shotgun firing
         function fireShotgun() {
@@ -2976,10 +2876,7 @@
             }
             
             const currentTime = Date.now();
-            if (currentTime - lastShotTime < SHOTGUN_COOLDOWN) {
-                console.log('Shotgun on cooldown');
-                return;
-            }
+            if (currentTime - lastShotTime < SHOTGUN_COOLDOWN) return;
             
             lastShotTime = currentTime;
             
@@ -3037,18 +2934,14 @@
                     spreadAxis.crossVectors(spreadDirection, new THREE.Vector3(0, 1, 0));
                     spreadDirection.applyAxisAngle(spreadAxis, spreadAngle);
                     
-                    // Set initial velocity with increased speed
-                    pellet.velocity.copy(spreadDirection).multiplyScalar(PELLET_SPEED * 2); // Doubled speed
+                    // Set initial velocity
+                    pellet.velocity.copy(spreadDirection).multiplyScalar(PELLET_SPEED);
                     pellet.velocity.y += 2; // Add slight upward velocity
-                    
-                    // Set spawn time and initialize trail
-                    pellet.spawnTime = currentTime;
-                    pellet.trail = [];
                     
                     scene.add(pellet);
                 }
                 
-                // Send shot data to server if connected
+                // Send shot data to server
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     const shotData = {
                         type: 'shotgun_shot',
@@ -3352,62 +3245,23 @@
                 return;
             }
             
-            console.log('Setting up event listeners...');
-            console.log('Game started:', gameStarted);
-            console.log('Controls locked:', controls.isLocked);
-            
             // Remove any existing listeners to prevent duplicates
             document.removeEventListener('mousedown', handleShotgunFire);
-            document.removeEventListener('contextmenu', handleContextMenu);
             
-            // Add new listeners
+            // Add new listener
             document.addEventListener('mousedown', handleShotgunFire);
-            document.addEventListener('contextmenu', handleContextMenu);
-            
-            console.log('Event listeners set up successfully');
         }
 
         // Define the shotgun firing handler
         function handleShotgunFire(event) {
-            console.log('Shotgun fire attempted:', {
-                button: event.button,
-                gameStarted: gameStarted,
-                controlsLocked: controls.isLocked
-            });
-            
             if (event.button === 2) { // Right mouse button
-                if (!gameStarted) {
-                    console.log('Cannot fire: Game not started');
-                    return;
-                }
-                if (!controls.isLocked) {
-                    console.log('Cannot fire: Controls not locked');
-                    return;
-                }
                 console.log('Firing shotgun (right mouse button)');
-                event.preventDefault(); // Prevent context menu
                 fireShotgun();
             }
         }
 
-        // Define the context menu handler
-        function handleContextMenu(event) {
-            event.preventDefault();
-        }
-
         // Call setupEventListeners after camera initialization
         setupEventListeners();
-
-        // Remove the duplicate event listeners from the desktop controls section
-        if (!isMobile) {
-            // Remove the old shotgun firing code
-            // document.addEventListener('mousedown', (event) => {
-            //     if (event.button === 2) {
-            //         console.log('Firing shotgun (right mouse button)');
-            //         fireShotgun();
-            //     }
-            // });
-        }
 
         // Sound effects
         function playShotgunSound() {
@@ -3432,65 +3286,6 @@
             oscillator.start();
             oscillator.stop(audioContext.currentTime + 0.1);
         }
-
-        // ... existing code ...
-        function checkMissileCollisions() {
-            // Check each missile
-            for (let i = missiles.length - 1; i >= 0; i--) {
-                const missile = missiles[i];
-                const missileBox = new THREE.Box3().setFromObject(missile);
-                let missileHit = false;
-
-                // Check collisions with other players
-                otherPlayers.forEach((otherPlane, planeId) => {
-                    if (missileHit) return; // Skip if missile already hit something
-                    
-                    const otherPlaneBox = new THREE.Box3().setFromObject(otherPlane);
-                    if (missileBox.intersectsBox(otherPlaneBox)) {
-                        missileHit = true;
-                        scene.remove(missile);
-                        missiles.splice(i, 1);
-                        
-                        // Send hit data to server
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            const hitData = {
-                                type: 'hit',
-                                targetId: planeId,
-                                damage: 10
-                            };
-                            ws.send(JSON.stringify(hitData));
-                        }
-                    }
-                });
-
-                // Check collisions with buildings
-                buildings.forEach(building => {
-                    if (missileHit) return; // Skip if missile already hit something
-                    
-                    const buildingBox = new THREE.Box3().setFromObject(building);
-                    if (missileBox.intersectsBox(buildingBox)) {
-                        missileHit = true;
-                        scene.remove(missile);
-                        missiles.splice(i, 1);
-                    }
-                });
-            }
-        }
-        // ... existing code ...
-
-        // Store the original animate function
-        let baseAnimate = animate;
-
-        // Override the animate function to include all updates
-        animate = function() {
-            requestAnimationFrame(animate);
-            
-            if (gameStarted) {
-                updatePellets();
-            }
-            
-            baseAnimate();
-        };
     </script>
 </body>
 </html>
