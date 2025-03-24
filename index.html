@@ -997,7 +997,6 @@
                         
                         // Create towers from server data
                         if (data.towers) {
-                            console.log('Creating towers:', data.towers.length);
                             data.towers.forEach(towerData => {
                                 createTowerFromData(towerData);
                             });
@@ -1005,7 +1004,6 @@
                         
                         // Create bridges from server data
                         if (data.bridges) {
-                            console.log('Creating bridges:', data.bridges.length);
                             data.bridges.forEach(bridgeData => {
                                 createBridgeFromData(bridgeData);
                             });
@@ -1013,6 +1011,33 @@
 
                         // Debug logging for orbs
                         console.log('Processing orbs data:', data.orbs);
+                        
+                        // Clear existing orbs
+                        orbs.forEach(orb => {
+                            console.log('Removing existing orb:', orb);
+                            scene.remove(orb);
+                        });
+                        orbs.clear();
+                        
+                        // Create new orbs
+                        if (data.orbs && data.orbs.length > 0) {
+                            console.log('Creating orbs:', data.orbs.length);
+                            data.orbs.forEach((orbData, index) => {
+                                console.log(`Creating orb ${index}:`, orbData);
+                                try {
+                                    const orb = createOrb(orbData);
+                                    console.log(`Successfully created orb ${index}:`, orb);
+                                    // Ensure orb is added to scene
+                                    if (!scene.children.includes(orb)) {
+                                        scene.add(orb);
+                                    }
+                                } catch (error) {
+                                    console.error(`Error creating orb ${index}:`, error);
+                                }
+                            });
+                        } else {
+                            console.warn('No orbs data received from server');
+                        }
                         break;
 
                     case 'room_info':
@@ -2582,20 +2607,19 @@
                                     type: 'collect_orb',
                                     orbId: orbCollision.orbId
                                 }));
+                                
+                                // Remove orb from scene and collection
+                                scene.remove(orbCollision.orb);
+                                orbs.delete(orbCollision.orbId);
+                                
+                                // Update local orb count
+                                const currentOrbs = playerOrbs.get(playerUsername) || 0;
+                                playerOrbs.set(playerUsername, currentOrbs + 1);
+                                updateOrbCount();
+                                
+                                // Play collection sound
+                                playOrbCollectionSound();
                             }
-                            
-                            // Remove orb from scene and collection
-                            scene.remove(orbCollision.orb);
-                            orbs.delete(orbCollision.orbId);
-                            
-                            // Update local orb count
-                            const currentOrbs = playerOrbs.get(playerUsername) || 0;
-                            playerOrbs.set(playerUsername, currentOrbs + 1);
-                            updateOrbCount(); // Add this line to update the UI
-                            
-                            // Play collection sound
-                            const audio = new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU');
-                            audio.play().catch(() => {}); // Ignore errors if audio can't play
                         }
 
                         // Check collisions for normal movement
