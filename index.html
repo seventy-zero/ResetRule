@@ -764,67 +764,14 @@
 
             scene.add(bridgeGroup);
             
-            // Create collision box
+            // Create collision box using the same method as towers
             const collisionBox = new THREE.Box3();
-            
-            // Create a box that matches the bridge's actual dimensions
-            const halfLength = bridgeLength / 2;
-            const halfWidth = bridgeWidth / 2;
-            const halfHeight = bridgeWidth / 2;  // Make height match width for consistent collision
-            
-            // Create vertices for all 8 corners of the box in local space
-            const vertices = [
-                new THREE.Vector3(-halfLength, -halfHeight, -halfWidth),
-                new THREE.Vector3(-halfLength, -halfHeight, halfWidth),
-                new THREE.Vector3(-halfLength, halfHeight, -halfWidth),
-                new THREE.Vector3(-halfLength, halfHeight, halfWidth),
-                new THREE.Vector3(halfLength, -halfHeight, -halfWidth),
-                new THREE.Vector3(halfLength, -halfHeight, halfWidth),
-                new THREE.Vector3(halfLength, halfHeight, -halfWidth),
-                new THREE.Vector3(halfLength, halfHeight, halfWidth)
-            ];
-            
-            // Create rotation matrix
-            const rotationMatrix = new THREE.Matrix4();
-            rotationMatrix.makeRotationY(angle);
-            
-            // Transform all vertices
-            vertices.forEach(vertex => {
-                vertex.applyMatrix4(rotationMatrix);  // Apply rotation
-                vertex.add(midPoint);  // Apply position
-            });
-            
-            // Find min and max points from transformed vertices
-            const min = new THREE.Vector3(Infinity, Infinity, Infinity);
-            const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
-            
-            vertices.forEach(vertex => {
-                min.x = Math.min(min.x, vertex.x);
-                min.y = Math.min(min.y, vertex.y);
-                min.z = Math.min(min.z, vertex.z);
-                max.x = Math.max(max.x, vertex.x);
-                max.y = Math.max(max.y, vertex.y);
-                max.z = Math.max(max.z, vertex.z);
-            });
-            
-            // Set the collision box bounds using the transformed vertices
-            collisionBox.set(min, max);
-            
-            // Log bridge collision data for debugging
-            console.log('Creating bridge collision box:', {
-                dimensions: {
-                    length: bridgeLength,
-                    width: bridgeWidth,
-                    height: bridgeWidth
-                },
-                position: midPoint,
-                angle: angle,
-                bounds: {
-                    min: min,
-                    max: max
-                },
-                vertices: vertices
-            });
+            const collisionMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(bridgeLength, bridgeWidth, bridgeWidth)
+            );
+            collisionMesh.position.copy(midPoint);
+            collisionMesh.rotation.y = angle;
+            collisionBox.setFromObject(collisionMesh);
 
             // Add bridge to towers array for consistent handling
             const bridgeObject = {
@@ -837,8 +784,7 @@
             console.log('Bridge added to collision system:', {
                 totalObjects: towers.length,
                 hasCollisionBox: bridgeObject.collisionBoxes.length > 0,
-                collisionBoxSize: collisionBox.getSize(new THREE.Vector3()),
-                boundingBoxVolume: (max.x - min.x) * (max.y - min.y) * (max.z - min.z)
+                collisionBoxSize: collisionBox.getSize(new THREE.Vector3())
             });
 
             return bridgeGroup;
