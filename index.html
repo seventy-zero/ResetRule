@@ -13,15 +13,22 @@
             display: block; 
         }
         #instructions {
-            position: fixed;
+            position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.7);
-            padding: 20px;
-            border-radius: 10px;
             text-align: center;
             color: white;
+            font-family: Arial, sans-serif;
+            font-size: 18px;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #333;
             z-index: 1000;
         }
         #instructions.hidden {
@@ -199,33 +206,6 @@
             25% { transform: translateX(-5px); }
             75% { transform: translateX(5px); }
         }
-
-        /* Add after existing styles */
-        #musicControls {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background-color: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            border-radius: 5px;
-            color: white;
-            z-index: 1000;
-            display: none;
-        }
-        
-        #musicControls button {
-            background: none;
-            border: none;
-            color: white;
-            font-size: 20px;
-            cursor: pointer;
-            padding: 5px;
-            margin: 0 5px;
-        }
-        
-        #musicControls button:hover {
-            color: #4CAF50;
-        }
     </style>
 </head>
 <body>
@@ -268,13 +248,6 @@
         </div>
     </div>
 
-    <!-- Add after existing elements -->
-    <div id="musicControls">
-        <button id="muteButton">🔊</button>
-        <button id="volumeDown">-</button>
-        <button id="volumeUp">+</button>
-    </div>
-
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -292,15 +265,15 @@
         const playerHeight = 10;
         const playerRadius = 2;
         const moveSpeed = 0.05;
-        const gravity = 0.008;
+        const gravity = 0.008; // Reduced from 0.015 for longer air time
         const flingStrength = 2.75;
         const flingDamping = 0.985;
         const clock = new THREE.Clock();
-        const lastSentPosition = new THREE.Vector3();
-        const lastSentRotation = new THREE.Vector3();
-        let ws = null;
-        let wsConnectionAttempted = false;
-        let worldDataRequested = false;
+        const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
+        const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
+        let ws = null; // Initialize WebSocket variable
+        let wsConnectionAttempted = false; // Track if we've attempted to connect
+        let worldDataRequested = false; // Track if we've requested world data
 
         // Initialize WebSocket connection immediately
         if (!wsConnectionAttempted) {
@@ -338,12 +311,12 @@
         };
 
         // Add movement smoothing constants
-        const MOVEMENT_SMOOTHING = 0.85;
-        const COLLISION_PUSH_FORCE = 3.5;
-        const CORNER_SLIDE_FORCE = 0.8;
-        const MIN_VELOCITY_THRESHOLD = 0.001;
-        const STUCK_THRESHOLD = 0.3;
-        const STUCK_PUSH_FORCE = 5.0;
+        const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
+        const COLLISION_PUSH_FORCE = 3.5; // Increased from 2.5 for stronger collision response
+        const CORNER_SLIDE_FORCE = 0.8; // Increased from 0.7 for better sliding
+        const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
+        const STUCK_THRESHOLD = 0.3; // New constant for detecting when player is stuck
+        const STUCK_PUSH_FORCE = 5.0; // New constant for extra push force when stuck
 
         // Game state variables
         let gameStarted = false;
@@ -367,9 +340,9 @@
         const towers = [];
         const nebulas = [];
         const playerStates = new Map();
-        const orbs = new Map();
-        const playerOrbs = new Map();
-        const collisionBoxes = [];
+        const orbs = new Map(); // Add orbs collection
+        const playerOrbs = new Map(); // Track orbs collected by each player
+        const collisionBoxes = []; // Add collision boxes collection
 
         // Vectors and other THREE.js objects
         const velocity = new THREE.Vector3();
@@ -1666,15 +1639,27 @@
             });
 
             // Modified start button handler
-            startButton.addEventListener('click', () => {
-                playerUsername = usernameInput.value.trim();
-                if (playerUsername) {
-                    instructions.style.display = 'none';
-                    controls.lock();
+            startButton.addEventListener('click', function(event) {
+                event.preventDefault();
+                if (usernameInput.value.trim()) {
+                    playerUsername = usernameInput.value.trim();
                     gameStarted = true;
+                    instructions.classList.add('hidden');
                     
-                    // Start music after 10 seconds
-                    setTimeout(startBackgroundMusic, 10000);
+                    // Send join message to server
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'join',
+                            username: playerUsername
+                        }));
+                    }
+                    
+                    if (isMobile) {
+                        document.querySelector('.mobile-controls').style.display = 'block';
+                        document.getElementById('flingButton').style.display = 'block';
+                        initializeMobileControls();
+                    }
+                    controls.lock();
                 }
             });
 
@@ -3428,82 +3413,6 @@
                 // Handle orb drop
             }
         });
-
-        // Add music control functions
-        let isMuted = false;
-        let currentVolume = 0.5;
-
-        function updateMusicVolume(newVolume) {
-            if (!gainNode) return;
-            
-            currentVolume = Math.max(0, Math.min(1, newVolume));
-            if (!isMuted) {
-                gainNode.gain.linearRampToValueAtTime(
-                    currentVolume,
-                    audioContext.currentTime + 0.1
-                );
-            }
-            
-            // Update mute button icon based on volume
-            const muteButton = document.getElementById('muteButton');
-            if (currentVolume === 0) {
-                muteButton.textContent = '🔇';
-            } else if (currentVolume < 0.5) {
-                muteButton.textContent = '🔉';
-            } else {
-                muteButton.textContent = '🔊';
-            }
-        }
-
-        function toggleMute() {
-            if (!gainNode) return;
-            
-            isMuted = !isMuted;
-            const muteButton = document.getElementById('muteButton');
-            
-            if (isMuted) {
-                gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.1);
-                muteButton.textContent = '🔇';
-            } else {
-                gainNode.gain.linearRampToValueAtTime(currentVolume, audioContext.currentTime + 0.1);
-                updateMusicVolume(currentVolume);
-            }
-        }
-
-        // Add music control event listeners
-        document.getElementById('muteButton').addEventListener('click', toggleMute);
-        document.getElementById('volumeDown').addEventListener('click', () => {
-            updateMusicVolume(currentVolume - 0.1);
-        });
-        document.getElementById('volumeUp').addEventListener('click', () => {
-            updateMusicVolume(currentVolume + 0.1);
-        });
-
-        // Simple background music setup
-        function startBackgroundMusic() {
-            try {
-                const music = new Audio('leader-ultra-essence-lossy-64.mp3');
-                music.loop = true;
-                music.volume = 0; // Start silent
-                
-                music.play().then(() => {
-                    // Fade in using regular JavaScript
-                    let vol = 0;
-                    const interval = setInterval(() => {
-                        vol += 0.01;
-                        if (vol >= 0.5) {
-                            vol = 0.5;
-                            clearInterval(interval);
-                        }
-                        music.volume = vol;
-                    }, 100); // Increase volume every 100ms
-                }).catch(error => {
-                    console.error('Error playing music:', error);
-                });
-            } catch (error) {
-                console.error('Error setting up music:', error);
-            }
-        }
     </script>
 </body>
 </html>
