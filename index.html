@@ -206,6 +206,33 @@
             25% { transform: translateX(-5px); }
             75% { transform: translateX(5px); }
         }
+
+        /* Add after existing styles */
+        #musicControls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            color: white;
+            z-index: 1000;
+            display: none;
+        }
+        
+        #musicControls button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 5px;
+            margin: 0 5px;
+        }
+        
+        #musicControls button:hover {
+            color: #4CAF50;
+        }
     </style>
 </head>
 <body>
@@ -248,6 +275,13 @@
         </div>
     </div>
 
+    <!-- Add after existing elements -->
+    <div id="musicControls">
+        <button id="muteButton">🔊</button>
+        <button id="volumeDown">-</button>
+        <button id="volumeUp">+</button>
+    </div>
+
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -265,15 +299,59 @@
         const playerHeight = 10;
         const playerRadius = 2;
         const moveSpeed = 0.05;
-        const gravity = 0.008; // Reduced from 0.015 for longer air time
+        const gravity = 0.008;
         const flingStrength = 2.75;
         const flingDamping = 0.985;
         const clock = new THREE.Clock();
-        const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
-        const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
-        let ws = null; // Initialize WebSocket variable
-        let wsConnectionAttempted = false; // Track if we've attempted to connect
-        let worldDataRequested = false; // Track if we've requested world data
+        const lastSentPosition = new THREE.Vector3();
+        const lastSentRotation = new THREE.Vector3();
+        let ws = null;
+        let wsConnectionAttempted = false;
+        let worldDataRequested = false;
+        let backgroundMusic = null;
+        let musicStarted = false;
+
+        // Add audio context for background music
+        let audioContext = null;
+        let gainNode = null;
+
+        // Function to initialize and play background music
+        function initBackgroundMusic() {
+            if (musicStarted) return;
+            musicStarted = true;
+
+            // Create audio context
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            gainNode = audioContext.createGain();
+            gainNode.connect(audioContext.destination);
+
+            // Start with volume at 0
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+
+            // Create audio element
+            backgroundMusic = new Audio('background.mp3');
+            backgroundMusic.loop = true;
+
+            // Connect audio to web audio API
+            const source = audioContext.createMediaElementSource(backgroundMusic);
+            source.connect(gainNode);
+
+            // Play music
+            backgroundMusic.play().then(() => {
+                console.log('Background music started');
+                // Fade in over 5 seconds
+                gainNode.gain.linearRampToValueAtTime(0.5, audioContext.currentTime + 5);
+            }).catch(error => {
+                console.error('Error playing background music:', error);
+            });
+        }
+
+        // Function to start background music after delay
+        function startBackgroundMusicWithDelay() {
+            setTimeout(() => {
+                initBackgroundMusic();
+            }, 10000); // 10 seconds delay
+        }
 
         // Initialize WebSocket connection immediately
         if (!wsConnectionAttempted) {
@@ -1639,27 +1717,20 @@
             });
 
             // Modified start button handler
-            startButton.addEventListener('click', function(event) {
-                event.preventDefault();
-                if (usernameInput.value.trim()) {
-                    playerUsername = usernameInput.value.trim();
-                    gameStarted = true;
-                    instructions.classList.add('hidden');
-                    
-                    // Send join message to server
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'join',
-                            username: playerUsername
-                        }));
-                    }
-                    
-                    if (isMobile) {
-                        document.querySelector('.mobile-controls').style.display = 'block';
-                        document.getElementById('flingButton').style.display = 'block';
-                        initializeMobileControls();
-                    }
+            startButton.addEventListener('click', () => {
+                playerUsername = usernameInput.value.trim();
+                if (playerUsername) {
+                    instructions.style.display = 'none';
                     controls.lock();
+                    gameStarted = true;
+
+                    // Start background music after delay
+                    startBackgroundMusicWithDelay();
+                    
+                    // Show music controls after delay
+                    setTimeout(() => {
+                        document.getElementById('musicControls').style.display = 'block';
+                    }, 10000);
                 }
             });
 
@@ -3412,6 +3483,56 @@
             if (data.type === 'orbDrop') {
                 // Handle orb drop
             }
+        });
+
+        // Add music control functions
+        let isMuted = false;
+        let currentVolume = 0.5;
+
+        function updateMusicVolume(newVolume) {
+            if (!gainNode) return;
+            
+            currentVolume = Math.max(0, Math.min(1, newVolume));
+            if (!isMuted) {
+                gainNode.gain.linearRampToValueAtTime(
+                    currentVolume,
+                    audioContext.currentTime + 0.1
+                );
+            }
+            
+            // Update mute button icon based on volume
+            const muteButton = document.getElementById('muteButton');
+            if (currentVolume === 0) {
+                muteButton.textContent = '🔇';
+            } else if (currentVolume < 0.5) {
+                muteButton.textContent = '🔉';
+            } else {
+                muteButton.textContent = '🔊';
+            }
+        }
+
+        function toggleMute() {
+            if (!gainNode) return;
+            
+            isMuted = !isMuted;
+            const muteButton = document.getElementById('muteButton');
+            
+            if (isMuted) {
+                gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.1);
+                muteButton.textContent = '🔇';
+            } else {
+                gainNode.gain.linearRampToValueAtTime(currentVolume, audioContext.currentTime + 0.1);
+                updateMusicVolume(currentVolume);
+            }
+        }
+
+        // Add music control event listeners
+        document.getElementById('muteButton').addEventListener('click', toggleMute);
+        document.getElementById('volumeDown').addEventListener('click', () => {
+            updateMusicVolume(currentVolume - 0.1);
+        });
+        document.getElementById('volumeUp').addEventListener('click', () => {
+            updateMusicVolume(currentVolume + 0.1);
         });
     </script>
 </body>
