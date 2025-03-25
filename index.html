@@ -301,50 +301,6 @@
         let ws = null;
         let wsConnectionAttempted = false;
         let worldDataRequested = false;
-        let backgroundMusic = null;
-        let musicStarted = false;
-
-        // Add audio context for background music
-        let audioContext = null;
-        let gainNode = null;
-
-        // Function to initialize and play background music
-        function initBackgroundMusic() {
-            if (musicStarted) return;
-            musicStarted = true;
-
-            // Create audio context
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            gainNode = audioContext.createGain();
-            gainNode.connect(audioContext.destination);
-
-            // Start with volume at 0
-            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-
-            // Create audio element
-            backgroundMusic = new Audio('background.mp3');
-            backgroundMusic.loop = true;
-
-            // Connect audio to web audio API
-            const source = audioContext.createMediaElementSource(backgroundMusic);
-            source.connect(gainNode);
-
-            // Play music
-            backgroundMusic.play().then(() => {
-                console.log('Background music started');
-                // Fade in over 5 seconds
-                gainNode.gain.linearRampToValueAtTime(0.5, audioContext.currentTime + 5);
-            }).catch(error => {
-                console.error('Error playing background music:', error);
-            });
-        }
-
-        // Function to start background music after delay
-        function startBackgroundMusicWithDelay() {
-            setTimeout(() => {
-                initBackgroundMusic();
-            }, 10000); // 10 seconds delay
-        }
 
         // Initialize WebSocket connection immediately
         if (!wsConnectionAttempted) {
@@ -382,12 +338,12 @@
         };
 
         // Add movement smoothing constants
-        const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
-        const COLLISION_PUSH_FORCE = 3.5; // Increased from 2.5 for stronger collision response
-        const CORNER_SLIDE_FORCE = 0.8; // Increased from 0.7 for better sliding
-        const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
-        const STUCK_THRESHOLD = 0.3; // New constant for detecting when player is stuck
-        const STUCK_PUSH_FORCE = 5.0; // New constant for extra push force when stuck
+        const MOVEMENT_SMOOTHING = 0.85;
+        const COLLISION_PUSH_FORCE = 3.5;
+        const CORNER_SLIDE_FORCE = 0.8;
+        const MIN_VELOCITY_THRESHOLD = 0.001;
+        const STUCK_THRESHOLD = 0.3;
+        const STUCK_PUSH_FORCE = 5.0;
 
         // Game state variables
         let gameStarted = false;
@@ -411,9 +367,9 @@
         const towers = [];
         const nebulas = [];
         const playerStates = new Map();
-        const orbs = new Map(); // Add orbs collection
-        const playerOrbs = new Map(); // Track orbs collected by each player
-        const collisionBoxes = []; // Add collision boxes collection
+        const orbs = new Map();
+        const playerOrbs = new Map();
+        const collisionBoxes = [];
 
         // Vectors and other THREE.js objects
         const velocity = new THREE.Vector3();
