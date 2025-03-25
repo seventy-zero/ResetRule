@@ -3454,6 +3454,16 @@
         backgroundMusic.play().catch(error => console.log('Error playing background music:', error));
 
         // Initialize game audio
+        const backgroundMusic = new Audio('leader-ultra-essence-lossy-64.mp3');
+        backgroundMusic.loop = true;
+        backgroundMusic.volume = 0.5;
+        backgroundMusic.play().catch(error => {
+            console.log('Auto-play prevented. You may need to interact with the page first.');
+            document.addEventListener('click', () => backgroundMusic.play(), { once: true });
+        });
+
+        // Game initialization
+        // ... existing code ...
     </script>
 </body>
 </html>
