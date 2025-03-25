@@ -3445,15 +3445,7 @@
             }
         });
 
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // Play background music on startup
-        const backgroundMusic = new Audio('leader-ultra-essence-lossy-64.mp3');
-        backgroundMusic.loop = true;
-        backgroundMusic.volume = 0.5; // Set to 50% volume by default
-        backgroundMusic.play().catch(error => console.log('Error playing background music:', error));
-
-        // Initialize game audio
+        // Initialize background music
         const backgroundMusic = new Audio('leader-ultra-essence-lossy-64.mp3');
         backgroundMusic.loop = true;
         backgroundMusic.volume = 0.5;
@@ -3462,8 +3454,73 @@
             document.addEventListener('click', () => backgroundMusic.play(), { once: true });
         });
 
-        // Game initialization
-        // ... existing code ...
+        // Set up event listeners after camera is initialized
+        function setupEventListeners() {
+            if (!camera) {
+                console.log('Waiting for camera initialization...');
+                setTimeout(setupEventListeners, 100);
+                return;
+            }
+            
+            // Remove any existing listeners to prevent duplicates
+            document.removeEventListener('mousedown', handleShotgunFire);
+            
+            // Add new listener
+            document.addEventListener('mousedown', handleShotgunFire);
+        }
+
+        // Define the shotgun firing handler
+        function handleShotgunFire(event) {
+            if (event.button === 2) { // Right mouse button
+                console.log('Firing shotgun (right mouse button)');
+                fireShotgun();
+            }
+        }
+
+        // Call setupEventListeners after camera initialization
+        setupEventListeners();
+
+        // Sound effects
+        function playShotgunSound() {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            // Configure oscillator
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(200, audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + 0.1);
+            
+            // Configure gain
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+            
+            // Connect nodes
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // Play sound
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + 0.1);
+        }
+
+        // Handle player health updates
+        ws.addEventListener('message', (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'playerHealthUpdate') {
+                if (data.id === ws.id) {
+                    // Handle health update
+                }
+            }
+        });
+
+        // Handle orb drops
+        ws.addEventListener('message', (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'orbDrop') {
+                // Handle orb drop
+            }
+        });
     </script>
 </body>
 </html>
