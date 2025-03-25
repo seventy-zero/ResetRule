@@ -3413,6 +3413,16 @@
                 // Handle orb drop
             }
         });
+
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Play background music on startup
+        const backgroundMusic = new Audio('leader-ultra-essence-lossy-64.mp3');
+        backgroundMusic.loop = true;
+        backgroundMusic.volume = 0.5; // Set to 50% volume by default
+        backgroundMusic.play().catch(error => console.log('Error playing background music:', error));
+
+        // Initialize game audio
     </script>
 </body>
 </html>
