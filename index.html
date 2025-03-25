@@ -13,22 +13,15 @@
             display: block; 
         }
         #instructions {
-            position: absolute;
+            position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            text-align: center;
-            color: white;
-            font-family: Arial, sans-serif;
-            font-size: 18px;
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
-            background: rgba(0, 0, 0, 0.8);
+            background-color: rgba(0, 0, 0, 0.7);
             padding: 20px;
             border-radius: 10px;
-            border: 1px solid #333;
+            text-align: center;
+            color: white;
             z-index: 1000;
         }
         #instructions.hidden {
@@ -1723,14 +1716,9 @@
                     instructions.style.display = 'none';
                     controls.lock();
                     gameStarted = true;
-
-                    // Start background music after delay
-                    startBackgroundMusicWithDelay();
                     
-                    // Show music controls after delay
-                    setTimeout(() => {
-                        document.getElementById('musicControls').style.display = 'block';
-                    }, 10000);
+                    // Start music after 10 seconds
+                    setTimeout(startBackgroundMusic, 10000);
                 }
             });
 
@@ -3534,6 +3522,32 @@
         document.getElementById('volumeUp').addEventListener('click', () => {
             updateMusicVolume(currentVolume + 0.1);
         });
+
+        // Simple background music setup
+        function startBackgroundMusic() {
+            try {
+                const music = new Audio('leader-ultra-essence-lossy-64.mp3');
+                music.loop = true;
+                music.volume = 0; // Start silent
+                
+                music.play().then(() => {
+                    // Fade in using regular JavaScript
+                    let vol = 0;
+                    const interval = setInterval(() => {
+                        vol += 0.01;
+                        if (vol >= 0.5) {
+                            vol = 0.5;
+                            clearInterval(interval);
+                        }
+                        music.volume = vol;
+                    }, 100); // Increase volume every 100ms
+                }).catch(error => {
+                    console.error('Error playing music:', error);
+                });
+            } catch (error) {
+                console.error('Error setting up music:', error);
+            }
+        }
     </script>
 </body>
 </html>
