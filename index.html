@@ -790,22 +790,33 @@
             // Set the collision box bounds
             collisionBox.set(localMin, localMax);
             
-            // Add bridge data to collision box for better collision handling
-            collisionBox.userData = {
-                isBridge: true,
-                height: bridgeData.height,
-                width: bridgeWidth,
-                length: bridgeLength,
-                startPos: startPos.clone(),
-                endPos: endPos.clone(),
+            // Log bridge collision data for debugging
+            console.log('Creating bridge collision box:', {
+                dimensions: {
+                    length: bridgeLength,
+                    width: bridgeWidth,
+                    height: bridgeWidth
+                },
+                position: midPoint,
                 angle: angle,
-                matrix: rotationMatrix.clone()
-            };
+                bounds: {
+                    min: localMin,
+                    max: localMax
+                }
+            });
 
             // Add bridge to towers array for consistent handling
-            towers.push({
+            const bridgeObject = {
                 mesh: bridgeGroup,
                 collisionBoxes: [collisionBox]
+            };
+            towers.push(bridgeObject);
+            
+            // Verify collision box was added
+            console.log('Bridge added to collision system:', {
+                totalObjects: towers.length,
+                hasCollisionBox: bridgeObject.collisionBoxes.length > 0,
+                collisionBoxSize: collisionBox.getSize(new THREE.Vector3())
             });
 
             return bridgeGroup;
