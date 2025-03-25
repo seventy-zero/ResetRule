@@ -942,14 +942,15 @@
                             playerStates.set(playerUsername, currentPlayerState);
                         }
                         
-                        // Clear existing towers
+                        // Clear existing towers and bridges
                         towers.forEach(tower => {
                             scene.remove(tower.mesh);
                         });
                         towers.length = 0;
                         
-                        // Create towers from server data
+                        // Create towers from server data first
                         if (data.towers) {
+                            console.log('Creating towers:', data.towers.length);
                             data.towers.forEach(towerData => {
                                 createTowerFromData(towerData);
                             });
