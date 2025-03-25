@@ -767,48 +767,40 @@
             // Create collision box
             const collisionBox = new THREE.Box3();
             
-            // Get the actual bridge mesh from the group
-            const bridgeMeshInstance = bridgeGroup.children.find(child => child instanceof THREE.Mesh);
-            if (bridgeMeshInstance) {
-                // Create a matrix to transform the collision box
-                const matrix = new THREE.Matrix4();
-                matrix.makeRotationY(angle);
-                matrix.setPosition(midPoint.x, bridgeData.height, midPoint.z);
-                
-                // Create a box that matches the bridge's actual dimensions
-                const localMin = new THREE.Vector3(-bridgeLength/2, -bridgeWidth/2, -bridgeWidth/2);
-                const localMax = new THREE.Vector3(bridgeLength/2, bridgeWidth/2, bridgeWidth/2);
-                
-                // Transform the points to world space
-                localMin.applyMatrix4(matrix);
-                localMax.applyMatrix4(matrix);
-                
-                // Set the collision box to the transformed points
-                collisionBox.min.copy(localMin);
-                collisionBox.max.copy(localMax);
-                
-                // Add bridge data to collision box for better collision handling
-                collisionBox.userData = {
-                    isBridge: true,
-                    height: bridgeData.height,
-                    width: bridgeWidth,
-                    length: bridgeLength,
-                    startPos: startPos.clone(),
-                    endPos: endPos.clone(),
-                    angle: angle,
-                    matrix: matrix.clone()
-                };
-            } else {
-                // Fallback to the old method if mesh not found
-                console.warn('Bridge mesh not found, using fallback collision box');
-                const bridgeHeight = bridgeWidth;
-                const localMin = new THREE.Vector3(-bridgeLength/2, -bridgeHeight/2, -bridgeWidth/2);
-                const localMax = new THREE.Vector3(bridgeLength/2, bridgeHeight/2, bridgeWidth/2);
-                localMin.applyMatrix4(matrix);
-                localMax.applyMatrix4(matrix);
-                collisionBox.min.copy(localMin);
-                collisionBox.max.copy(localMax);
-            }
+            // Create a box that matches the bridge's actual dimensions
+            const halfLength = bridgeLength / 2;
+            const halfWidth = bridgeWidth / 2;
+            
+            // Create local min and max points
+            const localMin = new THREE.Vector3(-halfLength, -halfWidth, -halfWidth);
+            const localMax = new THREE.Vector3(halfLength, halfWidth, halfWidth);
+            
+            // Create rotation matrix
+            const rotationMatrix = new THREE.Matrix4();
+            rotationMatrix.makeRotationY(angle);
+            
+            // Apply rotation and position to min/max points
+            localMin.applyMatrix4(rotationMatrix);
+            localMax.applyMatrix4(rotationMatrix);
+            
+            // Translate to bridge position
+            localMin.add(midPoint);
+            localMax.add(midPoint);
+            
+            // Set the collision box bounds
+            collisionBox.set(localMin, localMax);
+            
+            // Add bridge data to collision box for better collision handling
+            collisionBox.userData = {
+                isBridge: true,
+                height: bridgeData.height,
+                width: bridgeWidth,
+                length: bridgeLength,
+                startPos: startPos.clone(),
+                endPos: endPos.clone(),
+                angle: angle,
+                matrix: rotationMatrix.clone()
+            };
 
             // Add bridge to towers array for consistent handling
             towers.push({
