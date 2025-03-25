@@ -834,56 +834,17 @@
                     // Calculate distance to closest point
                     const distance = position.distanceTo(closestPoint);
                     
-                    // Special handling for bridges
-                    if (collisionBox.userData && collisionBox.userData.isBridge) {
-                        const bridgeHeight = collisionBox.userData.height;
-                        
-                        // If below bridge, only check horizontal distance
-                        if (position.y < bridgeHeight) {
-                            const horizontalDistance = Math.sqrt(
-                                Math.pow(position.x - closestPoint.x, 2) + 
-                                Math.pow(position.z - closestPoint.z, 2)
-                            );
-                            
-                            // Use a much narrower collision width for bridges
-                            if (horizontalDistance < radius * 0.1) { // Reduced to 10% of normal radius
-                                return {
-                                    collision: true,
-                                    tower: tower,
-                                    collisionBox: collisionBox,
-                                    distance: horizontalDistance,
-                                    closestPoint: closestPoint,
-                                    isBridge: true,
-                                    bridgeHeight: bridgeHeight
-                                };
-                            }
-                        } else {
-                            // If above bridge, check full 3D distance
-                            if (distance < radius * 0.1) { // Reduced to 10% of normal radius
-                                return {
-                                    collision: true,
-                                    tower: tower,
-                                    collisionBox: collisionBox,
-                                    distance: distance,
-                                    closestPoint: closestPoint,
-                                    isBridge: true,
-                                    bridgeHeight: bridgeHeight
-                                };
-                            }
-                        }
-                    } else {
-                        // Normal tower collision check
-                        if (distance < minDistance) {
-                            minDistance = distance;
-                            closestCollision = {
-                                collision: true,
-                                tower: tower,
-                                collisionBox: collisionBox,
-                                distance: distance,
-                                closestPoint: closestPoint,
-                                isBridge: false
-                            };
-                        }
+                    // Treat all objects (towers and bridges) the same
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestCollision = {
+                            collision: true,
+                            tower: tower,
+                            collisionBox: collisionBox,
+                            distance: distance,
+                            closestPoint: closestPoint,
+                            isBridge: false // Treat bridges like towers
+                        };
                     }
                 }
             }
@@ -3281,68 +3242,19 @@
             const pushDir = new THREE.Vector3();
             pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
             
-            // Special handling for bridges
-            if (collisionResult.isBridge) {
-                const bridgeData = collisionResult.collisionBox.userData;
-                const bridgeHeight = bridgeData.height;
-                
-                // If we're below bridge and moving up, let us pass through
-                if (camera.position.y < bridgeHeight && verticalVelocity > 0) {
-                    return;
-                }
-                
-                // If we're above the bridge, apply normal collision response
-                if (camera.position.y >= bridgeHeight) {
-                    // Transform player position to bridge's local space
-                    const localPos = new THREE.Vector3();
-                    localPos.copy(camera.position);
-                    localPos.applyMatrix4(bridgeData.matrix.clone().invert());
-                    
-                    // Calculate push distance based on which edge we're closest to
-                    let pushDistance = playerRadius - collisionResult.distance;
-                    
-                    // Apply push in bridge's local space
-                    const localPushDir = new THREE.Vector3();
-                    localPushDir.copy(pushDir);
-                    localPushDir.applyMatrix4(bridgeData.matrix.clone().invert());
-                    
-                    // Apply stronger push when near edges
-                    const edgeThreshold = bridgeData.width * 0.5; // Half bridge width
-                    const distanceFromEdge = Math.min(
-                        Math.abs(localPos.x - bridgeData.length/2),
-                        Math.abs(localPos.x + bridgeData.length/2),
-                        Math.abs(localPos.z - bridgeData.width/2),
-                        Math.abs(localPos.z + bridgeData.width/2)
-                    );
-                    
-                    if (distanceFromEdge < edgeThreshold) {
-                        // Apply extra push away from edge
-                        const edgePushDir = new THREE.Vector3();
-                        edgePushDir.copy(localPos).normalize();
-                        localPos.add(edgePushDir.multiplyScalar(COLLISION_PUSH_FORCE * 2));
-                    } else {
-                        // Normal push in local space
-                        localPos.add(localPushDir.multiplyScalar(pushDistance * COLLISION_PUSH_FORCE));
-                    }
-                    
-                    // Transform back to world space
-                    localPos.applyMatrix4(bridgeData.matrix);
-                    camera.position.copy(localPos);
-                    
-                    if (isFlinging) {
-                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                        flingVelocity.x = pushDir.x * speed * 0.8;
-                        flingVelocity.z = pushDir.z * speed * 0.8;
-                    } else {
-                        velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
-                        velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
-                    }
-                }
+            // Apply the same collision response for all objects (towers and bridges)
+            const pushDistance = playerRadius - collisionResult.distance;
+            camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+            camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+            
+            // Handle velocity changes based on movement type
+            if (isFlinging) {
+                const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                flingVelocity.x = pushDir.x * speed * 0.8;
+                flingVelocity.z = pushDir.z * speed * 0.8;
             } else {
-                // Normal collision response for towers
-                const pushDistance = playerRadius - collisionResult.distance;
-                camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
+                velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
             }
         }
 
