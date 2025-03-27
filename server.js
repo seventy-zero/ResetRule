@@ -118,7 +118,7 @@ function generateWorld() {
     console.log(`Generated ${towers.length} towers`);
     
     // Generate bridges with improved connectivity
-    const maxBridgeDistance = baseSpacing * 1.8; // Increased from 1.5
+    const maxBridgeDistance = baseSpacing * 1.8;
     
     for (let i = 0; i < towerPositions.length; i++) {
         for (let j = i + 1; j < towerPositions.length; j++) {
@@ -132,30 +132,24 @@ function generateWorld() {
             
             // Only generate bridges between towers of similar heights
             const heightDiff = Math.abs(tower1.height - tower2.height);
-            const maxHeightDiff = Math.min(tower1.height, tower2.height) * 0.3; // Increased to 30% height difference
+            const maxHeightDiff = Math.min(tower1.height, tower2.height) * 0.3;
             
             // Check if towers are close enough and similar in height
             if (distance <= maxBridgeDistance && heightDiff <= maxHeightDiff) {
-                // Increase bridge chance for closer towers and in sparse areas
+                // Increase bridge chance for closer towers
                 const distanceFactor = 1 - (distance / maxBridgeDistance);
-                const adjustedBridgeChance = BRIDGE_CHANCE * (1 + distanceFactor * 0.5); // Reduced distance influence
+                const adjustedBridgeChance = BRIDGE_CHANCE * (1 + distanceFactor * 0.5);
                 
                 // Check for nearby bridges to avoid overcrowding
                 let nearbyBridges = 0;
                 for (const bridge of bridges) {
-                    const bridgeStart = new Vector3(bridge.startX, 0, bridge.startZ);
-                    const bridgeEnd = new Vector3(bridge.endX, 0, bridge.endZ);
-                    const tower1Pos = new Vector3(tower1.position.x, 0, tower1.position.z);
-                    const tower2Pos = new Vector3(tower2.position.x, 0, tower2.position.z);
-                    
-                    // Check if this bridge is close to either tower
-                    const distToTower1 = Math.min(
-                        bridgeStart.distanceTo(tower1Pos),
-                        bridgeEnd.distanceTo(tower1Pos)
+                    const distToTower1 = Math.sqrt(
+                        Math.pow(bridge.startX - tower1.position.x, 2) +
+                        Math.pow(bridge.startZ - tower1.position.z, 2)
                     );
-                    const distToTower2 = Math.min(
-                        bridgeStart.distanceTo(tower2Pos),
-                        bridgeEnd.distanceTo(tower2Pos)
+                    const distToTower2 = Math.sqrt(
+                        Math.pow(bridge.endX - tower2.position.x, 2) +
+                        Math.pow(bridge.endZ - tower2.position.z, 2)
                     );
                     
                     if (distToTower1 < maxBridgeDistance * 0.5 || distToTower2 < maxBridgeDistance * 0.5) {
