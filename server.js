@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3000;
 // World generation constants
 const NUM_TOWERS = 3000;
 const MAX_RADIUS = 4800;
-const BRIDGE_CHANCE = 0.12;
+const BRIDGE_CHANCE = 0.06;
 const NUM_ORBS = 120;
 
 // Word lists for room names
@@ -117,8 +117,8 @@ function generateWorld() {
     
     console.log(`Generated ${towers.length} towers`);
     
-    // Generate bridges with balanced logic
-    const maxBridgeDistance = baseSpacing * 2.2; // Slightly increased from 2.0
+    // Generate bridges with reduced frequency
+    const maxBridgeDistance = baseSpacing * 1.8; // Reduced from 2.2
     
     for (let i = 0; i < towerPositions.length; i++) {
         for (let j = i + 1; j < towerPositions.length; j++) {
@@ -130,9 +130,15 @@ function generateWorld() {
                 Math.pow(tower1.position.z - tower2.position.z, 2)
             );
             
-            if (distance <= maxBridgeDistance && Math.random() < BRIDGE_CHANCE) {
+            // Only generate bridges between towers of similar heights
+            const heightDiff = Math.abs(tower1.height - tower2.height);
+            const maxHeightDiff = Math.min(tower1.height, tower2.height) * 0.3; // 30% height difference max
+            
+            if (distance <= maxBridgeDistance && 
+                heightDiff <= maxHeightDiff && 
+                Math.random() < BRIDGE_CHANCE) {
                 const minHeight = Math.min(tower1.height, tower2.height);
-                const bridgeHeight = minHeight * (0.25 + Math.random() * 0.5); // More varied bridge heights
+                const bridgeHeight = minHeight * (0.3 + Math.random() * 0.4); // More consistent bridge heights
                 
                 const startPos = {
                     x: tower1.position.x,
