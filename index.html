@@ -2798,6 +2798,9 @@
         const PELLET_SPEED = 2;
         const PELLET_LIFETIME = 2000; // Increased from 1000 to 2000ms
         const PELLET_GRAVITY = 0.008; // Gravity effect on pellets
+        const PELLET_BOUNCE = 0.3; // Bounce coefficient
+        const PELLET_FRICTION = 0.98; // Friction coefficient
+        const PELLET_RADIUS = 0.3; // Pellet collision radius
         let lastShotTime = 0;
         let playerHealth = 100;
         let isDead = false;
@@ -2831,10 +2834,14 @@
             get: function() {
                 if (this.pellets.length === 0) {
                     // Create new pellet if pool is empty
-                    const pelletGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+                    const pelletGeometry = new THREE.SphereGeometry(PELLET_RADIUS, 8, 8);
                     const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
                     const pellet = new THREE.Mesh(pelletGeometry, pelletMaterial);
                     pellet.visible = false;
+                    pellet.velocity = new THREE.Vector3();
+                    pellet.lastPosition = new THREE.Vector3();
+                    pellet.bounces = 0;
+                    pellet.maxBounces = 3;
                     scene.add(pellet);
                     return pellet;
                 }
@@ -2843,7 +2850,8 @@
             release: function(pellet) {
                 pellet.visible = false;
                 pellet.position.set(0, 0, 0);
-                pellet.velocity = new THREE.Vector3();
+                pellet.velocity.set(0, 0, 0);
+                pellet.bounces = 0;
                 this.active.delete(pellet);
                 this.pellets.push(pellet);
             }
@@ -3169,6 +3177,7 @@
         // Add pellet animation to the main animation loop
         function animatePellets() {
             const currentTime = Date.now();
+            const deltaTime = clock.getDelta();
             
             pelletPool.active.forEach(pellet => {
                 // Check if pellet has expired
@@ -3177,15 +3186,88 @@
                     return;
                 }
                 
-                // Update pellet position with physics
+                // Store last position for collision detection
+                pellet.lastPosition.copy(pellet.position);
+                
+                // Apply gravity
                 pellet.velocity.y -= PELLET_GRAVITY;
-                pellet.position.add(pellet.velocity);
+                
+                // Apply friction
+                pellet.velocity.multiplyScalar(PELLET_FRICTION);
+                
+                // Update position
+                pellet.position.add(pellet.velocity.clone().multiplyScalar(deltaTime));
+                
+                // Check for collisions with towers
+                const pelletCollider = new THREE.Sphere(pellet.position, PELLET_RADIUS);
+                let collision = false;
+                
+                // Check tower collisions
+                for (const tower of towers) {
+                    const towerBox = new THREE.Box3().setFromObject(tower.mesh);
+                    if (towerBox.containsSphere(pelletCollider)) {
+                        collision = true;
+                        break;
+                    }
+                }
+                
+                // Check bridge collisions
+                for (const bridge of bridges) {
+                    const bridgeStart = new THREE.Vector3(bridge.startX, bridge.height, bridge.startZ);
+                    const bridgeEnd = new THREE.Vector3(bridge.endX, bridge.height, bridge.endZ);
+                    const bridgeDir = bridgeEnd.clone().sub(bridgeStart);
+                    const bridgeLength = bridgeDir.length();
+                    bridgeDir.normalize();
+                    
+                    // Create a box for the bridge
+                    const bridgeBox = new THREE.Box3();
+                    const bridgeWidth = 2; // Bridge width
+                    const bridgeHeight = 1; // Bridge height
+                    
+                    // Calculate bridge box
+                    const bridgeCenter = bridgeStart.clone().add(bridgeEnd).multiplyScalar(0.5);
+                    const bridgeAxis = new THREE.Vector3(0, 1, 0);
+                    const bridgeRotation = new THREE.Quaternion().setFromUnitVectors(
+                        new THREE.Vector3(0, 0, 1),
+                        bridgeDir
+                    );
+                    
+                    bridgeBox.setFromCenterAndSize(
+                        bridgeCenter,
+                        new THREE.Vector3(bridgeLength, bridgeHeight, bridgeWidth)
+                    );
+                    
+                    if (bridgeBox.containsSphere(pelletCollider)) {
+                        collision = true;
+                        break;
+                    }
+                }
+                
+                // Handle collision response
+                if (collision) {
+                    // Move pellet back to last position
+                    pellet.position.copy(pellet.lastPosition);
+                    
+                    // Reflect velocity based on collision normal
+                    const collisionNormal = pellet.position.clone().sub(pellet.lastPosition).normalize();
+                    pellet.velocity.reflect(collisionNormal);
+                    
+                    // Apply bounce and friction
+                    pellet.velocity.multiplyScalar(PELLET_BOUNCE * PELLET_FRICTION);
+                    
+                    // Increment bounce counter
+                    pellet.bounces++;
+                    
+                    // Remove pellet if too many bounces
+                    if (pellet.bounces >= pellet.maxBounces) {
+                        pelletPool.release(pellet);
+                    }
+                }
                 
                 // Check for collisions with players
                 const raycaster = new THREE.Raycaster();
                 raycaster.set(pellet.position, pellet.velocity.normalize());
                 
-                // Check for player collisions
                 playerStates.forEach((playerState, username) => {
                     if (username !== playerUsername) {
                         const playerCollider = new THREE.Sphere(playerState.mesh.position, playerRadius);
@@ -3204,12 +3286,6 @@
                         }
                     }
                 });
-                
-                // Check for collisions with towers
-                const towerIntersects = raycaster.intersectObjects(towers.map(t => t.mesh));
-                if (towerIntersects.length > 0 && towerIntersects[0].distance < 5) {
-                    pelletPool.release(pellet);
-                }
             });
         }
 
