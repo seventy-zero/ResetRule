@@ -2848,6 +2848,15 @@
             pellets: [],
             active: new Set(),
             get: function() {
+                if (this.pellets.length === 0) {
+                    // Create new pellet if pool is empty
+                    const pelletGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+                    const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                    const pellet = new THREE.Mesh(pelletGeometry, pelletMaterial);
+                    pellet.visible = false;
+                    scene.add(pellet);
+                    return pellet;
+                }
                 return this.pellets.pop();
             },
             release: function(pellet) {
@@ -2861,7 +2870,12 @@
 
         // Create initial pellet pool
         for (let i = 0; i < PELLET_COUNT * 2; i++) {
-            pelletPool.get();
+            const pelletGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+            const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const pellet = new THREE.Mesh(pelletGeometry, pelletMaterial);
+            pellet.visible = false;
+            scene.add(pellet);
+            pelletPool.pellets.push(pellet);
         }
 
         // Handle shotgun firing
@@ -2882,7 +2896,7 @@
             camera.getWorldDirection(direction);
 
             // Calculate muzzle position (further in front of camera)
-            const muzzleOffset = new THREE.Vector3(0, 0, 5); // Increased from 2 to 5 units in front
+            const muzzleOffset = new THREE.Vector3(0, 0, 5);
             muzzleOffset.applyQuaternion(camera.quaternion);
             const muzzlePosition = cameraPosition.clone().add(muzzleOffset);
 
@@ -2896,6 +2910,30 @@
             const muzzleFlash = new THREE.Mesh(flashGeometry, flashMaterial);
             muzzleFlash.position.copy(muzzlePosition);
             scene.add(muzzleFlash);
+
+            // Create and fire pellets
+            const pelletDirections = [];
+            for (let i = 0; i < PELLET_COUNT; i++) {
+                // Get a pellet from the pool
+                const pellet = pelletPool.get();
+                pellet.position.copy(muzzlePosition);
+                
+                // Calculate spread direction
+                const spread = new THREE.Vector3(
+                    (Math.random() - 0.5) * PELLET_SPREAD,
+                    (Math.random() - 0.5) * PELLET_SPREAD,
+                    1
+                ).normalize();
+                spread.applyQuaternion(camera.quaternion);
+                
+                // Set pellet velocity
+                pellet.velocity = spread.multiplyScalar(PELLET_SPEED);
+                pellet.spawnTime = Date.now();
+                pellet.visible = true;
+                
+                pelletPool.active.add(pellet);
+                pelletDirections.push(spread.toArray());
+            }
 
             // Animate muzzle flash
             const flashDuration = 100;
@@ -2923,8 +2961,8 @@
             });
             const blastCone = new THREE.Mesh(coneGeometry, coneMaterial);
             blastCone.position.copy(muzzlePosition);
-            blastCone.rotation.x = -Math.PI / 2; // Point cone forward
-            blastCone.rotation.z = Math.PI / 2; // Align with camera direction
+            blastCone.rotation.x = -Math.PI / 2;
+            blastCone.rotation.z = Math.PI / 2;
             scene.add(blastCone);
 
             // Animate blast cone
@@ -2949,24 +2987,11 @@
             // Send shot data to server
             if (ws && ws.readyState === WebSocket.OPEN) {
                 const shotData = {
-                    position: {
-                        x: cameraPosition.x,
-                        y: cameraPosition.y,
-                        z: cameraPosition.z
-                    },
-                    direction: {
-                        x: direction.x,
-                        y: direction.y,
-                        z: direction.z
-                    },
-                    pellets: Array(PELLET_COUNT).fill().map(() => ({
-                        x: (Math.random() - 0.5) * PELLET_SPREAD,
-                        y: (Math.random() - 0.5) * PELLET_SPREAD,
-                        z: 1 + Math.random() * 2 // Random distance within cone
-                    }))
+                    position: cameraPosition.toArray(),
+                    directions: pelletDirections
                 };
                 ws.send(JSON.stringify({
-                    type: 'shotgunShot',
+                    type: 'shotgun_shot',
                     ...shotData
                 }));
             }
