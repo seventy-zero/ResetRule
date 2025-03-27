@@ -617,42 +617,57 @@
             towerEdges: new THREE.LineBasicMaterial({ color: 0xffffff })
         };
 
-        // Add these constants near the top with other constants
-        const RENDER_DISTANCE = 2000; // Maximum distance to render objects
-        const CULL_DISTANCE = 1500;   // Distance at which to start culling objects
-
-        // Function to check if an object is within render distance
-        function isWithinRenderDistance(position) {
-            return camera.position.distanceTo(position) <= RENDER_DISTANCE;
-        }
-
-        // Function to create tower from server data
+        // Modify createTowerFromData to use shared materials
         function createTowerFromData(towerData) {
-            let geometry;
             const height = towerData.height;
-            const isFloating = towerData.isFloating;
             const baseHeight = towerData.baseHeight;
             
-            // Create materials for the tower
-            const materials = [
-                new THREE.MeshBasicMaterial({ color: 0x000000 }),
-                new THREE.LineBasicMaterial({ color: 0xffffff })
-            ];
-
-            // Create collision box for the tower
-            let collisionGeometry;
-
+            let geometry;
+            let towerHeight = height;
+            
             switch(towerData.type) {
-                // ... existing tower type cases ...
+                case 0: // Cylindrical tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
+                    break;
+                case 1: // Tapered tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 6 });
+                    break;
+                case 2: // Square tower
+                    geometry = getGeometryFromCache('box', { width: 36, height, depth: 36 });
+                    break;
+                case 3: // Hexagonal tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 20, height, segments: 6 });
+                    break;
+                case 4: // Twisted tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 15, height, segments: 8 });
+                    break;
+                case 5: // Pyramid tower
+                    geometry = getGeometryFromCache('cone', { radius: 24, height, segments: 4 });
+                    break;
+                case 6: // Octagonal tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 19, height, segments: 8 });
+                    break;
+                case 7: // Double width tower
+                    geometry = getGeometryFromCache('box', { width: 42, height, depth: 42 });
+                    break;
+                case 8: // Inverse pyramid
+                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 4 });
+                    break;
+                case 9: // Star tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 24, height, segments: 5 });
+                    break;
+                case 10: // Thin spire
+                    geometry = getGeometryFromCache('cylinder', { radius: 8, height, segments: 6 });
+                    break;
             }
 
-            // Create the main mesh with solid faces
-            const mesh = new THREE.Mesh(geometry, materials[0]);
+            // Create the main mesh with solid faces using shared material
+            const mesh = new THREE.Mesh(geometry, sharedMaterials.tower);
             
-            // Create the edges
+            // Create the edges using shared material
             const edges = new THREE.LineSegments(
                 new THREE.EdgesGeometry(geometry),
-                materials[1]
+                sharedMaterials.towerEdges
             );
             
             // Group the mesh and edges together
@@ -660,73 +675,107 @@
             group.add(mesh);
             group.add(edges);
             group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
-            
-            // Add visibility check
-            group.userData.originalPosition = group.position.clone();
-            group.userData.isVisible = true;
-            
             scene.add(group);
 
-            // Add collision data
-            const collisionMesh = new THREE.Mesh(collisionGeometry);
+            // Create a single box collider for the tower
+            const collisionBox = new THREE.Box3();
+            const collisionMesh = new THREE.Mesh(
+                getGeometryFromCache('box', { width: 36, height, depth: 36 })
+            );
             collisionMesh.position.copy(group.position);
+            collisionBox.setFromObject(collisionMesh);
+            
             towers.push({
-                mesh: collisionMesh,
-                boundingBox: new THREE.Box3().setFromObject(collisionMesh),
-                visualGroup: group // Store reference to visual group
+                mesh: group,
+                collisionBoxes: [collisionBox]
             });
         }
 
         // Function to create bridge from server data
         function createBridgeFromData(bridgeData) {
-            // ... existing bridge creation code ...
+            // Calculate bridge dimensions
+            const bridgeWidth = 16;
+            const startPos = new THREE.Vector3(
+                bridgeData.startX || bridgeData.start.x,
+                bridgeData.height,
+                bridgeData.startZ || bridgeData.start.z
+            );
+            const endPos = new THREE.Vector3(
+                bridgeData.endX || bridgeData.end.x,
+                bridgeData.height,
+                bridgeData.endZ || bridgeData.end.z
+            );
+            const distance = startPos.distanceTo(endPos);
+            const angle = Math.atan2(endPos.x - startPos.x, endPos.z - startPos.z);
+            const midPoint = new THREE.Vector3().addVectors(startPos, endPos).multiplyScalar(0.5);
+            const bridgeLength = distance;
+
+            // Create bridge group
+            const bridgeGroup = new THREE.Group();
+
+            // Create bridge geometry
+            const bridgeGeometry = new THREE.BoxGeometry(distance, bridgeWidth, bridgeWidth);
             
-            // Add visibility check
-            bridgeGroup.userData.originalPosition = bridgeGroup.position.clone();
-            bridgeGroup.userData.isVisible = true;
+            // Create materials for the bridge (matching tower style)
+            const bridgeMaterials = [
+                new THREE.MeshBasicMaterial({ color: 0x000000 }),
+                new THREE.LineBasicMaterial({ color: 0xffffff })
+            ];
             
+            // Create bridge mesh and edges
+            const bridgeMesh = new THREE.Mesh(bridgeGeometry, bridgeMaterials[0]);
+            bridgeMesh.name = 'bridge'; // Add name to identify bridges
+            const bridgeEdges = new THREE.LineSegments(
+                new THREE.EdgesGeometry(bridgeGeometry),
+                bridgeMaterials[1]
+            );
+
+            // Position bridge
+            bridgeGroup.add(bridgeMesh);
+            bridgeGroup.add(bridgeEdges);
+            bridgeGroup.position.copy(midPoint);
+            bridgeGroup.rotation.y = angle;
+
             scene.add(bridgeGroup);
             
-            // Create a narrower collision box for the bridge
-            const collisionGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.6);
-            const collisionMesh = new THREE.Mesh(collisionGeometry);
+            // Create collision box that exactly matches the bridge mesh
+            const collisionBox = new THREE.Box3();
+            const collisionMesh = new THREE.Mesh(bridgeGeometry);
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
-            towers.push({
-                mesh: collisionMesh,
-                boundingBox: new THREE.Box3().setFromObject(collisionMesh),
-                visualGroup: bridgeGroup // Store reference to visual group
+            collisionMesh.scale.set(1, 1, 1); // Ensure proper scaling
+            collisionBox.setFromObject(collisionMesh);
+
+            // Adjust collision box size to match bridge dimensions
+            const size = new THREE.Vector3();
+            collisionBox.getSize(size);
+            const bridgeCollisionWidth = 16; // Match the bridge width constant
+            const adjustedSize = new THREE.Vector3(
+                size.x,
+                bridgeCollisionWidth,
+                bridgeCollisionWidth
+            );
+            collisionBox.setFromCenterAndSize(
+                collisionBox.getCenter(new THREE.Vector3()),
+                adjustedSize
+            );
+
+            // Add bridge to towers array for consistent handling
+            const bridgeObject = {
+                mesh: bridgeGroup,
+                collisionBoxes: [collisionBox],
+                isBridge: true // Add flag to identify bridges
+            };
+            towers.push(bridgeObject);
+            
+            // Verify collision box was added
+            console.log('Bridge added to collision system:', {
+                totalObjects: towers.length,
+                hasCollisionBox: bridgeObject.collisionBoxes.length > 0,
+                collisionBoxSize: collisionBox.getSize(new THREE.Vector3())
             });
-        }
 
-        // Modify the animate function to include culling
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            const deltaTime = clock.getDelta();
-            
-            if (gameStarted) {
-                // Update visibility of objects based on distance
-                towers.forEach(tower => {
-                    if (tower.visualGroup) {
-                        const distance = camera.position.distanceTo(tower.visualGroup.userData.originalPosition);
-                        
-                        // Only update visibility if crossing threshold
-                        if (distance > CULL_DISTANCE && tower.visualGroup.userData.isVisible) {
-                            tower.visualGroup.visible = false;
-                            tower.visualGroup.userData.isVisible = false;
-                        } else if (distance <= CULL_DISTANCE && !tower.visualGroup.userData.isVisible) {
-                            tower.visualGroup.visible = true;
-                            tower.visualGroup.userData.isVisible = true;
-                        }
-                    }
-                });
-
-                // ... rest of animate function ...
-            }
-            
-            // Always render the scene
-            renderer.render(scene, camera);
+            return bridgeGroup;
         }
 
         // Update collision check function to handle bridges like towers
@@ -854,32 +903,61 @@
                 
                 switch (data.type) {
                     case 'world_data':
-                        console.log('Received world data');
-                        // Clear existing towers, bridges, and collectibles
-                        towers.forEach(tower => {
-                            // Remove both the LOD object and the collision mesh if they exist
-                            if (tower.lodObject) scene.remove(tower.lodObject);
-                            if (tower.mesh && tower.mesh.parent) scene.remove(tower.mesh); // Remove collision mesh if added
-                        });
-                        towers.length = 0; // Clear the array
+                        console.log('Received world data with players:', data.players);
+                        // Clear existing player states except current player
+                        const currentPlayerState = playerStates.get(playerUsername);
+                        playerStates.clear();
+                        if (currentPlayerState) {
+                            playerStates.set(playerUsername, currentPlayerState);
+                        }
+                        
+                        // Clear existing towers and bridges using the new function
+                        clearTowers();
+                        
+                        // Create towers from server data first
+                        if (data.towers) {
+                            console.log('Creating towers:', data.towers.length);
+                            data.towers.forEach(towerData => {
+                                createTowerFromData(towerData);
+                            });
+                        }
+                        
+                        // Create bridges from server data
+                        if (data.bridges) {
+                            data.bridges.forEach(bridgeData => {
+                                createBridgeFromData(bridgeData);
+                            });
+                        }
 
-                        collectibles.forEach(item => {
-                            scene.remove(item.mesh);
+                        // Debug logging for orbs
+                        console.log('Processing orbs data:', data.orbs);
+                        
+                        // Clear existing orbs
+                        orbs.forEach(orb => {
+                            console.log('Removing existing orb:', orb);
+                            scene.remove(orb);
                         });
-                        collectibles.clear();
-
-                        // Create towers from server data (will now create LODs)
-                        data.towers.forEach(towerData => {
-                            createTowerFromData(towerData);
-                        });
-
-                        // Create bridges from server data (will now create LODs)
-                        data.bridges.forEach(bridgeData => {
-                            createBridgeFromData(bridgeData);
-                        });
-
-                        // Initialize collectibles
-                        initializeCollectibles();
+                        orbs.clear();
+                        
+                        // Create new orbs
+                        if (data.orbs && data.orbs.length > 0) {
+                            console.log('Creating orbs:', data.orbs.length);
+                            data.orbs.forEach((orbData, index) => {
+                                console.log(`Creating orb ${index}:`, orbData);
+                                try {
+                                    const orb = createOrb(orbData);
+                                    console.log(`Successfully created orb ${index}:`, orb);
+                                    // Ensure orb is added to scene
+                                    if (!scene.children.includes(orb)) {
+                                        scene.add(orb);
+                                    }
+                                } catch (error) {
+                                    console.error(`Error creating orb ${index}:`, error);
+                                }
+                            });
+                        } else {
+                            console.warn('No orbs data received from server');
+                        }
                         break;
 
                     case 'room_info':
