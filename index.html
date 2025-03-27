@@ -515,40 +515,38 @@
         const COLLISION_CHECK_INTERVAL = 100; // ms
         let lastCollisionCheck = 0;
         const spatialGrid = {
-            cellSize: 100,
             cells: new Map(),
-            getKey: function(x, z) {
-                return `${Math.floor(x / this.cellSize)},${Math.floor(z / this.cellSize)}`;
+            
+            getKey(position) {
+                const x = Math.floor(position.x / SPATIAL_GRID_SIZE);
+                const z = Math.floor(position.z / SPATIAL_GRID_SIZE);
+                return `${x},${z}`;
             },
-            add: function(object) {
-                const key = this.getKey(object.position.x, object.position.z);
+            
+            add(object) {
+                const key = this.getKey(object.mesh.position);
                 if (!this.cells.has(key)) {
                     this.cells.set(key, new Set());
                 }
                 this.cells.get(key).add(object);
             },
-            remove: function(object) {
-                const key = this.getKey(object.position.x, object.position.z);
-                if (this.cells.has(key)) {
-                    this.cells.get(key).delete(object);
-                }
-            },
-            getNearbyObjects: function(position, radius) {
-                const nearbyObjects = new Set();
-                const minX = Math.floor((position.x - radius) / this.cellSize);
-                const maxX = Math.floor((position.x + radius) / this.cellSize);
-                const minZ = Math.floor((position.z - radius) / this.cellSize);
-                const maxZ = Math.floor((position.z + radius) / this.cellSize);
+            
+            getNearby(position, radius) {
+                const nearby = new Set();
+                const cellRadius = Math.ceil(radius / SPATIAL_GRID_SIZE);
+                const centerKey = this.getKey(position);
+                const [centerX, centerZ] = centerKey.split(',').map(Number);
                 
-                for (let x = minX; x <= maxX; x++) {
-                    for (let z = minZ; z <= maxZ; z++) {
-                        const key = `${x},${z}`;
+                for (let x = -cellRadius; x <= cellRadius; x++) {
+                    for (let z = -cellRadius; z <= cellRadius; z++) {
+                        const key = `${centerX + x},${centerZ + z}`;
                         if (this.cells.has(key)) {
-                            this.cells.get(key).forEach(obj => nearbyObjects.add(obj));
+                            this.cells.get(key).forEach(obj => nearby.add(obj));
                         }
                     }
                 }
-                return nearbyObjects;
+                
+                return nearby;
             }
         };
 
@@ -592,7 +590,28 @@
             return materialCache.get(key);
         }
 
-        // Modify the createTowerFromData function to use cached geometries and materials
+        // Add these constants at the top with other constants
+        const TOWER_LOD_DISTANCES = {
+            HIGH: 500,    // Full detail within 500 units
+            MEDIUM: 1000, // Medium detail within 1000 units
+            LOW: 2000     // Low detail within 2000 units
+        };
+
+        // Add after the createTowerFromData function
+        function createLODGeometry(type, height) {
+            // High detail geometry (original)
+            const highDetail = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
+            
+            // Medium detail (fewer segments)
+            const mediumDetail = getGeometryFromCache('cylinder', { radius: 18, height, segments: 6 });
+            
+            // Low detail (box geometry)
+            const lowDetail = getGeometryFromCache('box', { width: 36, height: height, depth: 36 });
+            
+            return { highDetail, mediumDetail, lowDetail };
+        }
+
+        // Modify the createTowerFromData function
         function createTowerFromData(towerData) {
             const height = towerData.height;
             const baseHeight = towerData.baseHeight;
@@ -603,118 +622,56 @@
                 getMaterialFromCache('line', { color: 0xffffff })
             ];
 
-            let geometry;
-            let towerHeight = height; // Store the height for orb placement
+            // Create LOD object
+            const lod = new THREE.LOD();
             
-            switch(towerData.type) {
-                case 0: // Cylindrical tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
-                    break;
-                case 1: // Tapered tower
-                    geometry = new THREE.CylinderGeometry(12, 24, height, 6);
-                    break;
-                case 2: // Square tower
-                    geometry = new THREE.BoxGeometry(36, height, 36);
-                    break;
-                case 3: // Hexagonal tower
-                    geometry = new THREE.CylinderGeometry(20, 20, height, 6);
-                    break;
-                case 4: // Twisted tower
-                    geometry = new THREE.CylinderGeometry(15, 15, height, 8, 10, true);
-                    break;
-                case 5: // Pyramid tower
-                    geometry = new THREE.ConeGeometry(24, height, 4);
-                    break;
-                case 6: // Octagonal tower
-                    geometry = new THREE.CylinderGeometry(19, 19, height, 8);
-                    break;
-                case 7: // Double width tower
-                    geometry = new THREE.BoxGeometry(42, height, 42);
-                    break;
-                case 8: // Inverse pyramid
-                    geometry = new THREE.CylinderGeometry(12, 28, height, 4);
-                    break;
-                case 9: // Star tower
-                    geometry = new THREE.CylinderGeometry(24, 24, height, 5);
-                    break;
-                case 10: // Thin spire
-                    geometry = new THREE.CylinderGeometry(8, 16, height, 6);
-                    break;
-                case 11: // Complex tower (stacked shapes)
-                    const baseHeight = height * 0.6;
-                    const topHeight = height * 0.4;
-                    geometry = new THREE.BoxGeometry(38, baseHeight, 38);
-                    const topGeometry = new THREE.ConeGeometry(28, topHeight, 6);
-                    
-                    // Create base with edges
-                    const baseMesh = new THREE.Mesh(geometry, materials[0]);
-                    const baseEdges = new THREE.LineSegments(
-                        new THREE.EdgesGeometry(geometry),
-                        materials[1]
-                    );
-                    
-                    // Create top with edges
-                    const topMesh = new THREE.Mesh(topGeometry, materials[0]);
-                    const topEdges = new THREE.LineSegments(
-                        new THREE.EdgesGeometry(topGeometry),
-                        materials[1]
-                    );
-                    
-                    topMesh.position.y = (baseHeight + topHeight) / 2;
-                    topEdges.position.y = (baseHeight + topHeight) / 2;
-                    
-                    const group = new THREE.Group();
-                    group.add(baseMesh);
-                    group.add(baseEdges);
-                    group.add(topMesh);
-                    group.add(topEdges);
-                    group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
-
-                    // Create a single box collider for the entire tower
-                    const collisionBox = new THREE.Box3();
-                    const collisionMesh = new THREE.Mesh(
-                        new THREE.BoxGeometry(38, height, 38)
-                    );
-                    collisionMesh.position.copy(group.position);
-                    collisionBox.setFromObject(collisionMesh);
-                    
-                    towers.push({
-                        mesh: group,
-                        collisionBoxes: [collisionBox]
-                    });
-
-                    scene.add(group);
-                    return;
-            }
-
-            // Create the main mesh with solid faces
-            const mesh = new THREE.Mesh(geometry, materials[0]);
+            // Create geometries for different detail levels
+            const { highDetail, mediumDetail, lowDetail } = createLODGeometry(towerData.type, height);
             
-            // Create the edges
-            const edges = new THREE.LineSegments(
-                new THREE.EdgesGeometry(geometry),
-                materials[1]
-            );
+            // Create meshes for each detail level
+            const highMesh = new THREE.Mesh(highDetail, materials[0]);
+            const highEdges = new THREE.LineSegments(new THREE.EdgesGeometry(highDetail), materials[1]);
+            const highGroup = new THREE.Group();
+            highGroup.add(highMesh);
+            highGroup.add(highEdges);
             
-            // Group the mesh and edges together
-            const group = new THREE.Group();
-            group.add(mesh);
-            group.add(edges);
-            group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
-            scene.add(group);
-
-            // Create a single box collider for the tower
+            const mediumMesh = new THREE.Mesh(mediumDetail, materials[0]);
+            const mediumEdges = new THREE.LineSegments(new THREE.EdgesGeometry(mediumDetail), materials[1]);
+            const mediumGroup = new THREE.Group();
+            mediumGroup.add(mediumMesh);
+            mediumGroup.add(mediumEdges);
+            
+            const lowMesh = new THREE.Mesh(lowDetail, materials[0]);
+            const lowEdges = new THREE.LineSegments(new THREE.EdgesGeometry(lowDetail), materials[1]);
+            const lowGroup = new THREE.Group();
+            lowGroup.add(lowMesh);
+            lowGroup.add(lowEdges);
+            
+            // Add detail levels to LOD
+            lod.addLevel(highGroup, 0);                    // High detail at close range
+            lod.addLevel(mediumGroup, TOWER_LOD_DISTANCES.HIGH);  // Medium detail at medium range
+            lod.addLevel(lowGroup, TOWER_LOD_DISTANCES.MEDIUM);   // Low detail at long range
+            
+            // Position the LOD
+            lod.position.set(towerData.x, height/2 + baseHeight, towerData.z);
+            
+            // Add to scene
+            scene.add(lod);
+            
+            // Create collision box
             const collisionBox = new THREE.Box3();
-            const collisionMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(36, height, 36)
-            );
-            collisionMesh.position.copy(group.position);
+            const collisionMesh = new THREE.Mesh(new THREE.BoxGeometry(36, height, 36));
+            collisionMesh.position.copy(lod.position);
             collisionBox.setFromObject(collisionMesh);
             
-            towers.push({
-                mesh: group,
+            // Store in towers array
+            const tower = {
+                mesh: lod,
                 collisionBoxes: [collisionBox]
-            });
+            };
+            
+            towers.push(tower);
+            spatialGrid.add(tower);
         }
 
         // Function to create bridge from server data
@@ -2242,40 +2199,41 @@
             // Animation loop with collision detection, star rotation, and nebula animation
             function animate() {
                 requestAnimationFrame(animate);
-                
                 const deltaTime = clock.getDelta();
-                const currentTime = performance.now();
                 
-                if (gameStarted) {
-                    // Update pellets
-                    for (const pellet of pellets) {
-                        // Update position
-                        pellet.position.add(pellet.velocity.clone().multiplyScalar(deltaTime));
-                        
-                        // Apply gravity
-                        pellet.velocity.y -= 0.01 * deltaTime;
-                        
-                        // Remove old pellets
-                        if (currentTime - pellet.spawnTime > 2000) { // 2 seconds lifetime
-                            scene.remove(pellet);
-                            pellets.delete(pellet);
-                        }
-                    }
+                if (!gameEnded) {
+                    // Update frustum culling
+                    const frustum = new THREE.Frustum();
+                    const projScreenMatrix = new THREE.Matrix4();
+                    projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+                    frustum.setFromProjectionMatrix(projScreenMatrix);
                     
-                    // Update other players' positions with throttling
-                    if (currentTime - lastCollisionCheck > COLLISION_CHECK_INTERVAL) {
-                        playerStates.forEach((playerState, username) => {
-                            if (username !== playerUsername) {
-                                const timeSinceUpdate = Date.now() - playerState.lastUpdateTime;
-                                if (timeSinceUpdate > 5000) {
-                                    removePlayer(username);
-                                } else {
-                                    playerState.update(deltaTime);
-                                }
+                    // Get nearby towers using spatial grid
+                    const renderRadius = TOWER_LOD_DISTANCES.LOW;
+                    const nearbyTowers = spatialGrid.getNearby(camera.position, renderRadius);
+                    
+                    // Hide all towers first
+                    towers.forEach(tower => {
+                        if (tower.mesh.visible) tower.mesh.visible = false;
+                    });
+                    
+                    // Update only nearby towers
+                    nearbyTowers.forEach(tower => {
+                        const distance = camera.position.distanceTo(tower.mesh.position);
+                        
+                        // Skip towers that are too far
+                        if (distance > renderRadius) return;
+                        
+                        // Check if tower is in view frustum
+                        if (frustum.containsPoint(tower.mesh.position)) {
+                            if (!tower.mesh.visible) tower.mesh.visible = true;
+                            
+                            // Update LOD based on distance
+                            if (tower.mesh.update) {
+                                tower.mesh.update(camera);
                             }
-                        });
-                        lastCollisionCheck = currentTime;
-                    }
+                        }
+                    });
                     
                     // ... rest of animation loop ...
                 }
