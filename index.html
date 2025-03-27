@@ -743,7 +743,22 @@
             const collisionMesh = new THREE.Mesh(bridgeGeometry);
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
+            collisionMesh.scale.set(1, 1, 1); // Ensure proper scaling
             collisionBox.setFromObject(collisionMesh);
+
+            // Adjust collision box size to match bridge dimensions
+            const size = new THREE.Vector3();
+            collisionBox.getSize(size);
+            const bridgeCollisionWidth = 16; // Match the bridge width constant
+            const adjustedSize = new THREE.Vector3(
+                size.x,
+                bridgeCollisionWidth,
+                bridgeCollisionWidth
+            );
+            collisionBox.setFromCenterAndSize(
+                collisionBox.getCenter(new THREE.Vector3()),
+                adjustedSize
+            );
 
             // Add bridge to towers array for consistent handling
             const bridgeObject = {
