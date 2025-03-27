@@ -591,6 +591,7 @@
         }
 
         // Add these constants at the top with other constants
+        const SPATIAL_GRID_SIZE = 500; // Size of each grid cell
         const TOWER_LOD_DISTANCES = {
             HIGH: 500,    // Full detail within 500 units
             MEDIUM: 1000, // Medium detail within 1000 units
@@ -1200,21 +1201,28 @@
             scene.background = new THREE.Color(0x000000);
             console.log('Scene created');
 
-            // Camera setup
+            // Camera setup with error handling
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000);
+            if (!camera) {
+                throw new Error('Failed to create camera');
+            }
             camera.position.set(0, playerHeight, 0);
             scene.add(camera);
             console.log('Camera initialized at height:', playerHeight);
 
-            // Renderer setup
+            // Renderer setup with error handling
             renderer = new THREE.WebGLRenderer({ 
                 antialias: true,
                 powerPreference: "high-performance",
                 alpha: false
             });
             
+            if (!renderer) {
+                throw new Error('Failed to create renderer');
+            }
+            
             if (!renderer.capabilities.isWebGL2) {
-                throw new Error('WebGL 2 not supported');
+                console.warn('WebGL 2 not supported, falling back to WebGL 1');
             }
             
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1222,6 +1230,10 @@
             renderer.setClearColor(0x000000, 1);
             document.body.appendChild(renderer.domElement);
             console.log('Renderer initialized');
+
+            // Start animation loop immediately after scene setup
+            animate();
+            console.log('Animation loop started');
 
             // Controls setup
             controls = new PointerLockControls(camera, document.body);
@@ -2198,47 +2210,73 @@
 
             // Animation loop with collision detection, star rotation, and nebula animation
             function animate() {
-                requestAnimationFrame(animate);
-                const deltaTime = clock.getDelta();
-                
-                if (!gameEnded) {
-                    // Update frustum culling
-                    const frustum = new THREE.Frustum();
-                    const projScreenMatrix = new THREE.Matrix4();
-                    projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-                    frustum.setFromProjectionMatrix(projScreenMatrix);
+                try {
+                    requestAnimationFrame(animate);
+                    const deltaTime = clock.getDelta();
                     
-                    // Get nearby towers using spatial grid
-                    const renderRadius = TOWER_LOD_DISTANCES.LOW;
-                    const nearbyTowers = spatialGrid.getNearby(camera.position, renderRadius);
+                    // Debug logging for first few frames
+                    if (window.frameCount === undefined) {
+                        window.frameCount = 0;
+                    }
+                    if (window.frameCount < 5) {
+                        console.log('Frame', window.frameCount, {
+                            scene: scene ? 'created' : 'missing',
+                            camera: camera ? 'created' : 'missing',
+                            renderer: renderer ? 'created' : 'missing',
+                            cameraPosition: camera ? camera.position.toArray() : 'N/A',
+                            sceneChildren: scene ? scene.children.length : 'N/A'
+                        });
+                        window.frameCount++;
+                    }
                     
-                    // Hide all towers first
-                    towers.forEach(tower => {
-                        if (tower.mesh.visible) tower.mesh.visible = false;
-                    });
-                    
-                    // Update only nearby towers
-                    nearbyTowers.forEach(tower => {
-                        const distance = camera.position.distanceTo(tower.mesh.position);
+                    if (!gameEnded) {
+                        // Update frustum culling
+                        const frustum = new THREE.Frustum();
+                        const projScreenMatrix = new THREE.Matrix4();
+                        projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+                        frustum.setFromProjectionMatrix(projScreenMatrix);
                         
-                        // Skip towers that are too far
-                        if (distance > renderRadius) return;
+                        // Get nearby towers using spatial grid
+                        const renderRadius = TOWER_LOD_DISTANCES.LOW;
+                        const nearbyTowers = spatialGrid.getNearby(camera.position, renderRadius);
                         
-                        // Check if tower is in view frustum
-                        if (frustum.containsPoint(tower.mesh.position)) {
-                            if (!tower.mesh.visible) tower.mesh.visible = true;
+                        // Hide all towers first
+                        towers.forEach(tower => {
+                            if (tower.mesh.visible) tower.mesh.visible = false;
+                        });
+                        
+                        // Update only nearby towers
+                        nearbyTowers.forEach(tower => {
+                            const distance = camera.position.distanceTo(tower.mesh.position);
                             
-                            // Update LOD based on distance
-                            if (tower.mesh.update) {
-                                tower.mesh.update(camera);
+                            // Skip towers that are too far
+                            if (distance > renderRadius) return;
+                            
+                            // Check if tower is in view frustum
+                            if (frustum.containsPoint(tower.mesh.position)) {
+                                if (!tower.mesh.visible) tower.mesh.visible = true;
+                                
+                                // Update LOD based on distance
+                                if (tower.mesh.update) {
+                                    tower.mesh.update(camera);
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
                     
-                    // ... rest of animation loop ...
+                    // Ensure we have all required components before rendering
+                    if (scene && camera && renderer) {
+                        renderer.render(scene, camera);
+                    } else {
+                        console.error('Missing required components:', {
+                            scene: !!scene,
+                            camera: !!camera,
+                            renderer: !!renderer
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error in animation loop:', error);
                 }
-                
-                renderer.render(scene, camera);
             }
 
             // Send position updates
