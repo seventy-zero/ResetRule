@@ -3311,9 +3311,21 @@
         const backgroundMusic = new Audio('leader-ultra-essence-lossy-64.mp3');
         backgroundMusic.loop = true;
         backgroundMusic.volume = 0.5; // Set to 50% volume by default
-        backgroundMusic.play().catch(error => console.log('Error playing background music:', error));
-
-        // Initialize game audio
+        
+        // Handle audio context suspension (needed for some browsers)
+        const resumeAudio = () => {
+            audioContext.resume().then(() => {
+                backgroundMusic.play().catch(error => console.log('Error playing background music:', error));
+            });
+        };
+        
+        // Try to play on any user interaction
+        document.addEventListener('click', resumeAudio, { once: true });
+        document.addEventListener('touchstart', resumeAudio, { once: true });
+        document.addEventListener('keydown', resumeAudio, { once: true });
+        
+        // Also try to play immediately
+        resumeAudio();
     </script>
 </body>
 </html>
