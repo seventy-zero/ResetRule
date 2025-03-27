@@ -11,6 +11,11 @@ const MAX_RADIUS = 4800;
 const BRIDGE_CHANCE = 0.12;
 const NUM_ORBS = 120;
 
+// Tower dimensions
+const TOWER_RADIUS = 30; // Increased from 18
+const TOWER_WIDTH = 60; // Increased from 36
+const TOWER_DEPTH = 60; // Increased from 36
+
 // Word lists for room names
 const adjectives = [
     'Cosmic', 'Stellar', 'Lunar', 'Solar', 'Astral',
@@ -39,12 +44,13 @@ function generateRoomName() {
 
 // World generation functions
 function createTower(type, x, z) {
+    // Increased height ranges for more dramatic towers
     const height = Math.random() < 0.08 ? // 8% chance for tall towers
         Math.random() * 600 + 400 : // 400-1000 units for tall towers
         Math.random() * 400 + 200; // 200-600 units for normal towers
     
-    const isFloating = Math.random() < 0.18; // Slightly increased from 0.15
-    const baseHeight = isFloating ? Math.random() * 40 + 20 : 0; // Increased floating height range
+    const isFloating = Math.random() < 0.18;
+    const baseHeight = isFloating ? Math.random() * 40 + 20 : 0;
     
     return {
         type,
@@ -52,7 +58,10 @@ function createTower(type, x, z) {
         z,
         height,
         baseHeight,
-        isFloating
+        isFloating,
+        radius: TOWER_RADIUS,
+        width: TOWER_WIDTH,
+        depth: TOWER_DEPTH
     };
 }
 
