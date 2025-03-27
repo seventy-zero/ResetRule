@@ -6,15 +6,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // World generation constants
-const NUM_TOWERS = 3000;
+const NUM_TOWERS = 3200;
 const MAX_RADIUS = 4800;
 const BRIDGE_CHANCE = 0.12;
 const NUM_ORBS = 120;
 
 // Tower dimensions
-const TOWER_RADIUS = 30; // Increased from 18
-const TOWER_WIDTH = 60; // Increased from 36
-const TOWER_DEPTH = 60; // Increased from 36
+const TOWER_RADIUS = 50; // Increased from 18
+const TOWER_WIDTH = 100; // Increased from 36
+const TOWER_DEPTH = 100; // Increased from 36
 
 // Word lists for room names
 const adjectives = [
