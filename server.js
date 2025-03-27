@@ -6,10 +6,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // World generation constants
-const NUM_TOWERS = 2000;
+const NUM_TOWERS = 3000;
 const MAX_RADIUS = 4800;
-const BRIDGE_CHANCE = 0.1;
-const NUM_ORBS = 100;
+const BRIDGE_CHANCE = 0.12;
+const NUM_ORBS = 120;
 
 // Word lists for room names
 const adjectives = [
@@ -39,12 +39,12 @@ function generateRoomName() {
 
 // World generation functions
 function createTower(type, x, z) {
-    const height = Math.random() < 0.05 ? // 5% chance for tall towers
-        Math.random() * 400 + 300 : // 300-700 units for tall towers
-        Math.random() * 300 + 150; // 150-450 units for normal towers
+    const height = Math.random() < 0.08 ? // 8% chance for tall towers
+        Math.random() * 600 + 400 : // 400-1000 units for tall towers
+        Math.random() * 400 + 200; // 200-600 units for normal towers
     
-    const isFloating = Math.random() < 0.15; // Reduced from 0.2
-    const baseHeight = isFloating ? Math.random() * 30 + 15 : 0; // Reduced floating height range
+    const isFloating = Math.random() < 0.18; // Slightly increased from 0.15
+    const baseHeight = isFloating ? Math.random() * 40 + 20 : 0; // Increased floating height range
     
     return {
         type,
@@ -74,34 +74,34 @@ function generateWorld() {
     
     console.log('Starting world generation...');
     
-    // Create a grid of towers with simpler spacing
+    // Create a grid of towers with balanced spacing
     const gridSize = Math.sqrt(NUM_TOWERS);
     const baseSpacing = (MAX_RADIUS * 2) / gridSize;
     
-    // Place towers with reduced clustering
+    // Place towers with balanced clustering
     for (let i = 0; i < gridSize; i++) {
         for (let j = 0; j < gridSize; j++) {
-            // Simpler spacing variation
-            const spacing = baseSpacing * (Math.random() < 0.2 ? 0.5 : 1.0); // 20% chance for tight clusters
+            // Balanced spacing variation
+            const spacing = baseSpacing * (Math.random() < 0.25 ? 0.6 : 1.0); // 25% chance for moderate clusters
             
-            const x = -MAX_RADIUS + i * baseSpacing + (Math.random() * spacing * 0.5);
-            const z = -MAX_RADIUS + j * baseSpacing + (Math.random() * spacing * 0.5);
+            const x = -MAX_RADIUS + i * baseSpacing + (Math.random() * spacing * 0.6);
+            const z = -MAX_RADIUS + j * baseSpacing + (Math.random() * spacing * 0.6);
             
-            // Reduced random offset
-            const offsetX = (Math.random() - 0.5) * spacing * 0.5;
-            const offsetZ = (Math.random() - 0.5) * spacing * 0.5;
+            // Moderate random offset
+            const offsetX = (Math.random() - 0.5) * spacing * 0.6;
+            const offsetZ = (Math.random() - 0.5) * spacing * 0.6;
             
             const finalX = x + offsetX;
             const finalZ = z + offsetZ;
             
-            // Simplified tower type distribution
+            // Balanced tower type distribution
             let towerType;
             const rand = Math.random();
-            if (rand < 0.05) { // 5% chance for special towers
+            if (rand < 0.08) { // 8% chance for special towers
                 towerType = Math.floor(Math.random() * 3) + 9;
-            } else if (rand < 0.2) { // 15% chance for medium towers
+            } else if (rand < 0.25) { // 17% chance for medium towers
                 towerType = Math.floor(Math.random() * 3) + 6;
-            } else { // 80% chance for basic towers
+            } else { // 75% chance for basic towers
                 towerType = Math.floor(Math.random() * 6);
             }
             
@@ -117,8 +117,8 @@ function generateWorld() {
     
     console.log(`Generated ${towers.length} towers`);
     
-    // Generate bridges with simpler logic
-    const maxBridgeDistance = baseSpacing * 2;
+    // Generate bridges with balanced logic
+    const maxBridgeDistance = baseSpacing * 2.2; // Slightly increased from 2.0
     
     for (let i = 0; i < towerPositions.length; i++) {
         for (let j = i + 1; j < towerPositions.length; j++) {
@@ -132,7 +132,7 @@ function generateWorld() {
             
             if (distance <= maxBridgeDistance && Math.random() < BRIDGE_CHANCE) {
                 const minHeight = Math.min(tower1.height, tower2.height);
-                const bridgeHeight = minHeight * (0.3 + Math.random() * 0.4); // More consistent bridge heights
+                const bridgeHeight = minHeight * (0.25 + Math.random() * 0.5); // More varied bridge heights
                 
                 const startPos = {
                     x: tower1.position.x,
