@@ -1145,6 +1145,374 @@
 
         // --- Main Setup and Game Loop ---
 
+        // --- Game Logic / Shotgun Functions ---
+
+        // ... (fireShotgun and createProjectile functions remain unchanged) ...
+
+        // --- Function to Send Player Position Updates ---
+        function sendPositionUpdate() {
+            // Only send if game started, controls are locked, and WebSocket is open
+            if (gameStarted && controls.isLocked && ws && ws.readyState === WebSocket.OPEN) {
+                const cameraObject = controls.getObject();
+                // Send position and camera rotation (Y rotation is usually enough for player direction)
+                // Convert Euler rotation to array [x, y, z] for JSON
+                const rotationArray = [cameraObject.rotation.x, cameraObject.rotation.y, cameraObject.rotation.z];
+                ws.send(JSON.stringify({
+                    type: 'position',
+                    username: playerUsername,
+                    position: cameraObject.position.toArray(),
+                    rotation: rotationArray // Send Euler rotation array
+                }));
+            }
+        }
+
+        // --- Mobile Controls Initialization (Placeholder) ---
+        function initializeMobileControls() {
+            console.log("Initializing mobile controls (placeholder)...");
+            // TODO: Implement actual Virtual Joystick logic here if needed
+            // Example:
+            // const rightJoystickEl = document.getElementById('rightJoystick');
+            // if (rightJoystickEl) {
+            //     const joystick = new VirtualJoystick({
+            //         container: rightJoystickEl,
+            //         mouseSupport: true, // Allow testing on desktop
+            //         limitStickTravel: true,
+            //         stickRadius: 50,
+            //     });
+            //     joystick.addEventListener('touchStart', () => { /* ... */ });
+            //     joystick.addEventListener('touchMove', (event) => {
+            //         // Use event.detail.deltaX/Y to control camera rotation
+            //         // const lookSpeed = 0.003;
+            //         // controls.getObject().rotation.y -= event.detail.deltaX * lookSpeed;
+            //         // camera.rotation.x -= event.detail.deltaY * lookSpeed;
+            //         // Clamp camera.rotation.x
+            //     });
+            //     joystick.addEventListener('touchEnd', () => { /* ... */ });
+            // }
+
+            // const flingButton = document.getElementById('flingButton');
+            // if (flingButton) {
+            //     flingButton.addEventListener('touchstart', (e) => {
+            //         e.preventDefault();
+            //         showLine = true;
+            //         flingButton.classList.add('active');
+            //     });
+            //     flingButton.addEventListener('touchend', (e) => {
+            //         e.preventDefault();
+            //         showLine = false;
+            //         triggerFling();
+            //         flingButton.classList.remove('active');
+            //     });
+            // }
+
+            // Show mobile specific instructions
+            const mobileInstructionsEl = document.getElementById('mobileInstructions');
+            if (mobileInstructionsEl) mobileInstructionsEl.style.display = 'block';
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta(); // Time since last frame
+            const time = performance.now() * 0.001; // Current time in seconds
+
+            // --- Update Projectiles ---
+            const projectilesToRemoveIndexes = []; // Store indexes to remove
+            const worldCollisionCheckSphere = new THREE.Sphere(); // Reusable sphere for world collision
+            const playerCheckSphere = new THREE.Sphere(); // Reusable sphere for player collision
+
+            projectiles.forEach((projectile, index) => {
+                const moveDistance = projectile.userData.speed * delta;
+                projectile.position.addScaledVector(projectile.userData.direction, moveDistance);
+                projectile.userData.distanceTravelled += moveDistance;
+
+                // Check range limit
+                if (projectile.userData.distanceTravelled > SHOTGUN_RANGE) {
+                    projectilesToRemoveIndexes.push(index);
+                    return;
+                }
+
+                // Prepare collision sphere for this projectile
+                playerCheckSphere.set(projectile.position, projectileGeometry.parameters.radius);
+
+                // Check collision with other players
+                let hitRegistered = false;
+                playerStates.forEach((playerState, username) => {
+                    if (hitRegistered) return; // Stop checking this pellet if it hit someone
+                    if (username !== projectile.userData.owner && playerState.mesh && playerState.health > 0 && playerState.mesh.visible) { // Check alive and visible
+                         const playerBox = new THREE.Box3().setFromObject(playerState.mesh);
+                         if (playerBox.intersectsSphere(playerCheckSphere)) {
+                            console.log(`Projectile hit ${username}!`);
+                            projectilesToRemoveIndexes.push(index);
+                            hitRegistered = true; // Mark pellet as consumed
+
+                            // Send hit message to server for validation/broadcast
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({
+                                    type: 'hit_player',
+                                    targetUsername: username,
+                                    damage: SHOTGUN_DAMAGE_PER_PELLET,
+                                    attackerUsername: projectile.userData.owner
+                                }));
+                            }
+                        }
+                    }
+                });
+
+                 // Check collision with world geometry (if not already removed)
+                 if (!hitRegistered) {
+                     worldCollisionCheckSphere.set(projectile.position, projectileGeometry.parameters.radius);
+                     for (const tower of towers) {
+                         if (tower.boundingBox.intersectsSphere(worldCollisionCheckSphere)) {
+                             projectilesToRemoveIndexes.push(index);
+                             // TODO: Add impact effect (e.g., particle spark) at projectile.position
+                             hitRegistered = true; // Mark pellet as consumed
+                             break; // Stop checking world objects for this pellet
+                         }
+                     }
+                 }
+            });
+
+            // Remove projectiles marked for removal (iterate backwards for safe splicing)
+            // Sort indexes descending to avoid index shifting issues during splice
+            projectilesToRemoveIndexes.sort((a, b) => b - a);
+            projectilesToRemoveIndexes.forEach(index => {
+                if (projectiles[index]) {
+                     scene.remove(projectiles[index]);
+                     projectiles.splice(index, 1);
+                }
+            });
+
+
+            // --- Update Object Visibility Culling ---
+             towers.forEach(tower => {
+                 if (tower.visualGroup && tower.visualGroup.userData.originalPosition) { // Check required properties
+                     const distance = controls.getObject().position.distanceTo(tower.visualGroup.userData.originalPosition);
+                     const shouldBeVisible = distance <= CULL_DISTANCE;
+
+                     if (shouldBeVisible !== tower.visualGroup.userData.isVisible) { // Only update if state changes
+                         tower.visualGroup.visible = shouldBeVisible;
+                         tower.visualGroup.userData.isVisible = shouldBeVisible;
+                     }
+                 }
+             });
+
+
+            // --- Update Animations (Nebulas, Stars, Collectibles) ---
+            // Update nebula uniforms and rotations (frame-rate independent)
+            nebulas.forEach(nebula => {
+                if (nebula.material.uniforms) nebula.material.uniforms.time.value = time;
+                nebula.rotation.y += 0.0001 * delta * 60;
+                nebula.rotation.x += 0.00005 * delta * 60;
+            });
+            // Rotate star fields (frame-rate independent)
+            if (starField) starField.rotation.y += 0.00005 * delta * 60;
+            if (largeStarField) largeStarField.rotation.y += 0.00008 * delta * 60;
+            // Update collectible floating animation
+            collectibles.forEach(item => {
+                 if (item.mesh && item.userData) { // Ensure mesh and userData exist
+                     const floatSpeed = 1.5;
+                     const floatHeight = 0.5;
+                     item.mesh.position.y = item.userData.originalY + Math.sin(time * floatSpeed + item.userData.floatOffset) * floatHeight;
+                 }
+            });
+
+
+            // --- Update Remote Player Interpolation ---
+            if (gameStarted) {
+                playerStates.forEach((playerState, username) => {
+                    if (username !== playerUsername) {
+                        // Check for inactive player timeout
+                        if ((Date.now() - playerState.lastUpdateTime) > 10000) { // 10 seconds
+                            console.log('Removing inactive player:', username);
+                            removePlayer(username);
+                        } else if (playerState.mesh) { // Ensure mesh exists
+                            playerState.update(delta); // Interpolate position/rotation
+                        }
+                    }
+                });
+            }
+
+
+            // --- Update Local Player Physics & Controls ---
+            if (gameStarted && controls.isLocked) {
+                const cameraObject = controls.getObject(); // Player's camera/control object
+
+                // --- Calculate Movement Impulse ---
+                direction.set(0, 0, 0); // Reset direction vector
+                direction.z = Number(moveForward) - Number(moveBackward);
+                direction.x = Number(moveRight) - Number(moveLeft);
+                direction.normalize(); // Prevent faster diagonal movement
+
+                // Apply movement impulse relative to camera direction
+                const moveImpulse = new THREE.Vector3();
+                moveImpulse.z = direction.z * moveSpeed * delta * 100; // Scale by delta and factor
+                moveImpulse.x = direction.x * moveSpeed * delta * 100;
+                moveImpulse.applyQuaternion(cameraObject.quaternion); // Rotate impulse to world space
+                velocity.add(moveImpulse); // Add impulse to current velocity
+
+                // --- Fling Line Trace ---
+                tubeMesh.visible = showLine;
+                if (showLine) {
+                     const lineDirection = new THREE.Vector3();
+                     camera.getWorldDirection(lineDirection);
+                     const startPoint = cameraObject.position.clone().addScaledVector(lineDirection, 0.5); // Start slightly in front
+                     startPoint.y -= 0.5; // Start slightly lower
+
+                     raycaster.set(startPoint, lineDirection);
+                     raycaster.far = 330; // Max fling range
+
+                     const intersects = raycaster.intersectObjects(towers.map(t => t.mesh), false); // Check only collision meshes
+
+                     let finalEndPoint;
+                     if (intersects.length > 0) {
+                         // intersects are sorted by distance automatically
+                         lineCollisionPoint = intersects[0].point;
+                         finalEndPoint = lineCollisionPoint;
+                         tubeMaterial.color.setHex(0x00ff00); // Green: Target locked
+                     } else {
+                         lineCollisionPoint = null;
+                         finalEndPoint = startPoint.clone().addScaledVector(lineDirection, raycaster.far); // Extend to max range
+                         tubeMaterial.color.setHex(0xff0000); // Red: No target
+                     }
+
+                     // Update tube geometry vertices smoothly
+                     curvePoints[0].lerp(startPoint, 0.6);
+                     curvePoints[1].lerp(finalEndPoint, 0.6);
+                     tubeMesh.geometry.setFromPoints(curve.getPoints(8)); // Update existing geometry vertices
+                     tubeMesh.geometry.verticesNeedUpdate = true; // Flag for update
+                } else {
+                     lineCollisionPoint = null; // Ensure reset when not showing line
+                }
+
+                // --- Apply Physics (Gravity, Velocity, Fling) ---
+                const oldPosition = cameraObject.position.clone();
+                if (!isGrounded) {
+                    verticalVelocity -= gravity * delta * 60; // Apply scaled gravity
+                }
+                // Apply horizontal fling impulse (damps over time)
+                if (isFlinging) {
+                    velocity.x += flingVelocity.x * delta * 60;
+                    velocity.z += flingVelocity.z * delta * 60;
+                    // Apply damping (frame-rate independent)
+                    flingVelocity.multiplyScalar(Math.pow(flingDamping, delta * 60));
+                    if (flingVelocity.lengthSq() < 0.01) {
+                        isFlinging = false;
+                        flingVelocity.set(0, 0, 0);
+                    }
+                }
+                // Apply final velocity (movement + fling + gravity)
+                cameraObject.position.x += velocity.x * delta;
+                cameraObject.position.z += velocity.z * delta;
+                cameraObject.position.y += verticalVelocity * delta;
+
+                // --- Collision Detection & Response ---
+                isGrounded = false; // Assume airborne
+                playerCollider.set(cameraObject.position, playerRadius); // Update collider
+
+                let collisionDetected = false;
+                for (const tower of towers) {
+                     if (tower.boundingBox.intersectsSphere(playerCollider)) {
+                         collisionDetected = true;
+                         // More accurate check: OBB vs Sphere or AABB vs Sphere penetration
+                         const closestPoint = tower.boundingBox.clampPoint(playerCollider.center, new THREE.Vector3());
+                         const penetrationVector = playerCollider.center.clone().sub(closestPoint);
+                         const penetrationDepth = playerCollider.radius - penetrationVector.length();
+
+                         if (penetrationDepth > 0.001) { // Check for actual penetration
+                             const pushDirection = penetrationVector.normalize();
+                             cameraObject.position.addScaledVector(pushDirection, penetrationDepth); // Resolve penetration
+
+                             // Check if collision normal indicates ground
+                             if (pushDirection.y > 0.6) { // Steeper angle threshold for ground
+                                  isGrounded = true;
+                                  verticalVelocity = Math.max(0, verticalVelocity); // Stop downward or bounce slightly? Set to 0 for now.
+                                  if(isFlinging) isFlinging = false; // Stop fling on ground impact
+                             } else {
+                                  // Wall collision: Dampen velocity components into the wall
+                                  const wallNormal = pushDirection.clone(); // Horizontal component of push
+                                  wallNormal.y = 0;
+                                  wallNormal.normalize();
+                                  const wallVel = velocity.dot(wallNormal);
+                                  if (wallVel < 0) { // Moving into the wall
+                                      velocity.subScaledVector(wallNormal, wallVel * 1.1); // Reduce velocity into wall
+                                  }
+                                  // Also handle vertical component if hitting underside/slight slope
+                                  const vertVelComp = verticalVelocity * pushDirection.y;
+                                  if(vertVelComp < 0 && pushDirection.y < 0.6) { // Hitting something above
+                                      verticalVelocity = 0; // Stop upward movement
+                                  }
+                             }
+                         }
+                     }
+                }
+
+                // Update collider center after potential position adjustments
+                playerCollider.center.copy(cameraObject.position);
+
+
+                // Check for falling out of world
+                if (cameraObject.position.y < -200) { // Lower threshold
+                    console.log("Fell out, respawning...");
+                    cameraObject.position.set(0, playerHeight + 50, 0); // Respawn higher
+                    velocity.set(0, 0, 0);
+                    verticalVelocity = 0;
+                    isGrounded = true;
+                    isFlinging = false;
+                    flingVelocity.set(0, 0, 0);
+                    // TODO: Reset health? Send respawn message?
+                     const selfState = playerStates.get(playerUsername);
+                     if(selfState) selfState.health = 100; // Reset health on respawn
+                     updatePlayerList();
+                }
+
+                // Apply damping/friction to horizontal movement velocity (frame-rate independent)
+                const dampingFactor = Math.pow(0.85, delta * 60); // Adjust base friction (0.85) as needed
+                velocity.x *= dampingFactor;
+                velocity.z *= dampingFactor;
+
+
+                // --- Item Collection Check (Player runs over item) ---
+                const playerCheckSphereCollect = new THREE.Sphere(cameraObject.position, playerRadius + ITEM_RADIUS); // Slightly larger check radius
+                collectibles.forEach((item, itemId) => {
+                    if (item.mesh && playerCheckSphereCollect.containsPoint(item.mesh.position)) {
+                        // Send collection attempt to server
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({
+                                type: 'item_collected',
+                                itemId: itemId,
+                                username: playerUsername
+                            }));
+                            // Client doesn't remove immediately, waits for server confirmation via 'item_collected' broadcast
+                        }
+                    }
+                });
+
+
+                // --- Update Own Player Model Position (Hidden) ---
+                 const selfState = playerStates.get(playerUsername);
+                 if(selfState && selfState.mesh) {
+                     selfState.mesh.position.copy(cameraObject.position);
+                     selfState.mesh.rotation.copy(cameraObject.rotation);
+                 }
+
+            } else {
+                 // If controls not locked, gradually stop all movement
+                 velocity.multiplyScalar(Math.pow(0.9, delta * 60));
+                 verticalVelocity *= Math.pow(0.9, delta * 60);
+                 flingVelocity.multiplyScalar(Math.pow(0.9, delta * 60));
+                 if(flingVelocity.lengthSq() < 0.01) isFlinging = false;
+            }
+
+            // Always render the scene at the end of the frame
+            renderer.render(scene, camera);
+        } // End of animate()
+
+        // --- Main Setup and Game Loop ---
+
+        let positionUpdateIntervalId = null; // Variable to hold the interval ID
+
         // Scene setup wrapped in try...catch
         try {
             // Scene initialization
@@ -1282,6 +1650,12 @@
 
                     // Activate controls
                     controls.lock();
+
+                    // Start sending position updates ONLY after game starts
+                    if (positionUpdateIntervalId === null) { // Prevent multiple intervals
+                        positionUpdateIntervalId = setInterval(sendPositionUpdate, 40); // Send updates ~25 times per second
+                        console.log("Started position updates interval.");
+                    }
                 }
             }
 
@@ -1298,6 +1672,13 @@
                  // Stop holding Z for player list
                  document.getElementById('playerList').classList.remove('visible');
                  // Don't reset gameStarted here
+
+                 // Optional: Stop sending updates when controls are unlocked?
+                 // if (positionUpdateIntervalId !== null) {
+                 //    clearInterval(positionUpdateIntervalId);
+                 //    positionUpdateIntervalId = null;
+                 //    console.log("Stopped position updates interval.");
+                 // }
             }
 
             function addDesktopInputListeners() {
@@ -1426,310 +1807,10 @@
             }
 
 
-            // --- Animation Loop ---
-            function animate() {
-                requestAnimationFrame(animate);
-
-                const delta = clock.getDelta(); // Time since last frame
-                const time = performance.now() * 0.001; // Current time in seconds
-
-                // --- Update Projectiles ---
-                const projectilesToRemoveIndexes = []; // Store indexes to remove
-                const worldCollisionCheckSphere = new THREE.Sphere(); // Reusable sphere for world collision
-                const playerCheckSphere = new THREE.Sphere(); // Reusable sphere for player collision
-
-                projectiles.forEach((projectile, index) => {
-                    const moveDistance = projectile.userData.speed * delta;
-                    projectile.position.addScaledVector(projectile.userData.direction, moveDistance);
-                    projectile.userData.distanceTravelled += moveDistance;
-
-                    // Check range limit
-                    if (projectile.userData.distanceTravelled > SHOTGUN_RANGE) {
-                        projectilesToRemoveIndexes.push(index);
-                        return;
-                    }
-
-                    // Prepare collision sphere for this projectile
-                    playerCheckSphere.set(projectile.position, projectileGeometry.parameters.radius);
-
-                    // Check collision with other players
-                    let hitRegistered = false;
-                    playerStates.forEach((playerState, username) => {
-                        if (hitRegistered) return; // Stop checking this pellet if it hit someone
-                        if (username !== projectile.userData.owner && playerState.mesh && playerState.health > 0 && playerState.mesh.visible) { // Check alive and visible
-                             const playerBox = new THREE.Box3().setFromObject(playerState.mesh);
-                             if (playerBox.intersectsSphere(playerCheckSphere)) {
-                                console.log(`Projectile hit ${username}!`);
-                                projectilesToRemoveIndexes.push(index);
-                                hitRegistered = true; // Mark pellet as consumed
-
-                                // Send hit message to server for validation/broadcast
-                                if (ws && ws.readyState === WebSocket.OPEN) {
-                                    ws.send(JSON.stringify({
-                                        type: 'hit_player',
-                                        targetUsername: username,
-                                        damage: SHOTGUN_DAMAGE_PER_PELLET,
-                                        attackerUsername: projectile.userData.owner
-                                    }));
-                                }
-                            }
-                        }
-                    });
-
-                     // Check collision with world geometry (if not already removed)
-                     if (!hitRegistered) {
-                         worldCollisionCheckSphere.set(projectile.position, projectileGeometry.parameters.radius);
-                         for (const tower of towers) {
-                             if (tower.boundingBox.intersectsSphere(worldCollisionCheckSphere)) {
-                                 projectilesToRemoveIndexes.push(index);
-                                 // TODO: Add impact effect (e.g., particle spark) at projectile.position
-                                 hitRegistered = true; // Mark pellet as consumed
-                                 break; // Stop checking world objects for this pellet
-                             }
-                         }
-                     }
-                });
-
-                // Remove projectiles marked for removal (iterate backwards for safe splicing)
-                // Sort indexes descending to avoid index shifting issues during splice
-                projectilesToRemoveIndexes.sort((a, b) => b - a);
-                projectilesToRemoveIndexes.forEach(index => {
-                    if (projectiles[index]) {
-                         scene.remove(projectiles[index]);
-                         projectiles.splice(index, 1);
-                    }
-                });
-
-
-                // --- Update Object Visibility Culling ---
-                 towers.forEach(tower => {
-                     if (tower.visualGroup && tower.visualGroup.userData.originalPosition) { // Check required properties
-                         const distance = controls.getObject().position.distanceTo(tower.visualGroup.userData.originalPosition);
-                         const shouldBeVisible = distance <= CULL_DISTANCE;
-
-                         if (shouldBeVisible !== tower.visualGroup.userData.isVisible) { // Only update if state changes
-                             tower.visualGroup.visible = shouldBeVisible;
-                             tower.visualGroup.userData.isVisible = shouldBeVisible;
-                         }
-                     }
-                 });
-
-
-                // --- Update Animations (Nebulas, Stars, Collectibles) ---
-                // Update nebula uniforms and rotations (frame-rate independent)
-                nebulas.forEach(nebula => {
-                    if (nebula.material.uniforms) nebula.material.uniforms.time.value = time;
-                    nebula.rotation.y += 0.0001 * delta * 60;
-                    nebula.rotation.x += 0.00005 * delta * 60;
-                });
-                // Rotate star fields (frame-rate independent)
-                if (starField) starField.rotation.y += 0.00005 * delta * 60;
-                if (largeStarField) largeStarField.rotation.y += 0.00008 * delta * 60;
-                // Update collectible floating animation
-                collectibles.forEach(item => {
-                     if (item.mesh && item.userData) { // Ensure mesh and userData exist
-                         const floatSpeed = 1.5;
-                         const floatHeight = 0.5;
-                         item.mesh.position.y = item.userData.originalY + Math.sin(time * floatSpeed + item.userData.floatOffset) * floatHeight;
-                     }
-                });
-
-
-                // --- Update Remote Player Interpolation ---
-                if (gameStarted) {
-                    playerStates.forEach((playerState, username) => {
-                        if (username !== playerUsername) {
-                            // Check for inactive player timeout
-                            if ((Date.now() - playerState.lastUpdateTime) > 10000) { // 10 seconds
-                                console.log('Removing inactive player:', username);
-                                removePlayer(username);
-                            } else if (playerState.mesh) { // Ensure mesh exists
-                                playerState.update(delta); // Interpolate position/rotation
-                            }
-                        }
-                    });
-                }
-
-
-                // --- Update Local Player Physics & Controls ---
-                if (gameStarted && controls.isLocked) {
-                    const cameraObject = controls.getObject(); // Player's camera/control object
-
-                    // --- Calculate Movement Impulse ---
-                    direction.set(0, 0, 0); // Reset direction vector
-                    direction.z = Number(moveForward) - Number(moveBackward);
-                    direction.x = Number(moveRight) - Number(moveLeft);
-                    direction.normalize(); // Prevent faster diagonal movement
-
-                    // Apply movement impulse relative to camera direction
-                    const moveImpulse = new THREE.Vector3();
-                    moveImpulse.z = direction.z * moveSpeed * delta * 100; // Scale by delta and factor
-                    moveImpulse.x = direction.x * moveSpeed * delta * 100;
-                    moveImpulse.applyQuaternion(cameraObject.quaternion); // Rotate impulse to world space
-                    velocity.add(moveImpulse); // Add impulse to current velocity
-
-                    // --- Fling Line Trace ---
-                    tubeMesh.visible = showLine;
-                    if (showLine) {
-                         const lineDirection = new THREE.Vector3();
-                         camera.getWorldDirection(lineDirection);
-                         const startPoint = cameraObject.position.clone().addScaledVector(lineDirection, 0.5); // Start slightly in front
-                         startPoint.y -= 0.5; // Start slightly lower
-
-                         raycaster.set(startPoint, lineDirection);
-                         raycaster.far = 330; // Max fling range
-
-                         const intersects = raycaster.intersectObjects(towers.map(t => t.mesh), false); // Check only collision meshes
-
-                         let finalEndPoint;
-                         if (intersects.length > 0) {
-                             // intersects are sorted by distance automatically
-                             lineCollisionPoint = intersects[0].point;
-                             finalEndPoint = lineCollisionPoint;
-                             tubeMaterial.color.setHex(0x00ff00); // Green: Target locked
-                         } else {
-                             lineCollisionPoint = null;
-                             finalEndPoint = startPoint.clone().addScaledVector(lineDirection, raycaster.far); // Extend to max range
-                             tubeMaterial.color.setHex(0xff0000); // Red: No target
-                         }
-
-                         // Update tube geometry vertices smoothly
-                         curvePoints[0].lerp(startPoint, 0.6);
-                         curvePoints[1].lerp(finalEndPoint, 0.6);
-                         tubeMesh.geometry.setFromPoints(curve.getPoints(8)); // Update existing geometry vertices
-                         tubeMesh.geometry.verticesNeedUpdate = true; // Flag for update
-                    } else {
-                         lineCollisionPoint = null; // Ensure reset when not showing line
-                    }
-
-                    // --- Apply Physics (Gravity, Velocity, Fling) ---
-                    const oldPosition = cameraObject.position.clone();
-                    if (!isGrounded) {
-                        verticalVelocity -= gravity * delta * 60; // Apply scaled gravity
-                    }
-                    // Apply horizontal fling impulse (damps over time)
-                    if (isFlinging) {
-                        velocity.x += flingVelocity.x * delta * 60;
-                        velocity.z += flingVelocity.z * delta * 60;
-                        // Apply damping (frame-rate independent)
-                        flingVelocity.multiplyScalar(Math.pow(flingDamping, delta * 60));
-                        if (flingVelocity.lengthSq() < 0.01) {
-                            isFlinging = false;
-                            flingVelocity.set(0, 0, 0);
-                        }
-                    }
-                    // Apply final velocity (movement + fling + gravity)
-                    cameraObject.position.x += velocity.x * delta;
-                    cameraObject.position.z += velocity.z * delta;
-                    cameraObject.position.y += verticalVelocity * delta;
-
-                    // --- Collision Detection & Response ---
-                    isGrounded = false; // Assume airborne
-                    playerCollider.set(cameraObject.position, playerRadius); // Update collider
-
-                    let collisionDetected = false;
-                    for (const tower of towers) {
-                         if (tower.boundingBox.intersectsSphere(playerCollider)) {
-                             collisionDetected = true;
-                             // More accurate check: OBB vs Sphere or AABB vs Sphere penetration
-                             const closestPoint = tower.boundingBox.clampPoint(playerCollider.center, new THREE.Vector3());
-                             const penetrationVector = playerCollider.center.clone().sub(closestPoint);
-                             const penetrationDepth = playerCollider.radius - penetrationVector.length();
-
-                             if (penetrationDepth > 0.001) { // Check for actual penetration
-                                 const pushDirection = penetrationVector.normalize();
-                                 cameraObject.position.addScaledVector(pushDirection, penetrationDepth); // Resolve penetration
-
-                                 // Check if collision normal indicates ground
-                                 if (pushDirection.y > 0.6) { // Steeper angle threshold for ground
-                                      isGrounded = true;
-                                      verticalVelocity = Math.max(0, verticalVelocity); // Stop downward or bounce slightly? Set to 0 for now.
-                                      if(isFlinging) isFlinging = false; // Stop fling on ground impact
-                                 } else {
-                                      // Wall collision: Dampen velocity components into the wall
-                                      const wallNormal = pushDirection.clone(); // Horizontal component of push
-                                      wallNormal.y = 0;
-                                      wallNormal.normalize();
-                                      const wallVel = velocity.dot(wallNormal);
-                                      if (wallVel < 0) { // Moving into the wall
-                                          velocity.subScaledVector(wallNormal, wallVel * 1.1); // Reduce velocity into wall
-                                      }
-                                      // Also handle vertical component if hitting underside/slight slope
-                                      const vertVelComp = verticalVelocity * pushDirection.y;
-                                      if(vertVelComp < 0 && pushDirection.y < 0.6) { // Hitting something above
-                                          verticalVelocity = 0; // Stop upward movement
-                                      }
-                                 }
-                             }
-                         }
-                    }
-
-                    // Update collider center after potential position adjustments
-                    playerCollider.center.copy(cameraObject.position);
-
-
-                    // Check for falling out of world
-                    if (cameraObject.position.y < -200) { // Lower threshold
-                        console.log("Fell out, respawning...");
-                        cameraObject.position.set(0, playerHeight + 50, 0); // Respawn higher
-                        velocity.set(0, 0, 0);
-                        verticalVelocity = 0;
-                        isGrounded = true;
-                        isFlinging = false;
-                        flingVelocity.set(0, 0, 0);
-                        // TODO: Reset health? Send respawn message?
-                         const selfState = playerStates.get(playerUsername);
-                         if(selfState) selfState.health = 100; // Reset health on respawn
-                         updatePlayerList();
-                    }
-
-                    // Apply damping/friction to horizontal movement velocity (frame-rate independent)
-                    const dampingFactor = Math.pow(0.85, delta * 60); // Adjust base friction (0.85) as needed
-                    velocity.x *= dampingFactor;
-                    velocity.z *= dampingFactor;
-
-
-                    // --- Item Collection Check (Player runs over item) ---
-                    const playerCheckSphereCollect = new THREE.Sphere(cameraObject.position, playerRadius + ITEM_RADIUS); // Slightly larger check radius
-                    collectibles.forEach((item, itemId) => {
-                        if (item.mesh && playerCheckSphereCollect.containsPoint(item.mesh.position)) {
-                            // Send collection attempt to server
-                            if (ws && ws.readyState === WebSocket.OPEN) {
-                                ws.send(JSON.stringify({
-                                    type: 'item_collected',
-                                    itemId: itemId,
-                                    username: playerUsername
-                                }));
-                                // Client doesn't remove immediately, waits for server confirmation via 'item_collected' broadcast
-                            }
-                        }
-                    });
-
-
-                    // --- Update Own Player Model Position (Hidden) ---
-                     const selfState = playerStates.get(playerUsername);
-                     if(selfState && selfState.mesh) {
-                         selfState.mesh.position.copy(cameraObject.position);
-                         selfState.mesh.rotation.copy(cameraObject.rotation);
-                     }
-
-                } else {
-                     // If controls not locked, gradually stop all movement
-                     velocity.multiplyScalar(Math.pow(0.9, delta * 60));
-                     verticalVelocity *= Math.pow(0.9, delta * 60);
-                     flingVelocity.multiplyScalar(Math.pow(0.9, delta * 60));
-                     if(flingVelocity.lengthSq() < 0.01) isFlinging = false;
-                }
-
-                // Always render the scene at the end of the frame
-                renderer.render(scene, camera);
-            } // End of animate()
-
             // Start the animation loop
             animate();
 
-            // Start sending position updates periodically
-            setInterval(sendPositionUpdate, 40); // Send updates ~25 times per second
+            // REMOVED: setInterval(sendPositionUpdate, 40); // Moved to handleStartGameClick
 
         } catch (error) {
             // Display initialization error prominently
