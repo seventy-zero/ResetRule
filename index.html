@@ -717,6 +717,13 @@
 
                             // Initialize collectibles after world is built
                             initializeCollectibles();
+
+                            // --- DEBUG LOG: Check towers array ---
+                            console.log(`Towers array length: ${towers.length}`);
+                            if (towers.length > 0) {
+                                console.log('First tower bounding box:', towers[0].boundingBox);
+                            }
+                            // --- END DEBUG LOG ---
                             break;
 
                         case 'room_info':
@@ -1418,21 +1425,29 @@
                 isGrounded = false; // Assume airborne
                 playerCollider.set(cameraObject.position, playerRadius); // Update collider
 
-                let collisionDetected = false;
+                let collisionDetectedThisFrame = false; // Renamed variable for clarity
                 for (const tower of towers) {
-                     if (tower.boundingBox.intersectsSphere(playerCollider)) {
-                         collisionDetected = true;
+                     if (tower.boundingBox && tower.boundingBox.intersectsSphere(playerCollider)) { // Added check for boundingBox existence
+                         collisionDetectedThisFrame = true;
                          // More accurate check: OBB vs Sphere or AABB vs Sphere penetration
                          const closestPoint = tower.boundingBox.clampPoint(playerCollider.center, new THREE.Vector3());
                          const penetrationVector = playerCollider.center.clone().sub(closestPoint);
                          const penetrationDepth = playerCollider.radius - penetrationVector.length();
 
+                         // --- DEBUG LOG: Collision Details ---
+                         // console.log(`Collision! Depth: ${penetrationDepth.toFixed(3)}`);
+
                          if (penetrationDepth > 0.001) { // Check for actual penetration
                              const pushDirection = penetrationVector.normalize();
+                             // --- DEBUG LOG: Collision Push ---
+                             console.log(`Push Direction Y: ${pushDirection.y.toFixed(3)}`);
+
                              cameraObject.position.addScaledVector(pushDirection, penetrationDepth); // Resolve penetration
 
                              // Check if collision normal indicates ground
                              if (pushDirection.y > 0.6) { // Steeper angle threshold for ground
+                                  // --- DEBUG LOG: Grounded ---
+                                  // console.log("Grounded!");
                                   isGrounded = true;
                                   verticalVelocity = Math.max(0, verticalVelocity); // Stop downward or bounce slightly? Set to 0 for now.
                                   if(isFlinging) isFlinging = false; // Stop fling on ground impact
@@ -1454,6 +1469,9 @@
                          }
                      }
                 }
+                // --- DEBUG LOG: Collision Summary ---
+                // if (!collisionDetectedThisFrame) console.log("No collision detected this frame.");
+
 
                 // Update collider center after potential position adjustments
                 playerCollider.center.copy(cameraObject.position);
@@ -1478,6 +1496,8 @@
                 const dampingFactor = Math.pow(0.85, delta * 60); // Adjust base friction (0.85) as needed
                 velocity.x *= dampingFactor;
                 velocity.z *= dampingFactor;
+                // --- DEBUG LOG: Velocity after damping ---
+                // console.log(`Velocity after damping: x=${velocity.x.toFixed(2)}, z=${velocity.z.toFixed(2)}`);
 
 
                 // --- Item Collection Check (Player runs over item) ---
