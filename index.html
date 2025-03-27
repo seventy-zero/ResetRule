@@ -2795,9 +2795,9 @@
         const SHOTGUN_RANGE = 2000; // Increased from 1000 to 2000
         const PELLET_COUNT = 8;
         const PELLET_SPREAD = 0.2;
-        const PELLET_SPEED = 2;
+        const PELLET_SPEED = 50; // Increased from 2 to 50 for more noticeable movement
         const PELLET_LIFETIME = 2000; // Increased from 1000 to 2000ms
-        const PELLET_GRAVITY = 0.008; // Gravity effect on pellets
+        const PELLET_GRAVITY = 0.5; // Increased from 0.008 to 0.5 for more noticeable gravity
         const PELLET_BOUNCE = 0.3; // Bounce coefficient
         const PELLET_FRICTION = 0.98; // Friction coefficient
         const PELLET_RADIUS = 0.3; // Pellet collision radius
@@ -2915,10 +2915,11 @@
                 ).normalize();
                 spread.applyQuaternion(camera.quaternion);
                 
-                // Set pellet velocity
+                // Set pellet velocity with proper speed
                 pellet.velocity = spread.multiplyScalar(PELLET_SPEED);
-                pellet.spawnTime = performance.now(); // Use performance.now() for consistent timing
+                pellet.spawnTime = performance.now();
                 pellet.visible = true;
+                pellet.bounces = 0;
                 
                 pelletPool.active.add(pellet);
                 pelletDirections.push(spread.toArray());
@@ -3190,7 +3191,7 @@
                 pellet.lastPosition.copy(pellet.position);
                 
                 // Apply gravity
-                pellet.velocity.y -= PELLET_GRAVITY;
+                pellet.velocity.y -= PELLET_GRAVITY * deltaTime;
                 
                 // Apply friction
                 pellet.velocity.multiplyScalar(PELLET_FRICTION);
@@ -3201,11 +3202,15 @@
                 // Check for collisions with towers
                 const pelletCollider = new THREE.Sphere(pellet.position, PELLET_RADIUS);
                 let collision = false;
+                let collisionNormal = new THREE.Vector3();
                 
                 // Check tower collisions
                 for (const tower of towers) {
                     const towerBox = new THREE.Box3().setFromObject(tower.mesh);
                     if (towerBox.containsSphere(pelletCollider)) {
+                        // Calculate collision normal
+                        const center = towerBox.getCenter(new THREE.Vector3());
+                        collisionNormal.copy(pellet.position).sub(center).normalize();
                         collision = true;
                         break;
                     }
@@ -3226,18 +3231,14 @@
                     
                     // Calculate bridge box
                     const bridgeCenter = bridgeStart.clone().add(bridgeEnd).multiplyScalar(0.5);
-                    const bridgeAxis = new THREE.Vector3(0, 1, 0);
-                    const bridgeRotation = new THREE.Quaternion().setFromUnitVectors(
-                        new THREE.Vector3(0, 0, 1),
-                        bridgeDir
-                    );
-                    
                     bridgeBox.setFromCenterAndSize(
                         bridgeCenter,
                         new THREE.Vector3(bridgeLength, bridgeHeight, bridgeWidth)
                     );
                     
                     if (bridgeBox.containsSphere(pelletCollider)) {
+                        // Calculate collision normal (bridge is horizontal, so normal is up)
+                        collisionNormal.set(0, 1, 0);
                         collision = true;
                         break;
                     }
@@ -3249,7 +3250,6 @@
                     pellet.position.copy(pellet.lastPosition);
                     
                     // Reflect velocity based on collision normal
-                    const collisionNormal = pellet.position.clone().sub(pellet.lastPosition).normalize();
                     pellet.velocity.reflect(collisionNormal);
                     
                     // Apply bounce and friction
@@ -3265,15 +3265,12 @@
                 }
                 
                 // Check for collisions with players
-                const raycaster = new THREE.Raycaster();
-                raycaster.set(pellet.position, pellet.velocity.normalize());
-                
                 playerStates.forEach((playerState, username) => {
                     if (username !== playerUsername) {
                         const playerCollider = new THREE.Sphere(playerState.mesh.position, playerRadius);
-                        const intersects = raycaster.intersectSphere(playerCollider);
+                        const distance = pellet.position.distanceTo(playerState.mesh.position);
                         
-                        if (intersects.length > 0 && intersects[0].distance < 5) {
+                        if (distance < playerRadius + PELLET_RADIUS) {
                             // Player was hit
                             if (ws && ws.readyState === WebSocket.OPEN) {
                                 ws.send(JSON.stringify({
@@ -3286,6 +3283,11 @@
                         }
                     }
                 });
+                
+                // Remove pellet if it's fallen too far
+                if (pellet.position.y < -1000) {
+                    pelletPool.release(pellet);
+                }
             });
         }
 
