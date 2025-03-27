@@ -1127,11 +1127,19 @@
                         break;
 
                     case 'orb_collected':
-                        if (data.username === playerUsername) {
-                            // Update local orb count
-                            const currentOrbs = playerOrbs.get(playerUsername) || 0;
-                            playerOrbs.set(playerUsername, currentOrbs + 1);
-                            updateOrbCount(); // Add this line to update the UI
+                        // Remove the collected orb from the scene for all players
+                        const orb = orbs.get(data.orbId);
+                        if (orb) {
+                            scene.remove(orb);
+                            orbs.delete(data.orbId);
+                            
+                            // Only update the collector's orb count
+                            if (data.username === playerUsername) {
+                                const currentOrbs = playerOrbs.get(playerUsername) || 0;
+                                playerOrbs.set(playerUsername, currentOrbs + 1);
+                                updateOrbCount();
+                                playOrbCollectionSound();
+                            }
                         }
                         break;
                 }

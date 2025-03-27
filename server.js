@@ -406,6 +406,27 @@ wss.on('connection', (ws) => {
                     }
                     break;
 
+                case 'collect_orb':
+                    if (currentRoom) {
+                        const player = currentRoom.players.get(ws);
+                        if (player) {
+                            // Find the orb in the room's world
+                            const orbIndex = currentRoom.world.orbs.findIndex(orb => orb.id === data.orbId);
+                            if (orbIndex !== -1) {
+                                // Remove the orb from the world
+                                currentRoom.world.orbs.splice(orbIndex, 1);
+                                
+                                // Broadcast orb collection to all players in the room
+                                currentRoom.broadcast(JSON.stringify({
+                                    type: 'orb_collected',
+                                    orbId: data.orbId,
+                                    username: player.username
+                                }));
+                            }
+                        }
+                    }
+                    break;
+
                 case 'position':
                     if (currentRoom) {
                         const player = currentRoom.players.get(ws);
