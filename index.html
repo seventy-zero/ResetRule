@@ -360,13 +360,14 @@
             constructor(username, mesh) {
                 this.username = username;
                 this.mesh = mesh;
-                this.position = new THREE.Vector3();
-                this.rotation = new THREE.Euler();
-                this.speed = 0;
-                this.heading = 0;
-                this.verticalSpeed = 0;
+                this.targetPosition = new THREE.Vector3();
+                this.targetRotation = new THREE.Vector3();
+                this.currentPosition = new THREE.Vector3();
+                this.currentRotation = new THREE.Vector3();
                 this.lastUpdateTime = Date.now();
-                this.isVisible = true;
+                this.interpolationSpeed = 0.15; // Base interpolation speed
+                this.positionThreshold = 10; // Distance threshold for position snapping
+                this.health = 100; // --- Add health property ---
             }
 
             update(deltaTime) {
@@ -386,9 +387,9 @@
                 const distanceMoved = this.speed * deltaTime;
 
                 // Calculate target positions
-                const targetX = this.position.x - Math.sin(headingRad) * distanceMoved;
-                const targetZ = this.position.z - Math.cos(headingRad) * distanceMoved;
-                const targetY = this.position.y + this.verticalSpeed * deltaTime;
+                const targetX = this.targetPosition.x - Math.sin(headingRad) * distanceMoved;
+                const targetZ = this.targetPosition.z - Math.cos(headingRad) * distanceMoved;
+                const targetY = this.targetPosition.y + this.verticalSpeed * deltaTime;
 
                 // Use exponential smoothing for interpolation
                 const lerpFactor = 1 - Math.exp(-10 * deltaTime);
@@ -400,6 +401,17 @@
 
                 // Update rotation
                 this.mesh.rotation.y = -headingRad;
+            }
+
+            // --- Add method to take damage ---
+            takeDamage(amount) {
+                this.health = Math.max(0, this.health - amount);
+                console.log(`${this.username} took ${amount} damage, health remaining: ${this.health}`);
+                // TODO: Update visual representation of health (e.g., color change, health bar)
+                if (this.health <= 0) {
+                    console.log(`${this.username} has been eliminated.`);
+                    // TODO: Handle player elimination (e.g., respawn, remove model)
+                }
             }
         }
 
@@ -452,8 +464,9 @@
             
             // Create and store player state
             const playerState = new PlayerState(username, playerMesh);
-            playerState.position.set(0, playerHeight, 0);
-            playerState.rotation.set(0, 0, 0);
+            playerState.targetPosition.set(0, playerHeight, 0);
+            playerState.targetRotation.set(0, 0, 0);
+            playerState.health = 100; // Initialize health
             playerStates.set(username, playerState);
             
             console.log('Player model created successfully for:', username);
@@ -467,31 +480,31 @@
                 // Update position
                 if (position) {
                     if (Array.isArray(position)) {
-                        playerState.position.fromArray(position);
+                        playerState.targetPosition.fromArray(position);
                     } else {
-                        playerState.position.set(position.x, position.y, position.z);
+                        playerState.targetPosition.set(position.x, position.y, position.z);
                     }
                 }
                 
                 // Update rotation
                 if (rotation) {
                     if (Array.isArray(rotation)) {
-                        playerState.rotation.fromArray(rotation);
+                        playerState.targetRotation.fromArray(rotation);
                     } else {
-                        playerState.rotation.set(rotation.x, rotation.y, rotation.z);
+                        playerState.targetRotation.set(rotation.x, rotation.y, rotation.z);
                     }
                 }
                 
                 // Calculate speed and heading from position changes
                 if (playerState.lastPosition) {
-                    const dx = playerState.position.x - playerState.lastPosition.x;
-                    const dz = playerState.position.z - playerState.lastPosition.z;
+                    const dx = playerState.targetPosition.x - playerState.lastPosition.x;
+                    const dz = playerState.targetPosition.z - playerState.lastPosition.z;
                     playerState.speed = Math.sqrt(dx * dx + dz * dz) / (0.016); // Assuming 60fps
                     playerState.heading = Math.atan2(-dx, -dz) * 180 / Math.PI;
-                    playerState.verticalSpeed = (playerState.position.y - playerState.lastPosition.y) / 0.016;
+                    playerState.verticalSpeed = (playerState.targetPosition.y - playerState.lastPosition.y) / 0.016;
                 }
                 
-                playerState.lastPosition = playerState.position.clone();
+                playerState.lastPosition = playerState.targetPosition.clone();
                 playerState.lastUpdateTime = Date.now();
             } else {
                 console.warn('No player state found for username:', username);
@@ -1021,20 +1034,20 @@
                                 if (playerState) {
                                     console.log('Updating player state for:', {
                                         username: data.username,
-                                        oldPosition: playerState.position.clone(),
+                                        oldPosition: playerState.targetPosition.clone(),
                                         newPosition: data.position,
-                                        oldRotation: playerState.rotation.clone(),
+                                        oldRotation: playerState.targetRotation.clone(),
                                         newRotation: data.rotation
                                     });
                                     
                                     // Update position
                                     if (data.position) {
-                                        playerState.position.fromArray(data.position);
+                                        playerState.targetPosition.fromArray(data.position);
                                     }
                                     
                                     // Update rotation
                                     if (data.rotation) {
-                                        playerState.rotation.fromArray(data.rotation);
+                                        playerState.targetRotation.fromArray(data.rotation);
                                     }
                                     
                                     // Update speed and heading if provided
@@ -1119,6 +1132,28 @@
                             }
                         }
                         break;
+
+                    case 'player_hit': // --- Handle Player Hit Message ---
+                        console.log('Received player_hit:', data);
+                        if (data.targetUsername && data.damage) {
+                            const targetPlayerState = playerStates.get(data.targetUsername);
+                            if (targetPlayerState) {
+                                targetPlayerState.takeDamage(data.damage);
+                                // Update UI if needed (e.g., player list health)
+                                updatePlayerList();
+                            } else {
+                                console.warn(`Target player ${data.targetUsername} not found for hit.`);
+                            }
+                        }
+                        break;
+
+                    // Optional: Handle other players firing (for visual effects)
+                    // case 'player_fired_shotgun':
+                    //    if (data.username !== playerUsername) {
+                    //        // Trigger muzzle flash/sound at data.position/direction
+                    //        console.log(`${data.username} fired shotgun`);
+                    //    }
+                    //    break;
                 }
             });
 
@@ -1141,9 +1176,12 @@
             playerList.innerHTML = '<div style="margin-bottom: 10px; font-weight: bold;">Players:</div>';
             
             // Add current player first
+            const currentPlayerState = playerStates.get(playerUsername); // Get current player state if exists
+            const currentPlayerHealth = currentPlayerState ? currentPlayerState.health : 100; // Default to 100 if not found yet
+            const currentItems = playerItems.get(playerUsername) || new Set();
             const currentPlayerItem = document.createElement('div');
             currentPlayerItem.className = 'playerListItem';
-            currentPlayerItem.textContent = `${playerUsername} (You)`;
+            currentPlayerItem.textContent = `${playerUsername} (You) - HP: ${currentPlayerHealth} - Items: ${currentItems.size}/${ITEM_COUNT}`; // Add HP
             playerList.appendChild(currentPlayerItem);
             
             // Add other players
@@ -2033,9 +2071,11 @@
                         case 'KeyE':
                             showLine = true;
                             break;
+                        case 'KeyF': // --- Add Fire Key ---
+                            fireShotgun();
+                            break;
                         case 'KeyZ':
                             document.getElementById('playerList').classList.add('visible');
-                            updatePlayerList(); // Update immediately when showing
                             break;
                     }
                 };
@@ -3408,6 +3448,131 @@
         
         // Also try to play immediately
         resumeAudio();
+
+        // --- Add fireShotgun Function ---
+        function fireShotgun() {
+            if (!gameStarted || !controls.isLocked) return;
+
+            const now = Date.now();
+            if (now - lastShotTime < SHOTGUN_COOLDOWN) {
+                return; // Fire rate limit
+            }
+            lastShotTime = now;
+
+            console.log("Firing shotgun!");
+            // TODO: Add sound effect
+
+            const cameraDirection = new THREE.Vector3();
+            camera.getWorldDirection(cameraDirection);
+            const cameraPosition = camera.position.clone();
+
+            for (let i = 0; i < SHOTGUN_PELLET_COUNT; i++) {
+                // Calculate spread
+                const spread = new THREE.Vector3(
+                    (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE,
+                    (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE,
+                    (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE
+                );
+                const pelletDirection = cameraDirection.clone().add(spread).normalize();
+
+                createProjectile(cameraPosition, pelletDirection);
+            }
+
+            // Optional: Send fire event to server (for effects on other clients)
+             if (ws.readyState === WebSocket.OPEN) {
+                 ws.send(JSON.stringify({ type: 'fire_shotgun', username: playerUsername }));
+             }
+        }
+
+        // --- Add createProjectile Function ---
+        function createProjectile(origin, direction) {
+            const projectileMesh = new THREE.Mesh(projectileGeometry, projectileMaterial);
+            projectileMesh.position.copy(origin);
+            projectileMesh.userData.velocity = direction.clone().multiplyScalar(SHOTGUN_PELLET_SPEED);
+            projectileMesh.userData.distanceTravelled = 0;
+            projectileMesh.userData.owner = playerUsername; // Track who fired it
+
+            scene.add(projectileMesh);
+            projectiles.push(projectileMesh);
+        }
+
+        // Animation loop with collision detection, star rotation, and nebula animation
+        function animate() {
+            // ... existing code ...
+
+            // --- Update Projectiles ---
+            const projectilesToRemove = [];
+            const delta = clock.getDelta(); // Get delta time for consistent movement
+
+            projectiles.forEach((projectile, index) => {
+                const moveDistance = projectile.userData.velocity.length() * delta;
+                projectile.position.addScaledVector(projectile.userData.velocity.clone().normalize(), moveDistance);
+                projectile.userData.distanceTravelled += moveDistance;
+
+                // Check for removal conditions
+                if (projectile.userData.distanceTravelled > SHOTGUN_RANGE) {
+                    projectilesToRemove.push(index);
+                    return; // Skip collision checks if out of range
+                }
+
+                // Check collision with other players
+                playerStates.forEach((playerState, username) => {
+                    // Don't hit self, check if player mesh exists
+                    if (username !== projectile.userData.owner && playerState.mesh) {
+                        const playerBox = new THREE.Box3().setFromObject(playerState.mesh);
+                        if (playerBox.containsPoint(projectile.position)) {
+                            console.log(`Projectile hit ${username}!`);
+                            projectilesToRemove.push(index);
+
+                            // Send hit message to server
+                            if (ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({
+                                    type: 'hit_player',
+                                    targetUsername: username,
+                                    damage: SHOTGUN_DAMAGE_PER_PELLET,
+                                    attackerUsername: projectile.userData.owner
+                                }));
+                            }
+                            // Note: Client-side damage application is removed, server will broadcast back.
+                            return; // Pellet is consumed
+                        }
+                    }
+                });
+
+                 // Check collision with world geometry (towers/bridges)
+                 if (!projectilesToRemove.includes(index)) { // Only check if not already marked for removal
+                     for (const tower of towers) {
+                         if (tower.boundingBox.containsPoint(projectile.position)) {
+                             console.log("Projectile hit world geometry.");
+                             projectilesToRemove.push(index);
+                             // TODO: Add impact effect
+                             return; // Pellet is consumed
+                         }
+                     }
+                 }
+            });
+
+            // Remove projectiles marked for removal (iterate backwards)
+            for (let i = projectilesToRemove.length - 1; i >= 0; i--) {
+                const index = projectilesToRemove[i];
+                scene.remove(projectiles[index]);
+                projectiles.splice(index, 1);
+            }
+
+
+            if (gameStarted) {
+                // ... existing gameStarted block ...
+
+                // Only process movement and game logic if controls are locked and game is started
+                if (controls.isLocked) {
+                    // ... existing movement/physics logic ...
+                }
+            }
+            // Always render the scene
+            renderer.render(scene, camera);
+        }
+        animate();
+        // ...
     </script>
 </body>
 </html>

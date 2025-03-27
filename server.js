@@ -562,6 +562,39 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+
+                case 'hit_player':
+                    if (currentRoom) {
+                        const attacker = currentRoom.players.get(ws); // Find who sent the message
+                        // Basic validation: Check if target exists and damage is reasonable
+                        if (attacker && data.targetUsername && data.damage > 0 && data.damage <= SHOTGUN_DAMAGE_PER_PELLET) {
+                            // Find the target player's WebSocket connection
+                            let targetWs = null;
+                            currentRoom.players.forEach((playerData, playerWs) => {
+                                if (playerData.username === data.targetUsername) {
+                                    targetWs = playerWs;
+                                }
+                            });
+
+                            // If target found, broadcast the hit event to everyone in the room
+                            if (targetWs) {
+                                console.log(`Broadcasting hit: ${attacker.username} -> ${data.targetUsername} for ${data.damage} damage`);
+                                currentRoom.broadcast(JSON.stringify({
+                                    type: 'player_hit',
+                                    targetUsername: data.targetUsername,
+                                    damage: data.damage,
+                                    attackerUsername: attacker.username // Include attacker
+                                }));
+                                // Note: Server doesn't track health here, just relays the message.
+                                // A more robust implementation would manage health server-side.
+                            } else {
+                                 console.log(`Hit target ${data.targetUsername} not found in room.`);
+                            }
+                        } else {
+                             console.log('Invalid hit_player message received:', data);
+                        }
+                    }
+                    break;
             }
         } catch (error) {
             console.error('Error processing message:', error);
