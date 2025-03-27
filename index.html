@@ -514,6 +514,26 @@
         const materialCache = new Map();
         const COLLISION_CHECK_INTERVAL = 100; // ms
         let lastCollisionCheck = 0;
+
+        // Add frustum culling variables
+        const frustum = new THREE.Frustum();
+        const projScreenMatrix = new THREE.Matrix4();
+
+        // Add clearTowers function
+        function clearTowers() {
+            towers.forEach(tower => {
+                if (tower.mesh) {
+                    tower.mesh.traverse(child => {
+                        if (child.geometry) {
+                            child.geometry.dispose();
+                        }
+                    });
+                    scene.remove(tower.mesh);
+                }
+            });
+            towers.length = 0;
+        }
+
         const spatialGrid = {
             cellSize: 100,
             cells: new Map(),
