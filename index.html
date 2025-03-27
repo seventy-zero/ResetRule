@@ -5,12 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/virtual-joystick/1.10.0/virtual-joystick.min.js"></script>
     <style>
-        body { 
-            margin: 0; 
+        body {
+            margin: 0;
             background-color: #000000;
+            overflow: hidden; /* Prevent scrollbars */
         }
-        canvas { 
-            display: block; 
+        canvas {
+            display: block;
         }
         #instructions {
             position: absolute;
@@ -73,7 +74,6 @@
             width: 120px;
             pointer-events: auto;
             z-index: 1000;
-            touch-action: none;
         }
         .joystick-zone {
             position: absolute;
@@ -93,39 +93,29 @@
             border-radius: 25px;
             pointer-events: none;
             transform: translate(-50%, -50%);
-            transition: transform 0.1s ease-out;
-            touch-action: none;
-        }
-        /* Add left joystick for movement */
-        .mobile-controls.left {
-            left: 20px;
-            right: auto;
         }
         #flingButton {
             display: none;
             position: fixed;
             bottom: 160px;
             left: 40px;
-            width: 80px;
-            height: 80px;
+            width: 60px;
+            height: 60px;
             background: rgba(76, 175, 80, 0.6);
             border: 2px solid rgba(255, 255, 255, 0.8);
             border-radius: 50%;
             color: white;
-            font-size: 32px;
-            line-height: 80px;
+            font-size: 24px;
+            line-height: 60px;
             text-align: center;
             pointer-events: auto;
             cursor: pointer;
             -webkit-tap-highlight-color: transparent;
             z-index: 1000;
             touch-action: none;
-            transition: all 0.1s ease-out;
-            user-select: none;
         }
         #flingButton.active {
             background: rgba(76, 175, 80, 0.9);
-            transform: scale(0.95);
         }
         /* Show mobile controls on touch devices */
         @media (pointer: coarse) {
@@ -142,15 +132,13 @@
             right: 10px;
             background-color: rgba(0, 0, 0, 0.7);
             color: #4CAF50;
-            padding: 10px 15px;  /* Increased horizontal padding */
+            padding: 10px;
             border-radius: 5px;
             z-index: 1000;
             font-family: Arial, sans-serif;
             font-size: 16px;
             font-weight: bold;
             text-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
-            min-width: 120px;  /* Added minimum width */
-            text-align: center;  /* Center the text */
         }
 
         #playerList {
@@ -166,8 +154,6 @@
             font-size: 16px;
             display: none;
             min-width: 150px;
-            max-height: 300px;
-            overflow-y: auto;
         }
 
         #playerList.visible {
@@ -179,32 +165,10 @@
             padding: 5px;
             border-radius: 3px;
             transition: background-color 0.2s;
-            white-space: nowrap;
         }
 
         .playerListItem:hover {
             background-color: rgba(76, 175, 80, 0.2);
-        }
-
-        .popupButton {
-            padding: 15px 30px;
-            border: none;
-            border-radius: 5px;
-            color: white;
-            font-size: 18px;
-            cursor: pointer;
-            transition: transform 0.1s;
-            animation: none;
-        }
-
-        .popupButton:hover {
-            animation: shake 0.5s infinite;
-        }
-
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-5px); }
-            75% { transform: translateX(5px); }
         }
     </style>
 </head>
@@ -218,35 +182,25 @@
             WASD = Move<br>
             Mouse = Look around<br>
             ESC = Exit<br>
-            Left Click = Aim & Release to Fling
+            Left Click / E = Aim & Release to Fling<br>
+            F = Fire Shotgun
         </p>
         <p id="mobileInstructions" style="display: none; margin-top: 20px;">
             Mobile Controls:<br>
             Right Stick = Look around<br>
-            Fling Button = Aim & Release to Fling
+            Fling Button = Aim & Release to Fling<br>
+            (Shotgun fire not implemented for mobile yet)
         </p>
     </div>
-    
+
     <div id="playerList"></div>
-    <div id="orbCount" style="position: fixed; top: 10px; left: 50%; transform: translateX(-50%); background-color: rgba(0, 0, 0, 0.7); color: #4CAF50; padding: 10px; border-radius: 5px; z-index: 1000; font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; text-shadow: 0 0 5px rgba(76, 175, 80, 0.5);">
-        Orbs: 0
-    </div>
     <div id="roomInfo"></div>
-    
+
     <!-- Mobile Controls -->
     <div class="mobile-controls">
         <div id="rightJoystick" class="joystick-zone"></div>
     </div>
     <div id="flingButton">⚡</div>
-
-    <!-- Add after the roomInfo div -->
-    <div id="orbPopup" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(0, 0, 0, 0.9); padding: 30px; border-radius: 10px; z-index: 2000; text-align: center; border: 2px solid #4CAF50;">
-        <h2 style="color: #4CAF50; margin-bottom: 20px;">You've collected 30 orbs!</h2>
-        <div style="display: flex; gap: 20px; justify-content: center;">
-            <button id="resetButton" class="popupButton" style="background-color: #ff4444;">Reset (C)</button>
-            <button id="ruleButton" class="popupButton" style="background-color: #4CAF50;">Rule (V)</button>
-        </div>
-    </div>
 
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
@@ -265,58 +219,19 @@
         const playerHeight = 10;
         const playerRadius = 2;
         const moveSpeed = 0.05;
-        const gravity = 0.008; // Reduced from 0.015 for longer air time
-        const flingStrength = 2.75;
+        const gravity = 0.044;
+        const flingStrength = 2.5;
         const flingDamping = 0.985;
         const clock = new THREE.Clock();
-        const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
-        const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
-        let ws = null; // Initialize WebSocket variable
-        let wsConnectionAttempted = false; // Track if we've attempted to connect
-        let worldDataRequested = false; // Track if we've requested world data
 
-        // Initialize WebSocket connection immediately
-        if (!wsConnectionAttempted) {
-            setupWebSocket();
-            wsConnectionAttempted = true;
-        }
-
-        // Add object pooling system
-        const objectPool = {
-            vectors: [],
-            spheres: [],
-            boxes: [],
-            getVector: function() {
-                return this.vectors.pop() || new THREE.Vector3();
-            },
-            releaseVector: function(vector) {
-                vector.set(0, 0, 0);
-                this.vectors.push(vector);
-            },
-            getSphere: function() {
-                return this.spheres.pop() || new THREE.Sphere();
-            },
-            releaseSphere: function(sphere) {
-                sphere.center.set(0, 0, 0);
-                sphere.radius = 0;
-                this.spheres.push(sphere);
-            },
-            getBox: function() {
-                return this.boxes.pop() || new THREE.Box3();
-            },
-            releaseBox: function(box) {
-                box.makeEmpty();
-                this.boxes.push(box);
-            }
-        };
-
-        // Add movement smoothing constants
-        const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
-        const COLLISION_PUSH_FORCE = 3.5; // Increased from 2.5 for stronger collision response
-        const CORNER_SLIDE_FORCE = 0.8; // Increased from 0.7 for better sliding
-        const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
-        const STUCK_THRESHOLD = 0.3; // New constant for detecting when player is stuck
-        const STUCK_PUSH_FORCE = 5.0; // New constant for extra push force when stuck
+        // --- Shotgun Constants ---
+        const SHOTGUN_PELLET_COUNT = 8;
+        const SHOTGUN_SPREAD_ANGLE = 0.1; // Radians (~5.7 degrees cone)
+        const SHOTGUN_PELLET_SPEED = 15; // Units per frame (adjust as needed)
+        const SHOTGUN_DAMAGE_PER_PELLET = 20; // Damage per pellet hit
+        const SHOTGUN_RANGE = 500; // Maximum distance pellets travel
+        const SHOTGUN_FIRE_RATE = 1000; // Milliseconds between shots
+        let lastShotTime = 0;
 
         // Game state variables
         let gameStarted = false;
@@ -326,6 +241,12 @@
         let showLine = false;
         let lineCollisionPoint = null;
         let verticalVelocity = 0;
+        let ws = null;
+
+        // Projectile Management
+        const projectiles = [];
+        const projectileGeometry = new THREE.SphereGeometry(0.3, 4, 4); // Small sphere for pellets
+        const projectileMaterial = new THREE.MeshBasicMaterial({ color: 0xffaa00 }); // Orange pellets
 
         // Movement state variables
         let moveForward = false;
@@ -340,20 +261,40 @@
         const towers = [];
         const nebulas = [];
         const playerStates = new Map();
-        const orbs = new Map(); // Add orbs collection
-        const playerOrbs = new Map(); // Track orbs collected by each player
-        const collisionBoxes = []; // Add collision boxes collection
+        const collectibles = new Map(); // Store collectible items
+        const playerItems = new Map(); // Store items collected by each player
 
         // Vectors and other THREE.js objects
         const velocity = new THREE.Vector3();
         const flingVelocity = new THREE.Vector3();
         const direction = new THREE.Vector3();
 
+        // Collectible item properties
+        const ITEM_COUNT = 20;
+        const ITEM_RADIUS = 3;
+        const ITEM_HEIGHT = 2;
+        const MIN_DISTANCE_BETWEEN_ITEMS = 100;
+        const ITEM_COLORS = [
+            0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff,
+            0x00ffff, 0xff8800, 0x8800ff, 0x00ff88, 0xff0088,
+            0x88ff00, 0x0088ff, 0xff8800, 0x8800ff, 0x00ff88,
+            0xff0088, 0x88ff00, 0x0088ff, 0xff8800, 0x8800ff
+        ];
+
         // Mobile detection
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
         // Add interpolation settings
         const INTERPOLATION_SPEED = 0.15;
+
+        // Culling settings
+        const RENDER_DISTANCE = 2000; // Maximum distance to render objects
+        const CULL_DISTANCE = 1500;   // Distance at which to start culling objects
+
+        // Function to check if an object is within render distance
+        function isWithinRenderDistance(position) {
+            return camera.position.distanceTo(position) <= RENDER_DISTANCE;
+        }
 
         // Store player states for interpolation
         class PlayerState {
@@ -371,40 +312,37 @@
             }
 
             update(deltaTime) {
-                if (!this.mesh) {
-                    console.warn(`No mesh found for player ${this.username}`);
-                    return;
+                if (!this.mesh) return;
+
+                const timeSinceUpdate = (Date.now() - this.lastUpdateTime) / 1000; // Convert to seconds
+
+                // Adjust interpolation speed based on update frequency and distance
+                const distanceToTarget = this.currentPosition.distanceTo(this.targetPosition);
+                let currentSpeed = this.interpolationSpeed;
+
+                // Snap to position if too far away or haven't received updates in a while
+                if (distanceToTarget > this.positionThreshold || timeSinceUpdate > 1) {
+                    this.currentPosition.copy(this.targetPosition);
+                    this.currentRotation.copy(this.targetRotation);
+                } else {
+                    // Smoothly interpolate position with dynamic speed
+                    currentSpeed = Math.min(deltaTime * 10, 1); // Limit maximum speed
+
+                    this.currentPosition.lerp(this.targetPosition, currentSpeed);
+                    this.currentRotation.lerp(this.targetRotation, currentSpeed);
                 }
 
-                const currentTime = Date.now();
-                const timeSinceUpdate = currentTime - this.lastUpdateTime;
-                
-                // Make sure mesh is visible
-                this.mesh.visible = true;
-
-                // Calculate movement based on speed and heading
-                const headingRad = (this.heading * Math.PI) / 180;
-                const distanceMoved = this.speed * deltaTime;
-
-                // Calculate target positions
-                const targetX = this.targetPosition.x - Math.sin(headingRad) * distanceMoved;
-                const targetZ = this.targetPosition.z - Math.cos(headingRad) * distanceMoved;
-                const targetY = this.targetPosition.y + this.verticalSpeed * deltaTime;
-
-                // Use exponential smoothing for interpolation
-                const lerpFactor = 1 - Math.exp(-10 * deltaTime);
-
-                // Smoothly interpolate position
-                this.mesh.position.x += (targetX - this.mesh.position.x) * lerpFactor;
-                this.mesh.position.z += (targetZ - this.mesh.position.z) * lerpFactor;
-                this.mesh.position.y += (targetY - this.mesh.position.y) * lerpFactor;
-
-                // Update rotation
-                this.mesh.rotation.y = -headingRad;
+                // Update mesh position and rotation
+                this.mesh.position.copy(this.currentPosition);
+                this.mesh.rotation.set(
+                    this.currentRotation.x,
+                    this.currentRotation.y,
+                    this.currentRotation.z
+                );
             }
 
-            // --- Add method to take damage ---
-            takeDamage(amount) {
+             // --- Add method to take damage ---
+             takeDamage(amount) {
                 this.health = Math.max(0, this.health - amount);
                 console.log(`${this.username} took ${amount} damage, health remaining: ${this.health}`);
                 // TODO: Update visual representation of health (e.g., color change, health bar)
@@ -418,7 +356,7 @@
         // Function to create player model
         function createPlayerModel(username) {
             console.log('Creating player model for:', username);
-            
+
             // Check if player model already exists
             if (playerStates.has(username)) {
                 console.log('Player model already exists for:', username);
@@ -426,49 +364,43 @@
             }
 
             const geometry = new THREE.CapsuleGeometry(2, 6, 2, 8);
-            const material = new THREE.MeshBasicMaterial({ 
-                color: 0x00ff00, 
-                wireframe: true 
+            const material = new THREE.MeshBasicMaterial({
+                color: 0x00ff00,
+                wireframe: true
             });
             const playerMesh = new THREE.Mesh(geometry, material);
-            
+
             // Add username label
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
             canvas.width = 256;
             canvas.height = 64;
-            
+
             context.fillStyle = '#000000';
             context.fillRect(0, 0, canvas.width, canvas.height);
-            
+
             context.font = '32px Arial';
             context.fillStyle = '#ffffff';
             context.textAlign = 'center';
             context.fillText(username, canvas.width / 2, canvas.height / 2);
-            
+
             const texture = new THREE.CanvasTexture(canvas);
             const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
             const sprite = new THREE.Sprite(spriteMaterial);
             sprite.scale.set(10, 2.5, 1);
             sprite.position.y = 6;
             playerMesh.add(sprite);
-            
+
             // Add to scene
             scene.add(playerMesh);
-            console.log('Added player mesh to scene:', {
-                username: username,
-                mesh: playerMesh,
-                position: playerMesh.position,
-                visible: playerMesh.visible
-            });
-            
+
             // Create and store player state
             const playerState = new PlayerState(username, playerMesh);
             playerState.targetPosition.set(0, playerHeight, 0);
             playerState.targetRotation.set(0, 0, 0);
             playerState.health = 100; // Initialize health
             playerStates.set(username, playerState);
-            
+
             console.log('Player model created successfully for:', username);
             return playerMesh;
         }
@@ -477,34 +409,34 @@
         function updatePlayerPosition(username, position, rotation) {
             const playerState = playerStates.get(username);
             if (playerState) {
-                // Update position
+                // Update target position
                 if (position) {
                     if (Array.isArray(position)) {
                         playerState.targetPosition.fromArray(position);
                     } else {
                         playerState.targetPosition.set(position.x, position.y, position.z);
                     }
+
+                    // Initialize current position if it's the first update
+                    if (playerState.currentPosition.lengthSq() === 0) {
+                        playerState.currentPosition.copy(playerState.targetPosition);
+                    }
                 }
-                
-                // Update rotation
+
+                // Update target rotation
                 if (rotation) {
                     if (Array.isArray(rotation)) {
                         playerState.targetRotation.fromArray(rotation);
                     } else {
                         playerState.targetRotation.set(rotation.x, rotation.y, rotation.z);
                     }
+
+                    // Initialize current rotation if it's the first update
+                    if (playerState.currentRotation.lengthSq() === 0) {
+                        playerState.currentRotation.copy(playerState.targetRotation);
+                    }
                 }
-                
-                // Calculate speed and heading from position changes
-                if (playerState.lastPosition) {
-                    const dx = playerState.targetPosition.x - playerState.lastPosition.x;
-                    const dz = playerState.targetPosition.z - playerState.lastPosition.z;
-                    playerState.speed = Math.sqrt(dx * dx + dz * dz) / (0.016); // Assuming 60fps
-                    playerState.heading = Math.atan2(-dx, -dz) * 180 / Math.PI;
-                    playerState.verticalSpeed = (playerState.targetPosition.y - playerState.lastPosition.y) / 0.016;
-                }
-                
-                playerState.lastPosition = playerState.targetPosition.clone();
+
                 playerState.lastUpdateTime = Date.now();
             } else {
                 console.warn('No player state found for username:', username);
@@ -522,341 +454,212 @@
             }
         }
 
-        // Add after the global variables section
-        const geometryCache = new Map();
-        const materialCache = new Map();
-        const COLLISION_CHECK_INTERVAL = 100; // ms
-        let lastCollisionCheck = 0;
-
-        // Add frustum culling variables
-        const frustum = new THREE.Frustum();
-        const projScreenMatrix = new THREE.Matrix4();
-
-        // Add clearTowers function
-        function clearTowers() {
-            towers.forEach(tower => {
-                if (tower.mesh) {
-                    tower.mesh.traverse(child => {
-                        if (child.geometry) {
-                            child.geometry.dispose();
-                        }
-                    });
-                    scene.remove(tower.mesh);
-                }
-            });
-            towers.length = 0;
-        }
-
-        const spatialGrid = {
-            cellSize: 100,
-            cells: new Map(),
-            getKey: function(x, z) {
-                return `${Math.floor(x / this.cellSize)},${Math.floor(z / this.cellSize)}`;
-            },
-            add: function(object) {
-                const key = this.getKey(object.position.x, object.position.z);
-                if (!this.cells.has(key)) {
-                    this.cells.set(key, new Set());
-                }
-                this.cells.get(key).add(object);
-            },
-            remove: function(object) {
-                const key = this.getKey(object.position.x, object.position.z);
-                if (this.cells.has(key)) {
-                    this.cells.get(key).delete(object);
-                }
-            },
-            getNearbyObjects: function(position, radius) {
-                const nearbyObjects = new Set();
-                const minX = Math.floor((position.x - radius) / this.cellSize);
-                const maxX = Math.floor((position.x + radius) / this.cellSize);
-                const minZ = Math.floor((position.z - radius) / this.cellSize);
-                const maxZ = Math.floor((position.z + radius) / this.cellSize);
-                
-                for (let x = minX; x <= maxX; x++) {
-                    for (let z = minZ; z <= maxZ; z++) {
-                        const key = `${x},${z}`;
-                        if (this.cells.has(key)) {
-                            this.cells.get(key).forEach(obj => nearbyObjects.add(obj));
-                        }
-                    }
-                }
-                return nearbyObjects;
-            }
-        };
-
-        // Add after the createTowerFromData function
-        function getGeometryFromCache(type, params) {
-            const key = `${type}-${JSON.stringify(params)}`;
-            if (!geometryCache.has(key)) {
-                let geometry;
-                switch(type) {
-                    case 'cylinder':
-                        geometry = new THREE.CylinderGeometry(params.radius, params.radius, params.height, Math.min(params.segments, 8)); // Limit segments
-                        break;
-                    case 'box':
-                        geometry = new THREE.BoxGeometry(params.width, params.height, params.depth);
-                        break;
-                    case 'cone':
-                        geometry = new THREE.ConeGeometry(params.radius, params.height, Math.min(params.segments, 6)); // Limit segments
-                        break;
-                }
-                geometryCache.set(key, geometry);
-            }
-            return geometryCache.get(key);
-        }
-
-        function getMaterialFromCache(type, params) {
-            const key = `${type}-${JSON.stringify(params)}`;
-            if (!materialCache.has(key)) {
-                let material;
-                switch(type) {
-                    case 'basic':
-                        material = new THREE.MeshBasicMaterial(params);
-                        break;
-                    case 'line':
-                        material = new THREE.LineBasicMaterial(params);
-                        break;
-                    // Add more cases as needed
-                }
-                materialCache.set(key, material);
-            }
-            return materialCache.get(key);
-        }
-
-        // Add after the material cache
-        const sharedMaterials = {
-            tower: new THREE.MeshBasicMaterial({ color: 0x000000 }),
-            towerEdges: new THREE.LineBasicMaterial({ color: 0xffffff })
-        };
-
-        // Modify createTowerFromData to use shared materials
+        // Function to create tower from server data
         function createTowerFromData(towerData) {
-            const height = towerData.height;
-            const baseHeight = towerData.baseHeight;
-            
             let geometry;
-            let towerHeight = height;
-            
+            const height = towerData.height;
+            const isFloating = towerData.isFloating;
+            const baseHeight = towerData.baseHeight;
+
+            // Create materials for the tower
+            const materials = [
+                new THREE.MeshBasicMaterial({ color: 0x000000 }),
+                new THREE.LineBasicMaterial({ color: 0xffffff })
+            ];
+
+            // Create collision box for the tower
+            let collisionGeometry;
+
             switch(towerData.type) {
                 case 0: // Cylindrical tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
+                    geometry = new THREE.CylinderGeometry(18, 18, height, 8);
+                    collisionGeometry = new THREE.CylinderGeometry(18, 18, height, 8);
                     break;
                 case 1: // Tapered tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 6 });
+                    geometry = new THREE.CylinderGeometry(12, 24, height, 6);
+                    collisionGeometry = new THREE.CylinderGeometry(24, 24, height, 6);
                     break;
                 case 2: // Square tower
-                    geometry = getGeometryFromCache('box', { width: 36, height, depth: 36 });
+                    geometry = new THREE.BoxGeometry(36, height, 36);
+                    collisionGeometry = geometry.clone(); // Clone for collision
                     break;
                 case 3: // Hexagonal tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 20, height, segments: 6 });
+                    geometry = new THREE.CylinderGeometry(20, 20, height, 6);
+                    collisionGeometry = geometry.clone(); // Clone for collision
                     break;
                 case 4: // Twisted tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 15, height, segments: 8 });
+                    geometry = new THREE.CylinderGeometry(15, 15, height, 8, 10, true);
+                    // Add twist to vertices
+                    const twistAmount = Math.PI * 2;
+                    const positions = geometry.attributes.position.array;
+                    for (let i = 0; i < positions.length; i += 3) {
+                        const y = positions[i + 1];
+                        const progress = (y + height/2) / height;
+                        const theta = progress * twistAmount;
+                        const x = positions[i];
+                        const z = positions[i + 2];
+                        positions[i] = x * Math.cos(theta) - z * Math.sin(theta);
+                        positions[i + 2] = x * Math.sin(theta) + z * Math.cos(theta);
+                    }
+                    collisionGeometry = new THREE.CylinderGeometry(15, 15, height, 8);
                     break;
                 case 5: // Pyramid tower
-                    geometry = getGeometryFromCache('cone', { radius: 24, height, segments: 4 });
+                    geometry = new THREE.ConeGeometry(24, height, 4);
+                    collisionGeometry = geometry.clone(); // Clone for collision
                     break;
                 case 6: // Octagonal tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 19, height, segments: 8 });
+                    geometry = new THREE.CylinderGeometry(19, 19, height, 8);
+                    collisionGeometry = geometry.clone(); // Clone for collision
                     break;
                 case 7: // Double width tower
-                    geometry = getGeometryFromCache('box', { width: 42, height, depth: 42 });
+                    geometry = new THREE.BoxGeometry(42, height, 42);
+                    collisionGeometry = geometry.clone(); // Clone for collision
                     break;
                 case 8: // Inverse pyramid
-                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 4 });
+                    geometry = new THREE.CylinderGeometry(12, 28, height, 4);
+                    collisionGeometry = new THREE.CylinderGeometry(28, 28, height, 4);
                     break;
                 case 9: // Star tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 24, height, segments: 5 });
+                    geometry = new THREE.CylinderGeometry(24, 24, height, 5);
+                    collisionGeometry = geometry.clone(); // Clone for collision
                     break;
                 case 10: // Thin spire
-                    geometry = getGeometryFromCache('cylinder', { radius: 8, height, segments: 6 });
+                    geometry = new THREE.CylinderGeometry(8, 16, height, 6);
+                    collisionGeometry = new THREE.CylinderGeometry(16, 16, height, 6);
                     break;
+                case 11: // Complex tower (stacked shapes)
+                    const baseHeightComplex = height * 0.6;
+                    const topHeightComplex = height * 0.4;
+                    const baseGeometry = new THREE.BoxGeometry(38, baseHeightComplex, 38);
+                    const topGeometry = new THREE.ConeGeometry(28, topHeightComplex, 6);
+                    collisionGeometry = new THREE.BoxGeometry(38, height, 38); // Simple box collision
+
+                    // Create base with edges
+                    const baseMesh = new THREE.Mesh(baseGeometry, materials[0]);
+                    const baseEdges = new THREE.LineSegments(
+                        new THREE.EdgesGeometry(baseGeometry),
+                        materials[1]
+                    );
+
+                    // Create top with edges
+                    const topMesh = new THREE.Mesh(topGeometry, materials[0]);
+                    const topEdges = new THREE.LineSegments(
+                        new THREE.EdgesGeometry(topGeometry),
+                        materials[1]
+                    );
+
+                    topMesh.position.y = (baseHeightComplex + topHeightComplex) / 2;
+                    topEdges.position.y = (baseHeightComplex + topHeightComplex) / 2;
+
+                    const group = new THREE.Group();
+                    group.add(baseMesh);
+                    group.add(baseEdges);
+                    group.add(topMesh);
+                    group.add(topEdges);
+                    group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
+
+                     // Add visibility check data
+                    group.userData.originalPosition = group.position.clone();
+                    group.userData.isVisible = true;
+
+                    scene.add(group);
+
+                    // Add collision data
+                    const collisionMesh = new THREE.Mesh(collisionGeometry);
+                    collisionMesh.position.copy(group.position);
+                    towers.push({
+                        mesh: collisionMesh,
+                        boundingBox: new THREE.Box3().setFromObject(collisionMesh),
+                        visualGroup: group // Store reference to visual group
+                    });
+                    return; // Exit early for complex tower type
             }
 
-            // Create the main mesh with solid faces using shared material
-            const mesh = new THREE.Mesh(geometry, sharedMaterials.tower);
-            
-            // Create the edges using shared material
+            // Create the main mesh with solid faces
+            const mesh = new THREE.Mesh(geometry, materials[0]);
+
+            // Create the edges
             const edges = new THREE.LineSegments(
                 new THREE.EdgesGeometry(geometry),
-                sharedMaterials.towerEdges
+                materials[1]
             );
-            
+
             // Group the mesh and edges together
             const group = new THREE.Group();
             group.add(mesh);
             group.add(edges);
             group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
+
+            // Add visibility check data
+            group.userData.originalPosition = group.position.clone();
+            group.userData.isVisible = true;
+
             scene.add(group);
 
-            // Create a single box collider for the tower
-            const collisionBox = new THREE.Box3();
-            const collisionMesh = new THREE.Mesh(
-                getGeometryFromCache('box', { width: 36, height, depth: 36 })
-            );
+            // Add collision data
+            const collisionMesh = new THREE.Mesh(collisionGeometry);
             collisionMesh.position.copy(group.position);
-            collisionBox.setFromObject(collisionMesh);
-            
             towers.push({
-                mesh: group,
-                collisionBoxes: [collisionBox]
+                mesh: collisionMesh,
+                boundingBox: new THREE.Box3().setFromObject(collisionMesh),
+                visualGroup: group // Store reference to visual group
             });
         }
 
         // Function to create bridge from server data
         function createBridgeFromData(bridgeData) {
             // Calculate bridge dimensions
-            const bridgeWidth = 16;
-            const startPos = new THREE.Vector3(
-                bridgeData.startX || bridgeData.start.x,
-                bridgeData.height,
-                bridgeData.startZ || bridgeData.start.z
-            );
-            const endPos = new THREE.Vector3(
-                bridgeData.endX || bridgeData.end.x,
-                bridgeData.height,
-                bridgeData.endZ || bridgeData.end.z
-            );
+            const bridgeWidth = 8;
+            const startPos = new THREE.Vector3(bridgeData.startX, bridgeData.height, bridgeData.startZ);
+            const endPos = new THREE.Vector3(bridgeData.endX, bridgeData.height, bridgeData.endZ);
             const distance = startPos.distanceTo(endPos);
-            const angle = Math.atan2(endPos.x - startPos.x, endPos.z - startPos.z);
-            const midPoint = new THREE.Vector3().addVectors(startPos, endPos).multiplyScalar(0.5);
-            const bridgeLength = distance;
-
-            // Create bridge group
-            const bridgeGroup = new THREE.Group();
 
             // Create bridge geometry
             const bridgeGeometry = new THREE.BoxGeometry(distance, bridgeWidth, bridgeWidth);
-            
+
             // Create materials for the bridge (matching tower style)
             const bridgeMaterials = [
                 new THREE.MeshBasicMaterial({ color: 0x000000 }),
                 new THREE.LineBasicMaterial({ color: 0xffffff })
             ];
-            
+
             // Create bridge mesh and edges
             const bridgeMesh = new THREE.Mesh(bridgeGeometry, bridgeMaterials[0]);
-            bridgeMesh.name = 'bridge'; // Add name to identify bridges
             const bridgeEdges = new THREE.LineSegments(
                 new THREE.EdgesGeometry(bridgeGeometry),
                 bridgeMaterials[1]
             );
 
-            // Position bridge
+            // Create bridge group
+            const bridgeGroup = new THREE.Group();
             bridgeGroup.add(bridgeMesh);
             bridgeGroup.add(bridgeEdges);
+
+            // Position bridge
+            const midPoint = startPos.clone().add(endPos).multiplyScalar(0.5);
             bridgeGroup.position.copy(midPoint);
+
+            // Rotate bridge to point from start to end
+            const directionVec = endPos.clone().sub(startPos);
+            const angle = Math.atan2(directionVec.z, directionVec.x);
             bridgeGroup.rotation.y = angle;
 
+            // Add visibility check data
+            bridgeGroup.userData.originalPosition = bridgeGroup.position.clone();
+            bridgeGroup.userData.isVisible = true;
+
             scene.add(bridgeGroup);
-            
-            // Create collision box that exactly matches the bridge mesh
-            const collisionBox = new THREE.Box3();
-            const collisionMesh = new THREE.Mesh(bridgeGeometry);
+
+            // Create a narrower collision box for the bridge
+            const collisionGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.6);
+            const collisionMesh = new THREE.Mesh(collisionGeometry);
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
-            collisionMesh.scale.set(1, 1, 1); // Ensure proper scaling
-            collisionBox.setFromObject(collisionMesh);
-
-            // Adjust collision box size to match bridge dimensions
-            const size = new THREE.Vector3();
-            collisionBox.getSize(size);
-            const bridgeCollisionWidth = 16; // Match the bridge width constant
-            const adjustedSize = new THREE.Vector3(
-                size.x,
-                bridgeCollisionWidth,
-                bridgeCollisionWidth
-            );
-            collisionBox.setFromCenterAndSize(
-                collisionBox.getCenter(new THREE.Vector3()),
-                adjustedSize
-            );
-
-            // Add bridge to towers array for consistent handling
-            const bridgeObject = {
-                mesh: bridgeGroup,
-                collisionBoxes: [collisionBox],
-                isBridge: true // Add flag to identify bridges
-            };
-            towers.push(bridgeObject);
-            
-            // Verify collision box was added
-            console.log('Bridge added to collision system:', {
-                totalObjects: towers.length,
-                hasCollisionBox: bridgeObject.collisionBoxes.length > 0,
-                collisionBoxSize: collisionBox.getSize(new THREE.Vector3())
+            towers.push({ // Add bridges to towers array for collision
+                mesh: collisionMesh,
+                boundingBox: new THREE.Box3().setFromObject(collisionMesh),
+                visualGroup: bridgeGroup // Store reference to visual group
             });
-
-            return bridgeGroup;
-        }
-
-        // Update collision check function to handle bridges like towers
-        function checkCollision(position, radius) {
-            const playerCollider = new THREE.Sphere(position, radius);
-            let closestCollision = null;
-            let minDistance = Infinity;
-
-            for (const tower of towers) {
-                for (const collisionBox of tower.collisionBoxes) {
-                    // Get the closest point on the collision box to the player
-                    const closestPoint = new THREE.Vector3();
-                    collisionBox.clampPoint(position, closestPoint);
-                    
-                    // Calculate distance to closest point
-                    const distance = position.distanceTo(closestPoint);
-                    
-                    // Check if this is a bridge
-                    const isBridge = tower.isBridge || tower.mesh.name === 'bridge';
-                    
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestCollision = {
-                            collision: true,
-                            tower: tower,
-                            collisionBox: collisionBox,
-                            distance: distance,
-                            closestPoint: closestPoint,
-                            isBridge: isBridge
-                        };
-                    }
-                }
-            }
-            
-            // Only return collision if we're actually within the collision radius
-            if (closestCollision && closestCollision.distance < radius) {
-                return closestCollision;
-            }
-            
-            return {
-                collision: false,
-                tower: null,
-                collisionBox: null,
-                distance: Infinity,
-                closestPoint: null,
-                isBridge: false
-            };
-        }
-
-        // Add after the checkCollision function
-        function checkOrbCollision(position, radius) {
-            const playerCollider = new THREE.Sphere(position, radius * 10); // Increased from 5x to 10x
-            let closestOrb = null;
-            let minDistance = Infinity;
-            
-            orbs.forEach((orb, orbId) => {
-                const orbPosition = orb.position;
-                const distance = position.distanceTo(orbPosition);
-                
-                if (distance < (radius * 10) + orb.userData.originalScale) { // Increased from 5x to 10x
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestOrb = { orb, orbId };
-                    }
-                }
-            });
-            
-            return closestOrb;
         }
 
         // WebSocket setup with Railway support
@@ -872,265 +675,83 @@
         const MAX_RECONNECT_ATTEMPTS = 5;
 
         function setupWebSocket() {
-            // Don't set up if we already have a connection
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                console.log('WebSocket already connected');
-                return;
-            }
-
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${wsProtocol}//${window.location.host}`;
-            console.log('Attempting to connect to WebSocket at:', wsUrl);
             ws = new WebSocket(wsUrl);
 
-            ws.addEventListener('open', () => {
-                console.log('WebSocket connection established');
-                // Request world data if we haven't already
-                if (!worldDataRequested) {
-                    console.log('Requesting world data...');
+            ws.onopen = () => {
+                console.log('Connected to server');
+                wsReconnectAttempts = 0; // Reset attempts on successful connection
+                // Send join message with username (if game started)
+                if (gameStarted && playerUsername) {
                     ws.send(JSON.stringify({
-                        type: 'request_world_data'
-                    }));
-                    worldDataRequested = true;
-                }
-                // Only send join message if we have a username
-                if (playerUsername) {
-                    const joinMessage = {
                         type: 'join',
                         username: playerUsername
-                    };
-                    console.log('Sending join message:', joinMessage);
-                    ws.send(JSON.stringify(joinMessage));
+                    }));
                 }
-            });
+            };
 
-            ws.addEventListener('message', (event) => {
+            ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                console.log('Received WebSocket message:', {
-                    type: data.type,
-                    username: data.username,
-                    position: data.position,
-                    rotation: data.rotation,
-                    timestamp: new Date().toISOString()
-                });
-                
+                // console.log('Received message:', data.type); // Reduce console spam
+
                 switch (data.type) {
                     case 'world_data':
-                        console.log('Received world data with players:', data.players);
-                        // Clear existing player states except current player
-                        const currentPlayerState = playerStates.get(playerUsername);
-                        playerStates.clear();
-                        if (currentPlayerState) {
-                            playerStates.set(playerUsername, currentPlayerState);
-                        }
-                        
-                        // Clear existing towers and bridges using the new function
-                        clearTowers();
-                        
-                        // Create towers from server data first
-                        if (data.towers) {
-                            console.log('Creating towers:', data.towers.length);
-                            data.towers.forEach(towerData => {
-                                createTowerFromData(towerData);
-                            });
-                        }
-                        
-                        // Create bridges from server data
-                        if (data.bridges) {
-                            data.bridges.forEach(bridgeData => {
-                                createBridgeFromData(bridgeData);
-                            });
-                        }
-
-                        // Debug logging for orbs
-                        console.log('Processing orbs data:', data.orbs);
-                        
-                        // Clear existing orbs
-                        orbs.forEach(orb => {
-                            console.log('Removing existing orb:', orb);
-                            scene.remove(orb);
+                        console.log('Received world data');
+                        // Clear existing towers, bridges, and collectibles
+                        towers.forEach(tower => {
+                            if (tower.visualGroup) scene.remove(tower.visualGroup);
+                            // Collision mesh might not be added to scene directly, but check just in case
+                            if (tower.mesh && tower.mesh.parent) scene.remove(tower.mesh);
                         });
-                        orbs.clear();
-                        
-                        // Create new orbs
-                        if (data.orbs && data.orbs.length > 0) {
-                            console.log('Creating orbs:', data.orbs.length);
-                            data.orbs.forEach((orbData, index) => {
-                                console.log(`Creating orb ${index}:`, orbData);
-                                try {
-                                    const orb = createOrb(orbData);
-                                    console.log(`Successfully created orb ${index}:`, orb);
-                                    // Ensure orb is added to scene
-                                    if (!scene.children.includes(orb)) {
-                                        scene.add(orb);
-                                    }
-                                } catch (error) {
-                                    console.error(`Error creating orb ${index}:`, error);
-                                }
-                            });
-                        } else {
-                            console.warn('No orbs data received from server');
-                        }
+                        towers.length = 0; // Clear the array
+
+                        collectibles.forEach(item => {
+                            scene.remove(item.mesh);
+                        });
+                        collectibles.clear();
+
+                        // Create towers from server data
+                        data.towers.forEach(towerData => {
+                            createTowerFromData(towerData);
+                        });
+
+                        // Create bridges from server data
+                        data.bridges.forEach(bridgeData => {
+                            createBridgeFromData(bridgeData);
+                        });
+
+                        // Initialize collectibles
+                        initializeCollectibles();
                         break;
 
                     case 'room_info':
                         console.log(`Joined room ${data.name} with ${data.playerCount} players`);
-                        // Only update room info if we have a valid player count
-                        if (data.playerCount > 0) {
-                            document.getElementById('roomInfo').textContent = `${data.name} - Players: ${data.playerCount}/20`;
-                        }
+                        document.getElementById('roomInfo').textContent = `${data.name} - Players: ${data.playerCount}/20`;
                         break;
 
                     case 'player_joined':
-                        console.log('Player joined:', {
-                            username: data.username,
-                            position: data.position,
-                            rotation: data.rotation,
-                            gameStarted: gameStarted,
-                            isCurrentPlayer: data.username === playerUsername
-                        });
-                        // Only create player model if it's not the current player and game has started
-                        if (data.username !== playerUsername && gameStarted) {
-                            console.log('Creating player model for:', data.username);
-                            if (!playerStates.has(data.username)) {
-                                const playerMesh = createPlayerModel(data.username);
-                                console.log('Player model created:', {
-                                    username: data.username,
-                                    mesh: playerMesh,
-                                    position: playerMesh.position,
-                                    visible: playerMesh.visible,
-                                    inScene: scene.children.includes(playerMesh)
-                                });
-                            }
-                            updatePlayerList();
+                        console.log('Player joined:', data.username);
+                        // Make sure player doesn't already exist before creating
+                        if (!playerStates.has(data.username)) {
+                             handlePlayerJoined(data.username, data.position, data.rotation); // Pass initial data
                         }
                         break;
 
                     case 'position':
                         if (data.username !== playerUsername && gameStarted) {
-                            console.log('Received position update for:', {
-                                username: data.username,
-                                position: data.position,
-                                rotation: data.rotation,
-                                hasPlayerState: playerStates.has(data.username)
-                            });
-                            
-                            // Only create player model if we have valid position data
-                            if (data.position && data.position.length === 3) {
-                                // Ensure player model exists before updating position
-                                if (!playerStates.has(data.username)) {
-                                    console.log('Creating missing player model for:', data.username);
-                                    const playerMesh = createPlayerModel(data.username);
-                                    console.log('Created missing player model:', {
-                                        username: data.username,
-                                        mesh: playerMesh,
-                                        position: playerMesh.position,
-                                        visible: playerMesh.visible
-                                    });
-                                }
-                                
-                                // Update player state with new data
-                                const playerState = playerStates.get(data.username);
-                                if (playerState) {
-                                    console.log('Updating player state for:', {
-                                        username: data.username,
-                                        oldPosition: playerState.targetPosition.clone(),
-                                        newPosition: data.position,
-                                        oldRotation: playerState.targetRotation.clone(),
-                                        newRotation: data.rotation
-                                    });
-                                    
-                                    // Update position
-                                    if (data.position) {
-                                        playerState.targetPosition.fromArray(data.position);
-                                    }
-                                    
-                                    // Update rotation
-                                    if (data.rotation) {
-                                        playerState.targetRotation.fromArray(data.rotation);
-                                    }
-                                    
-                                    // Update speed and heading if provided
-                                    if (data.speed !== undefined) {
-                                        playerState.speed = data.speed;
-                                    }
-                                    if (data.heading !== undefined) {
-                                        playerState.heading = data.heading;
-                                    }
-                                    if (data.verticalSpeed !== undefined) {
-                                        playerState.verticalSpeed = data.verticalSpeed;
-                                    }
-                                    
-                                    playerState.lastUpdateTime = Date.now();
-                                    
-                                    // Verify mesh visibility
-                                    if (playerState.mesh) {
-                                        console.log('Player mesh state:', {
-                                            username: data.username,
-                                            position: playerState.mesh.position,
-                                            visible: playerState.mesh.visible,
-                                            inScene: scene.children.includes(playerState.mesh)
-                                        });
-                                    }
-                                } else {
-                                    console.warn('No player state found for username:', data.username);
-                                }
-                            }
+                            updatePlayerPosition(data.username, data.position, data.rotation);
                         }
                         break;
 
                     case 'player_left':
                         console.log('Player left:', data.username);
+                        // handlePlayerDisconnection(data.username); // Might not be needed if server handles item drops
                         handlePlayerLeft(data.username);
-                        break;
-
-                    case 'shotgun_shot':
-                        if (data.username !== playerUsername && gameStarted) {
-                            const shooterPos = new THREE.Vector3().fromArray(data.position);
-                            
-                            // Create visual pellets for other players' shots
-                            data.directions.forEach(direction => {
-                                const pelletGeometry = new THREE.SphereGeometry(0.1, 4, 4);
-                                const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFF00 });
-                                const pellet = new THREE.Mesh(pelletGeometry, pelletMaterial);
-                                
-                                pellet.position.copy(shooterPos);
-                                pellet.velocity = new THREE.Vector3().fromArray(direction).multiplyScalar(SHOTGUN_SPEED);
-                                pellet.spawnTime = performance.now();
-                                
-                                scene.add(pellet);
-                                pellets.add(pellet);
-                            });
-                            
-                            playShotgunSound();
-                        }
-                        break;
-
-                    case 'player_damaged':
-                        if (data.username === playerUsername) {
-                            takeDamage(data.damage);
-                        }
                         break;
 
                     case 'item_collected':
                         handleItemCollection(data.itemId, data.username);
-                        break;
-
-                    case 'orb_collected':
-                        // Remove the collected orb from the scene for all players
-                        const orb = orbs.get(data.orbId);
-                        if (orb) {
-                            scene.remove(orb);
-                            orbs.delete(data.orbId);
-                            
-                            // Only update the collector's orb count
-                            if (data.username === playerUsername) {
-                                const currentOrbs = playerOrbs.get(playerUsername) || 0;
-                                playerOrbs.set(playerUsername, currentOrbs + 1);
-                                updateOrbCount();
-                                playOrbCollectionSound();
-                            }
-                        }
                         break;
 
                     case 'player_hit': // --- Handle Player Hit Message ---
@@ -1147,7 +768,7 @@
                         }
                         break;
 
-                    // Optional: Handle other players firing (for visual effects)
+                     // Optional: Handle other players firing (for visual effects)
                     // case 'player_fired_shotgun':
                     //    if (data.username !== playerUsername) {
                     //        // Trigger muzzle flash/sound at data.position/direction
@@ -1155,35 +776,42 @@
                     //    }
                     //    break;
                 }
-            });
+            };
 
-            ws.addEventListener('error', (error) => {
+            ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
-            });
+            };
 
-            ws.addEventListener('close', () => {
+            ws.onclose = () => {
                 console.log('Disconnected from server');
-                // Attempt to reconnect after a delay
-                setTimeout(setupWebSocket, 3000);
-            });
+                if (wsReconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    wsReconnectAttempts++;
+                    console.log(`Attempting to reconnect (${wsReconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+                    // Attempt to reconnect after a delay
+                    setTimeout(setupWebSocket, 3000 * wsReconnectAttempts); // Exponential backoff
+                } else {
+                     console.error('Max WebSocket reconnect attempts reached.');
+                     // Optionally inform the user they need to refresh
+                }
+            };
         }
 
         // Function to update player list
         function updatePlayerList() {
             const playerList = document.getElementById('playerList');
-            if (!playerList.classList.contains('visible')) return;
-            
+            if (!playerList) return; // Guard against null element
+
             playerList.innerHTML = '<div style="margin-bottom: 10px; font-weight: bold;">Players:</div>';
-            
+
             // Add current player first
+            const currentPlayerItem = document.createElement('div');
+            currentPlayerItem.className = 'playerListItem';
             const currentPlayerState = playerStates.get(playerUsername); // Get current player state if exists
             const currentPlayerHealth = currentPlayerState ? currentPlayerState.health : 100; // Default to 100 if not found yet
             const currentItems = playerItems.get(playerUsername) || new Set();
-            const currentPlayerItem = document.createElement('div');
-            currentPlayerItem.className = 'playerListItem';
             currentPlayerItem.textContent = `${playerUsername} (You) - HP: ${currentPlayerHealth} - Items: ${currentItems.size}/${ITEM_COUNT}`; // Add HP
             playerList.appendChild(currentPlayerItem);
-            
+
             // Add other players
             playerStates.forEach((playerState, username) => {
                 if (username !== playerUsername) {
