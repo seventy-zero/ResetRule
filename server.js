@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3000;
 // World generation constants
 const NUM_TOWERS = 3000;
 const MAX_RADIUS = 4800;
-const BRIDGE_CHANCE = 0.06;
+const BRIDGE_CHANCE = 0.08;
 const NUM_ORBS = 120;
 
 // Word lists for room names
@@ -117,8 +117,8 @@ function generateWorld() {
     
     console.log(`Generated ${towers.length} towers`);
     
-    // Generate bridges with reduced frequency
-    const maxBridgeDistance = baseSpacing * 1.8; // Reduced from 2.2
+    // Generate bridges with improved connectivity
+    const maxBridgeDistance = baseSpacing * 1.5; // Reduced to ensure closer connections
     
     for (let i = 0; i < towerPositions.length; i++) {
         for (let j = i + 1; j < towerPositions.length; j++) {
@@ -132,26 +132,31 @@ function generateWorld() {
             
             // Only generate bridges between towers of similar heights
             const heightDiff = Math.abs(tower1.height - tower2.height);
-            const maxHeightDiff = Math.min(tower1.height, tower2.height) * 0.3; // 30% height difference max
+            const maxHeightDiff = Math.min(tower1.height, tower2.height) * 0.25; // Reduced to 25% height difference
             
-            if (distance <= maxBridgeDistance && 
-                heightDiff <= maxHeightDiff && 
-                Math.random() < BRIDGE_CHANCE) {
-                const minHeight = Math.min(tower1.height, tower2.height);
-                const bridgeHeight = minHeight * (0.3 + Math.random() * 0.4); // More consistent bridge heights
+            // Check if towers are close enough and similar in height
+            if (distance <= maxBridgeDistance && heightDiff <= maxHeightDiff) {
+                // Increase bridge chance for closer towers
+                const distanceFactor = 1 - (distance / maxBridgeDistance);
+                const adjustedBridgeChance = BRIDGE_CHANCE * (1 + distanceFactor);
                 
-                const startPos = {
-                    x: tower1.position.x,
-                    y: bridgeHeight,
-                    z: tower1.position.z
-                };
-                const endPos = {
-                    x: tower2.position.x,
-                    y: bridgeHeight,
-                    z: tower2.position.z
-                };
-                
-                bridges.push(createBridge(startPos, endPos));
+                if (Math.random() < adjustedBridgeChance) {
+                    const minHeight = Math.min(tower1.height, tower2.height);
+                    const bridgeHeight = minHeight * (0.35 + Math.random() * 0.3); // More consistent bridge heights
+                    
+                    const startPos = {
+                        x: tower1.position.x,
+                        y: bridgeHeight,
+                        z: tower1.position.z
+                    };
+                    const endPos = {
+                        x: tower2.position.x,
+                        y: bridgeHeight,
+                        z: tower2.position.z
+                    };
+                    
+                    bridges.push(createBridge(startPos, endPos));
+                }
             }
         }
     }
