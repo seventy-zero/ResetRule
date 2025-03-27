@@ -3226,8 +3226,8 @@
                     
                     // Create a box for the bridge
                     const bridgeBox = new THREE.Box3();
-                    const bridgeWidth = 0.5; // Reduced from 2 to 0.5 to match visual model
-                    const bridgeHeight = 0.5; // Reduced from 1 to 0.5 to match visual model
+                    const bridgeWidth = 0.5; // Bridge width
+                    const bridgeHeight = 0.5; // Bridge height
                     
                     // Calculate bridge box
                     const bridgeCenter = bridgeStart.clone().add(bridgeEnd).multiplyScalar(0.5);
@@ -3236,11 +3236,25 @@
                         new THREE.Vector3(bridgeLength, bridgeHeight, bridgeWidth)
                     );
                     
-                    if (bridgeBox.containsSphere(pelletCollider)) {
-                        // Calculate collision normal (bridge is horizontal, so normal is up)
-                        collisionNormal.set(0, 1, 0);
-                        collision = true;
-                        break;
+                    // Check if pellet is within bridge length
+                    const pelletToStart = pellet.position.clone().sub(bridgeStart);
+                    const pelletToEnd = pellet.position.clone().sub(bridgeEnd);
+                    const dotStart = pelletToStart.dot(bridgeDir);
+                    const dotEnd = pelletToEnd.dot(bridgeDir);
+                    
+                    // Only check collision if pellet is within bridge length
+                    if (dotStart > 0 && dotEnd < 0) {
+                        // Calculate perpendicular distance from bridge line
+                        const perpendicularDist = pellet.position.distanceToLine(bridgeStart, bridgeEnd);
+                        
+                        // Check if pellet is within bridge width and height
+                        if (perpendicularDist < 0.5 && // Bridge width
+                            Math.abs(pellet.position.y - bridge.height) < 0.5) { // Bridge height
+                            // Calculate collision normal (bridge is horizontal, so normal is up)
+                            collisionNormal.set(0, 1, 0);
+                            collision = true;
+                            break;
+                        }
                     }
                 }
                 
