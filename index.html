@@ -2896,7 +2896,7 @@
             camera.getWorldDirection(direction);
 
             // Calculate muzzle position (further in front of camera)
-            const muzzleOffset = new THREE.Vector3(0, 0, 5);
+            const muzzleOffset = new THREE.Vector3(0, -0.5, -2); // Adjusted to be in front of player
             muzzleOffset.applyQuaternion(camera.quaternion);
             const muzzlePosition = cameraPosition.clone().add(muzzleOffset);
 
@@ -2922,13 +2922,13 @@
                 const spread = new THREE.Vector3(
                     (Math.random() - 0.5) * PELLET_SPREAD,
                     (Math.random() - 0.5) * PELLET_SPREAD,
-                    1
+                    -1 // Forward is negative Z in Three.js
                 ).normalize();
                 spread.applyQuaternion(camera.quaternion);
                 
                 // Set pellet velocity
                 pellet.velocity = spread.multiplyScalar(PELLET_SPEED);
-                pellet.spawnTime = Date.now();
+                pellet.spawnTime = performance.now(); // Use performance.now() for consistent timing
                 pellet.visible = true;
                 
                 pelletPool.active.add(pellet);
