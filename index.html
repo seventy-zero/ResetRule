@@ -3213,13 +3213,17 @@
                 
                 // Check bridge collisions
                 for (const bridge of bridges) {
-                    const bridgeBox = new THREE.Box3().setFromObject(bridge.mesh);
-                    if (bridgeBox.containsSphere(pelletCollider)) {
-                        // Calculate collision normal from bridge center
-                        const center = bridgeBox.getCenter(new THREE.Vector3());
-                        collisionNormal.copy(pellet.position).sub(center).normalize();
-                        collision = true;
-                        break;
+                    // Get the bridge's collision box from the towers array
+                    const bridgeObject = towers.find(t => t.mesh === bridge.mesh);
+                    if (bridgeObject && bridgeObject.collisionBoxes) {
+                        const bridgeBox = bridgeObject.collisionBoxes[0];
+                        if (bridgeBox.containsSphere(pelletCollider)) {
+                            // Calculate collision normal from bridge center
+                            const center = bridgeBox.getCenter(new THREE.Vector3());
+                            collisionNormal.copy(pellet.position).sub(center).normalize();
+                            collision = true;
+                            break;
+                        }
                     }
                 }
                 
