@@ -443,6 +443,68 @@ wss.on('connection', (ws) => {
                         }
                     }
                     break;
+
+                case 'shotgun_shot':
+                    if (currentRoom) {
+                        const shooter = currentRoom.players.get(ws);
+                        if (shooter) {
+                            // Broadcast shot to all players in the room
+                            currentRoom.broadcast(JSON.stringify({
+                                type: 'shotgun_shot',
+                                username: shooter.username,
+                                position: data.position,
+                                directions: data.directions
+                            }), ws);
+
+                            // Check for hits on other players
+                            currentRoom.players.forEach((player, playerWs) => {
+                                if (playerWs === ws) return; // Skip shooter
+
+                                const playerPos = new THREE.Vector3(
+                                    player.position[0],
+                                    player.position[1],
+                                    player.position[2]
+                                );
+                                const shooterPos = new THREE.Vector3(
+                                    data.position[0],
+                                    data.position[1],
+                                    data.position[2]
+                                );
+                                
+                                const distance = playerPos.distanceTo(shooterPos);
+                                
+                                // Check if player is within range (10 units)
+                                if (distance <= 10) {
+                                    // Check each pellet direction
+                                    data.directions.forEach(pelletDir => {
+                                        const direction = new THREE.Vector3(
+                                            pelletDir[0],
+                                            pelletDir[1],
+                                            pelletDir[2]
+                                        ).normalize();
+                                        
+                                        const toPlayer = playerPos.clone()
+                                            .sub(shooterPos)
+                                            .normalize();
+                                        
+                                        // Calculate angle between shot and player
+                                        const angle = direction.angleTo(toPlayer);
+                                        
+                                        // If player is within the cone (45 degrees = 0.785 radians)
+                                        if (angle <= 0.785) {
+                                            // Send damage message to hit player
+                                            playerWs.send(JSON.stringify({
+                                                type: 'player_damaged',
+                                                username: player.username,
+                                                damage: 20 // Damage per pellet
+                                            }));
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    }
+                    break;
             }
         } catch (error) {
             console.error('Error processing message:', error);

@@ -1086,33 +1086,23 @@
 
                     case 'shotgun_shot':
                         if (data.username !== playerUsername && gameStarted) {
-                            console.log('Received shotgun shot from:', data.username);
-                            // Check if any pellets hit the current player
-                            const playerState = playerStates.get(data.username);
-                            if (playerState) {
-                                const shooterPos = new THREE.Vector3().fromArray(data.position);
-                                const distance = camera.position.distanceTo(shooterPos);
+                            const shooterPos = new THREE.Vector3().fromArray(data.position);
+                            
+                            // Create visual pellets for other players' shots
+                            data.directions.forEach(direction => {
+                                const pelletGeometry = new THREE.SphereGeometry(0.1, 4, 4);
+                                const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFF00 });
+                                const pellet = new THREE.Mesh(pelletGeometry, pelletMaterial);
                                 
-                                if (distance <= SHOTGUN_RANGE) {
-                                    // Check each pellet
-                                    data.directions.forEach(pelletDir => {
-                                        const pelletDirection = new THREE.Vector3().fromArray(pelletDir);
-                                        const pelletEnd = shooterPos.clone().add(pelletDirection.multiplyScalar(SHOTGUN_RANGE));
-                                        
-                                        // Create ray from shooter to pellet end
-                                        const raycaster = new THREE.Raycaster(shooterPos, pelletDirection);
-                                        
-                                        // Check if ray intersects with player
-                                        const playerCollider = new THREE.Sphere(camera.position, playerRadius);
-                                        const intersects = raycaster.intersectSphere(playerCollider);
-                                        
-                                        if (intersects.length > 0) {
-                                            // Player was hit
-                                            takeDamage(SHOTGUN_DAMAGE);
-                                        }
-                                    });
-                                }
-                            }
+                                pellet.position.copy(shooterPos);
+                                pellet.velocity = new THREE.Vector3().fromArray(direction).multiplyScalar(SHOTGUN_SPEED);
+                                pellet.spawnTime = performance.now();
+                                
+                                scene.add(pellet);
+                                pellets.add(pellet);
+                            });
+                            
+                            playShotgunSound();
                         }
                         break;
 
