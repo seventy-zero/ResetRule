@@ -256,6 +256,7 @@
 
         // Scene-related variables
         let scene, camera, renderer, controls;
+        let starField, largeStarField; // <-- MOVED DECLARATION HERE
 
         // Collections
         const towers = []; // Stores { mesh: collisionMesh, boundingBox: Box3, visualGroup: Group }
@@ -1572,7 +1573,7 @@
             const farGridHelper = new THREE.GridHelper(16000, 160, 0x333333, 0x111111); // Far grid
             scene.add(farGridHelper);
             // Stars
-            let starField, largeStarField; // Declare variables
+            // let starField, largeStarField; // <-- REMOVE THIS LINE
             createStars(); // Populate star fields
 
             // --- Lighting ---
