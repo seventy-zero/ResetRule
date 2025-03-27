@@ -320,6 +320,7 @@
 
         // Game state variables
         let gameStarted = false;
+        let gameEnded = false;
         let playerUsername = '';
         let isGrounded = true;
         let isFlinging = false;
@@ -2229,7 +2230,8 @@
                         window.frameCount++;
                     }
                     
-                    if (!gameEnded) {
+                    // Only update game state if game is active
+                    if (!gameEnded && gameStarted) {
                         // Update frustum culling
                         const frustum = new THREE.Frustum();
                         const projScreenMatrix = new THREE.Matrix4();
