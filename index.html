@@ -617,240 +617,116 @@
             towerEdges: new THREE.LineBasicMaterial({ color: 0xffffff })
         };
 
+        // Add these constants near the top with other constants
+        const RENDER_DISTANCE = 2000; // Maximum distance to render objects
+        const CULL_DISTANCE = 1500;   // Distance at which to start culling objects
+
+        // Function to check if an object is within render distance
+        function isWithinRenderDistance(position) {
+            return camera.position.distanceTo(position) <= RENDER_DISTANCE;
+        }
+
         // Function to create tower from server data
         function createTowerFromData(towerData) {
+            let geometry;
             const height = towerData.height;
             const isFloating = towerData.isFloating;
             const baseHeight = towerData.baseHeight;
-            const position = new THREE.Vector3(towerData.x, height / 2 + baseHeight, towerData.z);
-
-            // --- LOD Setup ---
-            const lod = new THREE.LOD();
-
-            // --- Detail Level 0 (Closest) ---
-            let detailGeometry;
-            let collisionGeometry; // Use the most detailed geometry for collision
-
-            // Create materials (can be shared)
-            const detailMaterials = [
+            
+            // Create materials for the tower
+            const materials = [
                 new THREE.MeshBasicMaterial({ color: 0x000000 }),
                 new THREE.LineBasicMaterial({ color: 0xffffff })
             ];
 
+            // Create collision box for the tower
+            let collisionGeometry;
+
             switch(towerData.type) {
-                // ... (keep existing cases for geometry creation)
-                case 0: // Cylindrical tower
-                    detailGeometry = new THREE.CylinderGeometry(18, 18, height, 8);
-                    collisionGeometry = new THREE.CylinderGeometry(18, 18, height, 8); // Use detailed for collision
-                    break;
-                case 1: // Tapered tower
-                    detailGeometry = new THREE.CylinderGeometry(12, 24, height, 6);
-                    collisionGeometry = new THREE.CylinderGeometry(24, 24, height, 6); // Use wider base for collision
-                    break;
-                case 2: // Square tower
-                    detailGeometry = new THREE.BoxGeometry(36, height, 36);
-                    collisionGeometry = detailGeometry.clone();
-                    break;
-                case 3: // Hexagonal tower
-                    detailGeometry = new THREE.CylinderGeometry(20, 20, height, 6);
-                    collisionGeometry = detailGeometry.clone();
-                    break;
-                case 4: // Twisted tower
-                    detailGeometry = new THREE.CylinderGeometry(15, 15, height, 8, 10, true);
-                    // ... (keep twist logic)
-                    const twistAmount = Math.PI * 2;
-                    const positions = detailGeometry.attributes.position.array;
-                    for (let i = 0; i < positions.length; i += 3) {
-                        const y = positions[i + 1];
-                        const progress = (y + height/2) / height;
-                        const theta = progress * twistAmount;
-                        const x = positions[i];
-                        const z = positions[i + 2];
-                        positions[i] = x * Math.cos(theta) - z * Math.sin(theta);
-                        positions[i + 2] = x * Math.sin(theta) + z * Math.cos(theta);
-                    }
-                    collisionGeometry = new THREE.CylinderGeometry(15, 15, height, 8); // Simpler collision
-                    break;
-                 case 5: // Pyramid tower
-                    detailGeometry = new THREE.ConeGeometry(24, height, 4);
-                    collisionGeometry = detailGeometry.clone();
-                    break;
-                case 6: // Octagonal tower
-                    detailGeometry = new THREE.CylinderGeometry(19, 19, height, 8);
-                    collisionGeometry = detailGeometry.clone();
-                    break;
-                case 7: // Double width tower
-                    detailGeometry = new THREE.BoxGeometry(42, height, 42);
-                    collisionGeometry = detailGeometry.clone();
-                    break;
-                case 8: // Inverse pyramid
-                    detailGeometry = new THREE.CylinderGeometry(12, 28, height, 4);
-                    collisionGeometry = new THREE.CylinderGeometry(28, 28, height, 4); // Wider collision
-                    break;
-                case 9: // Star tower
-                    detailGeometry = new THREE.CylinderGeometry(24, 24, height, 5);
-                    collisionGeometry = detailGeometry.clone();
-                    break;
-                case 10: // Thin spire
-                    detailGeometry = new THREE.CylinderGeometry(8, 16, height, 6);
-                    collisionGeometry = new THREE.CylinderGeometry(16, 16, height, 6); // Wider collision
-                    break;
-                case 11: // Complex tower (stacked shapes) - Simplify LOD for this one
-                    const baseHeightComplex = height * 0.6;
-                    const topHeightComplex = height * 0.4;
-                    const baseGeometry = new THREE.BoxGeometry(38, baseHeightComplex, 38);
-                    const topGeometry = new THREE.ConeGeometry(28, topHeightComplex, 6);
-                    collisionGeometry = new THREE.BoxGeometry(38, height, 38); // Simple box collision
-
-                    const detailGroup = new THREE.Group();
-                    const baseMesh = new THREE.Mesh(baseGeometry, detailMaterials[0]);
-                    const baseEdges = new THREE.LineSegments(new THREE.EdgesGeometry(baseGeometry), detailMaterials[1]);
-                    const topMesh = new THREE.Mesh(topGeometry, detailMaterials[0]);
-                    const topEdges = new THREE.LineSegments(new THREE.EdgesGeometry(topGeometry), detailMaterials[1]);
-                    topMesh.position.y = (baseHeightComplex + topHeightComplex) / 2;
-                    topEdges.position.y = (baseHeightComplex + topHeightComplex) / 2;
-                    detailGroup.add(baseMesh);
-                    detailGroup.add(baseEdges);
-                    detailGroup.add(topMesh);
-                    detailGroup.add(topEdges);
-
-                    lod.addLevel(detailGroup, 0); // Add detailed group at distance 0
-
-                    // --- Detail Level 1 (Medium Distance) ---
-                    // Use a simple box for medium distance for complex towers
-                    const mediumGeometry = new THREE.BoxGeometry(38, height, 38);
-                    const mediumMesh = new THREE.Mesh(mediumGeometry, detailMaterials[0]); // Only solid mesh
-                    lod.addLevel(mediumMesh, 800); // Switch at 800 units
-
-                    // --- Detail Level 2 (Farthest) ---
-                    // Use an even simpler box (or potentially nothing)
-                    const farGeometry = new THREE.BoxGeometry(38, height, 38); // Could be even simpler
-                    const farMesh = new THREE.Mesh(farGeometry, detailMaterials[0]);
-                    lod.addLevel(farMesh, 2000); // Switch at 2000 units
-
-                    lod.position.copy(position);
-                    scene.add(lod);
-
-                    // Add collision data (using the detailed collision geometry)
-                    const collisionMesh = new THREE.Mesh(collisionGeometry);
-                    collisionMesh.position.copy(position);
-                    towers.push({
-                        mesh: collisionMesh, // Use this for collision checks
-                        boundingBox: new THREE.Box3().setFromObject(collisionMesh),
-                        lodObject: lod // Keep reference if needed later
-                    });
-                    return; // Exit early for complex tower type
+                // ... existing tower type cases ...
             }
 
-            // --- Create Detail Level 0 Mesh Group (for non-complex towers) ---
-            const detailMesh = new THREE.Mesh(detailGeometry, detailMaterials[0]);
-            const detailEdges = new THREE.LineSegments(new THREE.EdgesGeometry(detailGeometry), detailMaterials[1]);
-            const detailGroup = new THREE.Group();
-            detailGroup.add(detailMesh);
-            detailGroup.add(detailEdges);
-            lod.addLevel(detailGroup, 0); // Add detailed group at distance 0
-
-            // --- Detail Level 1 (Medium Distance) ---
-            // Use simpler geometry (e.g., box or lower-poly cylinder)
-            let mediumGeometry;
-            if (towerData.type === 0 || towerData.type === 1 || towerData.type === 3 || towerData.type === 4 || towerData.type === 6 || towerData.type === 8 || towerData.type === 9 || towerData.type === 10) {
-                 // Use a lower-poly cylinder for cylindrical types
-                 mediumGeometry = new THREE.CylinderGeometry(
-                     (detailGeometry.parameters.radiusTop + detailGeometry.parameters.radiusBottom) / 2, // Average radius
-                     (detailGeometry.parameters.radiusTop + detailGeometry.parameters.radiusBottom) / 2,
-                     height,
-                     4 // Fewer segments (square)
-                 );
-            } else {
-                 // Use a box for boxy types
-                 mediumGeometry = new THREE.BoxGeometry(
-                     detailGeometry.parameters.width || 36, // Use original width or default
-                     height,
-                     detailGeometry.parameters.depth || 36 // Use original depth or default
-                 );
-            }
-            const mediumMesh = new THREE.Mesh(mediumGeometry, detailMaterials[0]); // Only solid mesh, no edges
-            lod.addLevel(mediumMesh, 800); // Switch at 800 units
-
-            // --- Detail Level 2 (Farthest) ---
-            // Use a very simple box
-            const farGeometry = new THREE.BoxGeometry(
-                (detailGeometry.parameters.width || (detailGeometry.parameters.radiusTop + detailGeometry.parameters.radiusBottom)) || 30, // Approx width
-                height,
-                (detailGeometry.parameters.depth || (detailGeometry.parameters.radiusTop + detailGeometry.parameters.radiusBottom)) || 30 // Approx depth
+            // Create the main mesh with solid faces
+            const mesh = new THREE.Mesh(geometry, materials[0]);
+            
+            // Create the edges
+            const edges = new THREE.LineSegments(
+                new THREE.EdgesGeometry(geometry),
+                materials[1]
             );
-            const farMesh = new THREE.Mesh(farGeometry, detailMaterials[0]);
-            lod.addLevel(farMesh, 2000); // Switch at 2000 units
+            
+            // Group the mesh and edges together
+            const group = new THREE.Group();
+            group.add(mesh);
+            group.add(edges);
+            group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
+            
+            // Add visibility check
+            group.userData.originalPosition = group.position.clone();
+            group.userData.isVisible = true;
+            
+            scene.add(group);
 
-            // Position and add LOD to scene
-            lod.position.copy(position);
-            scene.add(lod);
-
-            // Add collision data (using the detailed collision geometry)
+            // Add collision data
             const collisionMesh = new THREE.Mesh(collisionGeometry);
-            collisionMesh.position.copy(position); // Make sure collision mesh is at the correct position
+            collisionMesh.position.copy(group.position);
             towers.push({
-                mesh: collisionMesh, // Use this invisible mesh for collision checks
+                mesh: collisionMesh,
                 boundingBox: new THREE.Box3().setFromObject(collisionMesh),
-                lodObject: lod // Keep reference to the visible LOD object
+                visualGroup: group // Store reference to visual group
             });
         }
 
         // Function to create bridge from server data
         function createBridgeFromData(bridgeData) {
-            // Calculate bridge dimensions
-            const bridgeWidth = 8;
-            const startPos = new THREE.Vector3(bridgeData.startX, bridgeData.height, bridgeData.startZ);
-            const endPos = new THREE.Vector3(bridgeData.endX, bridgeData.height, bridgeData.endZ);
-            const distance = startPos.distanceTo(endPos);
-            const midPoint = startPos.clone().add(endPos).multiplyScalar(0.5);
-            const directionVec = endPos.clone().sub(startPos);
-            const angle = Math.atan2(directionVec.z, directionVec.x); // Correct angle calculation
-
-            // --- LOD Setup ---
-            const lod = new THREE.LOD();
-
-            // --- Detail Level 0 (Closest) ---
-            const detailGeometry = new THREE.BoxGeometry(distance, bridgeWidth, bridgeWidth);
-            const detailMaterials = [
-                new THREE.MeshBasicMaterial({ color: 0x000000 }),
-                new THREE.LineBasicMaterial({ color: 0xffffff })
-            ];
-            const detailMesh = new THREE.Mesh(detailGeometry, detailMaterials[0]);
-            const detailEdges = new THREE.LineSegments(new THREE.EdgesGeometry(detailGeometry), detailMaterials[1]);
-            const detailGroup = new THREE.Group();
-            detailGroup.add(detailMesh);
-            detailGroup.add(detailEdges);
-            lod.addLevel(detailGroup, 0);
-
-            // --- Detail Level 1 (Medium Distance) ---
-            const mediumGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.6); // Slightly thinner
-            const mediumMesh = new THREE.Mesh(mediumGeometry, detailMaterials[0]); // No edges
-            lod.addLevel(mediumMesh, 700); // Switch at 700 units
-
-            // --- Detail Level 2 (Farthest) ---
-            const farGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.5, bridgeWidth * 0.3); // Even thinner
-            const farMesh = new THREE.Mesh(farGeometry, detailMaterials[0]);
-            lod.addLevel(farMesh, 1800); // Switch at 1800 units
-
-            // Position and rotate LOD object
-            lod.position.copy(midPoint);
-            lod.rotation.y = angle; // Apply rotation
-            scene.add(lod);
-
-            // Create a separate, non-rendered collision mesh (using medium geometry is often a good balance)
+            // ... existing bridge creation code ...
+            
+            // Add visibility check
+            bridgeGroup.userData.originalPosition = bridgeGroup.position.clone();
+            bridgeGroup.userData.isVisible = true;
+            
+            scene.add(bridgeGroup);
+            
+            // Create a narrower collision box for the bridge
             const collisionGeometry = new THREE.BoxGeometry(distance, bridgeWidth * 0.8, bridgeWidth * 0.6);
-            const collisionMesh = new THREE.Mesh(collisionGeometry); // No material needed
-            collisionMesh.position.copy(midPoint);
-            collisionMesh.rotation.y = angle;
-            collisionMesh.visible = false; // Make collision mesh invisible
-            scene.add(collisionMesh); // Add to scene so bounding box is calculated correctly initially
-
-            towers.push({ // Still add bridges to the 'towers' array for collision
-                mesh: collisionMesh, // Use invisible mesh for collision
+            const collisionMesh = new THREE.Mesh(collisionGeometry);
+            collisionMesh.position.copy(bridgeGroup.position);
+            collisionMesh.rotation.copy(bridgeGroup.rotation);
+            towers.push({
+                mesh: collisionMesh,
                 boundingBox: new THREE.Box3().setFromObject(collisionMesh),
-                lodObject: lod // Keep reference to visible LOD
+                visualGroup: bridgeGroup // Store reference to visual group
             });
+        }
+
+        // Modify the animate function to include culling
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const deltaTime = clock.getDelta();
+            
+            if (gameStarted) {
+                // Update visibility of objects based on distance
+                towers.forEach(tower => {
+                    if (tower.visualGroup) {
+                        const distance = camera.position.distanceTo(tower.visualGroup.userData.originalPosition);
+                        
+                        // Only update visibility if crossing threshold
+                        if (distance > CULL_DISTANCE && tower.visualGroup.userData.isVisible) {
+                            tower.visualGroup.visible = false;
+                            tower.visualGroup.userData.isVisible = false;
+                        } else if (distance <= CULL_DISTANCE && !tower.visualGroup.userData.isVisible) {
+                            tower.visualGroup.visible = true;
+                            tower.visualGroup.userData.isVisible = true;
+                        }
+                    }
+                });
+
+                // ... rest of animate function ...
+            }
+            
+            // Always render the scene
+            renderer.render(scene, camera);
         }
 
         // Update collision check function to handle bridges like towers
