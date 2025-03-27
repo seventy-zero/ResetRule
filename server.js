@@ -127,7 +127,7 @@ function generateWorld() {
     console.log(`Generated ${towers.length} towers`);
     
     // Generate bridges with improved connectivity
-    const maxBridgeDistance = baseSpacing * 1.8;
+    const maxBridgeDistance = baseSpacing * 3.0;
     
     for (let i = 0; i < towerPositions.length; i++) {
         for (let j = i + 1; j < towerPositions.length; j++) {
