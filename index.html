@@ -1381,10 +1381,13 @@
                         }
 
                         // Update tube geometry vertices smoothly
-                        curvePoints[0].lerp(startPoint, 0.6);
-                        curvePoints[1].lerp(finalEndPoint, 0.6);
-                        tubeMesh.geometry.setFromPoints(curve.getPoints(8)); // Update existing geometry vertices
-                        tubeMesh.geometry.verticesNeedUpdate = true; // Flag for update
+                        // --- TEMPORARILY COMMENTED OUT FOR DEBUGGING ---
+                        // curvePoints[0].lerp(startPoint, 0.6);
+                        // curvePoints[1].lerp(finalEndPoint, 0.6);
+                        // tubeMesh.geometry.setFromPoints(curve.getPoints(8)); // Update existing geometry vertices
+                        // tubeMesh.geometry.verticesNeedUpdate = true; // Flag for update
+                        // --- END TEMPORARY COMMENT ---
+
                     } else {
                         lineCollisionPoint = null; // Ensure reset when not showing line
                     }
