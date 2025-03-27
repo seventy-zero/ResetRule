@@ -3224,18 +3224,6 @@
                     const bridgeLength = bridgeDir.length();
                     bridgeDir.normalize();
                     
-                    // Create a box for the bridge
-                    const bridgeBox = new THREE.Box3();
-                    const bridgeWidth = 0.5; // Bridge width
-                    const bridgeHeight = 0.5; // Bridge height
-                    
-                    // Calculate bridge box
-                    const bridgeCenter = bridgeStart.clone().add(bridgeEnd).multiplyScalar(0.5);
-                    bridgeBox.setFromCenterAndSize(
-                        bridgeCenter,
-                        new THREE.Vector3(bridgeLength, bridgeHeight, bridgeWidth)
-                    );
-                    
                     // Check if pellet is within bridge length
                     const pelletToStart = pellet.position.clone().sub(bridgeStart);
                     const pelletToEnd = pellet.position.clone().sub(bridgeEnd);
