@@ -2049,6 +2049,19 @@
                             break;
                         case 'KeyE':
                             showLine = false;
+                            if (lineCollisionPoint) {
+                                const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
+                                const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                                const scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
+                                
+                                flingVelocity.x = flingDirection.x * scaledStrength;
+                                flingVelocity.z = flingDirection.z * scaledStrength;
+                                verticalVelocity = flingDirection.y * scaledStrength + 0.5;
+                                
+                                isFlinging = true;
+                                isGrounded = false;
+                                lineCollisionPoint = null;
+                            }
                             break;
                         case 'KeyZ':
                             document.getElementById('playerList').classList.remove('visible');
@@ -2081,6 +2094,19 @@
                     
                     if (event.button === 0) { // Left mouse button
                         showLine = false;
+                        if (lineCollisionPoint) {
+                            const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
+                            const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                            const scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
+                            
+                            flingVelocity.x = flingDirection.x * scaledStrength;
+                            flingVelocity.z = flingDirection.z * scaledStrength;
+                            verticalVelocity = flingDirection.y * scaledStrength + 0.5;
+                            
+                            isFlinging = true;
+                            isGrounded = false;
+                            lineCollisionPoint = null;
+                        }
                     }
                 });
 
@@ -2243,9 +2269,37 @@
                         direction.x = Number(moveRight) - Number(moveLeft);
                         direction.normalize();
 
-                        // Apply movement
-                        if (moveForward || moveBackward) velocity.z -= direction.z * moveSpeed;
-                        if (moveLeft || moveRight) velocity.x -= direction.x * moveSpeed;
+                        // Get camera direction vectors
+                        const cameraDirection = new THREE.Vector3();
+                        camera.getWorldDirection(cameraDirection);
+                        cameraDirection.y = 0; // Keep movement on XZ plane
+                        cameraDirection.normalize();
+
+                        // Get right vector
+                        const rightVector = new THREE.Vector3();
+                        rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
+
+                        // Calculate movement relative to camera direction
+                        if (moveForward || moveBackward) {
+                            velocity.x -= direction.z * cameraDirection.x * moveSpeed;
+                            velocity.z -= direction.z * cameraDirection.z * moveSpeed;
+                        }
+                        if (moveLeft || moveRight) {
+                            velocity.x -= direction.x * rightVector.x * moveSpeed;
+                            velocity.z -= direction.x * rightVector.z * moveSpeed;
+                        }
+
+                        // Apply fling velocity if flinging
+                        if (isFlinging) {
+                            camera.position.x += flingVelocity.x;
+                            camera.position.z += flingVelocity.z;
+                            flingVelocity.multiplyScalar(flingDamping);
+
+                            // Stop flinging if velocity is very small
+                            if (flingVelocity.lengthSq() < 0.001) {
+                                isFlinging = false;
+                            }
+                        }
 
                         // Update camera position based on velocity
                         camera.position.x += velocity.x;
@@ -2255,6 +2309,68 @@
                         if (!isGrounded) {
                             verticalVelocity -= gravity;
                             camera.position.y += verticalVelocity;
+
+                            // Check if we've hit the ground
+                            if (camera.position.y <= playerHeight) {
+                                camera.position.y = playerHeight;
+                                verticalVelocity = 0;
+                                isGrounded = true;
+                                isFlinging = false;
+                            }
+                        }
+
+                        // Update line trace if showing
+                        if (showLine) {
+                            const cameraDirection = new THREE.Vector3();
+                            camera.getWorldDirection(cameraDirection);
+                            const rightVector = new THREE.Vector3();
+                            rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
+                            
+                            // Calculate start and end points
+                            const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
+                            startPoint.y = camera.position.y;
+                            const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
+                            
+                            // Update curve points
+                            curve.points[0].copy(startPoint);
+                            curve.points[1].copy(endPoint);
+                            
+                            // Update the tube geometry
+                            const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
+                            tubeMesh.geometry.dispose();
+                            tubeMesh.geometry = newTubeGeometry;
+                            tubeMesh.visible = true;
+
+                            // Check for line collision with towers
+                            raycaster.set(startPoint, cameraDirection);
+                            const intersects = [];
+                            towers.forEach(tower => {
+                                const towerIntersects = raycaster.intersectObject(tower.mesh);
+                                if (towerIntersects.length > 0 && towerIntersects[0].distance <= 500) {
+                                    intersects.push(towerIntersects[0]);
+                                }
+                            });
+
+                            // Sort intersections by distance and get the closest one
+                            if (intersects.length > 0) {
+                                intersects.sort((a, b) => a.distance - b.distance);
+                                lineCollisionPoint = intersects[0].point;
+                                
+                                // Update line end point to collision point
+                                curve.points[1].copy(lineCollisionPoint);
+                                const collidedTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
+                                tubeMesh.geometry.dispose();
+                                tubeMesh.geometry = collidedTubeGeometry;
+                                
+                                // Change line color to indicate valid target
+                                tubeMaterial.color.setHex(0x00ff00);
+                            } else {
+                                lineCollisionPoint = null;
+                                // Change line color to indicate no target
+                                tubeMaterial.color.setHex(0xff0000);
+                            }
+                        } else {
+                            tubeMesh.visible = false;
                         }
 
                         // Update frustum culling with larger view distance
