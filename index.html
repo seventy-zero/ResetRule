@@ -738,14 +738,9 @@
 
             scene.add(bridgeGroup);
             
-            // Create collision box using the same method as towers
+            // Create collision box that exactly matches the bridge mesh
             const collisionBox = new THREE.Box3();
-            const collisionMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(bridgeLength, bridgeWidth, bridgeWidth)
-            );
-            collisionMesh.position.copy(midPoint);
-            collisionMesh.rotation.y = angle;
-            collisionBox.setFromObject(collisionMesh);
+            collisionBox.setFromObject(bridgeMesh);
 
             // Add bridge to towers array for consistent handling
             const bridgeObject = {
