@@ -3226,8 +3226,8 @@
                     
                     // Create a box for the bridge
                     const bridgeBox = new THREE.Box3();
-                    const bridgeWidth = 2; // Bridge width
-                    const bridgeHeight = 1; // Bridge height
+                    const bridgeWidth = 0.5; // Reduced from 2 to 0.5 to match visual model
+                    const bridgeHeight = 0.5; // Reduced from 1 to 0.5 to match visual model
                     
                     // Calculate bridge box
                     const bridgeCenter = bridgeStart.clone().add(bridgeEnd).multiplyScalar(0.5);
