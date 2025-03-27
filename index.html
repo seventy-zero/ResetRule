@@ -763,7 +763,8 @@
             // Add bridge to towers array for consistent handling
             const bridgeObject = {
                 mesh: bridgeGroup,
-                collisionBoxes: [collisionBox]
+                collisionBoxes: [collisionBox],
+                isBridge: true // Add flag to identify bridges
             };
             towers.push(bridgeObject);
             
@@ -793,7 +794,7 @@
                     const distance = position.distanceTo(closestPoint);
                     
                     // Check if this is a bridge
-                    const isBridge = tower.mesh.name === 'bridge';
+                    const isBridge = tower.isBridge || tower.mesh.name === 'bridge';
                     
                     if (distance < minDistance) {
                         minDistance = distance;
