@@ -3249,37 +3249,6 @@
             
             // Add new listener
             document.addEventListener('mousedown', handleShotgunFire);
-
-            // Create and show click-to-start overlay
-            const overlay = document.createElement('div');
-            overlay.style.position = 'fixed';
-            overlay.style.top = '0';
-            overlay.style.left = '0';
-            overlay.style.width = '100%';
-            overlay.style.height = '100%';
-            overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-            overlay.style.color = 'white';
-            overlay.style.display = 'flex';
-            overlay.style.justifyContent = 'center';
-            overlay.style.alignItems = 'center';
-            overlay.style.cursor = 'pointer';
-            overlay.style.zIndex = '1000';
-            overlay.innerHTML = '<div style="font-size: 24px;">Click anywhere to start game with music</div>';
-            document.body.appendChild(overlay);
-
-            // Initialize audio context and background music on first click
-            overlay.addEventListener('click', () => {
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const backgroundMusic = new Audio('leader-ultra-essence-lossy-64.mp3');
-                backgroundMusic.loop = true;
-                backgroundMusic.volume = 0.5;
-                
-                // Remove the overlay
-                document.body.removeChild(overlay);
-                
-                // Play the music
-                backgroundMusic.play().catch(error => console.log('Error playing background music:', error));
-            }, { once: true }); // Remove listener after first click
         }
 
         // Define the shotgun firing handler
