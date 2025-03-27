@@ -594,9 +594,9 @@
         // Add these constants at the top with other constants
         const SPATIAL_GRID_SIZE = 500; // Size of each grid cell
         const TOWER_LOD_DISTANCES = {
-            HIGH: 500,    // Full detail within 500 units
-            MEDIUM: 1000, // Medium detail within 1000 units
-            LOW: 2000     // Low detail within 2000 units
+            HIGH: 1000,    // Increased from 500
+            MEDIUM: 2000,  // Increased from 1000
+            LOW: 4000      // Increased from 2000
         };
 
         // Add after the createTowerFromData function
@@ -1998,6 +1998,8 @@
             if (!isMobile) {
                 // Movement controls
                 const onKeyDown = function(event) {
+                    if (!gameStarted || !controls.isLocked) return;
+                    
                     switch (event.code) {
                         case 'ArrowUp':
                         case 'KeyW':
@@ -2020,12 +2022,14 @@
                             break;
                         case 'KeyZ':
                             document.getElementById('playerList').classList.add('visible');
-                            updatePlayerList(); // Update immediately when showing
+                            updatePlayerList();
                             break;
                     }
                 };
 
                 const onKeyUp = function(event) {
+                    if (!gameStarted) return;
+                    
                     switch (event.code) {
                         case 'ArrowUp':
                         case 'KeyW':
@@ -2052,21 +2056,38 @@
                     }
                 };
 
-                // Mouse controls for line visibility
+                // Remove any existing listeners
+                document.removeEventListener('keydown', onKeyDown);
+                document.removeEventListener('keyup', onKeyUp);
+                
+                // Add new listeners
+                document.addEventListener('keydown', onKeyDown);
+                document.addEventListener('keyup', onKeyUp);
+
+                // Mouse controls for shooting
                 document.addEventListener('mousedown', (event) => {
-                    if (event.button === 0) { // Left mouse button
+                    if (!gameStarted || !controls.isLocked) return;
+                    
+                    if (event.button === 2) { // Right mouse button
+                        event.preventDefault();
+                        fireShotgun();
+                    } else if (event.button === 0) { // Left mouse button
                         showLine = true;
                     }
                 });
 
                 document.addEventListener('mouseup', (event) => {
+                    if (!gameStarted || !controls.isLocked) return;
+                    
                     if (event.button === 0) { // Left mouse button
                         showLine = false;
                     }
                 });
 
-                document.addEventListener('keydown', onKeyDown);
-                document.addEventListener('keyup', onKeyUp);
+                // Prevent right-click menu
+                document.addEventListener('contextmenu', (event) => {
+                    event.preventDefault();
+                });
             }
 
             // Initialize pellet pool before any functions that use it
@@ -2215,66 +2236,67 @@
                     requestAnimationFrame(animate);
                     const deltaTime = clock.getDelta();
                     
-                    // Debug logging for first few frames
-                    if (window.frameCount === undefined) {
-                        window.frameCount = 0;
-                    }
-                    if (window.frameCount < 5) {
-                        console.log('Frame', window.frameCount, {
-                            scene: scene ? 'created' : 'missing',
-                            camera: camera ? 'created' : 'missing',
-                            renderer: renderer ? 'created' : 'missing',
-                            cameraPosition: camera ? camera.position.toArray() : 'N/A',
-                            sceneChildren: scene ? scene.children.length : 'N/A'
-                        });
-                        window.frameCount++;
-                    }
-                    
                     // Only update game state if game is active
-                    if (!gameEnded && gameStarted) {
-                        // Update frustum culling
+                    if (!gameEnded && gameStarted && controls.isLocked) {
+                        // Handle keyboard movement
+                        direction.z = Number(moveForward) - Number(moveBackward);
+                        direction.x = Number(moveRight) - Number(moveLeft);
+                        direction.normalize();
+
+                        // Apply movement
+                        if (moveForward || moveBackward) velocity.z -= direction.z * moveSpeed;
+                        if (moveLeft || moveRight) velocity.x -= direction.x * moveSpeed;
+
+                        // Update camera position based on velocity
+                        camera.position.x += velocity.x;
+                        camera.position.z += velocity.z;
+
+                        // Apply gravity and vertical movement
+                        if (!isGrounded) {
+                            verticalVelocity -= gravity;
+                            camera.position.y += verticalVelocity;
+                        }
+
+                        // Update frustum culling with larger view distance
                         const frustum = new THREE.Frustum();
                         const projScreenMatrix = new THREE.Matrix4();
                         projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
                         frustum.setFromProjectionMatrix(projScreenMatrix);
                         
-                        // Get nearby towers using spatial grid
-                        const renderRadius = TOWER_LOD_DISTANCES.LOW;
+                        // Get nearby towers using spatial grid with increased radius
+                        const renderRadius = TOWER_LOD_DISTANCES.LOW * 1.5; // Increased view distance
                         const nearbyTowers = spatialGrid.getNearby(camera.position, renderRadius);
                         
-                        // Hide all towers first
+                        // Update tower visibility
                         towers.forEach(tower => {
-                            if (tower.mesh.visible) tower.mesh.visible = false;
-                        });
-                        
-                        // Update only nearby towers
-                        nearbyTowers.forEach(tower => {
                             const distance = camera.position.distanceTo(tower.mesh.position);
                             
-                            // Skip towers that are too far
-                            if (distance > renderRadius) return;
-                            
-                            // Check if tower is in view frustum
-                            if (frustum.containsPoint(tower.mesh.position)) {
-                                if (!tower.mesh.visible) tower.mesh.visible = true;
+                            // Show towers within render radius
+                            if (distance <= renderRadius) {
+                                tower.mesh.visible = true;
                                 
-                                // Update LOD based on distance
+                                // Update LOD if available
                                 if (tower.mesh.update) {
                                     tower.mesh.update(camera);
                                 }
+                            } else {
+                                tower.mesh.visible = false;
                             }
                         });
+
+                        // Update pellets
+                        if (typeof updatePellets === 'function') {
+                            updatePellets();
+                        }
+
+                        // Apply movement smoothing
+                        velocity.x *= MOVEMENT_SMOOTHING;
+                        velocity.z *= MOVEMENT_SMOOTHING;
                     }
                     
-                    // Ensure we have all required components before rendering
+                    // Always render the scene
                     if (scene && camera && renderer) {
                         renderer.render(scene, camera);
-                    } else {
-                        console.error('Missing required components:', {
-                            scene: !!scene,
-                            camera: !!camera,
-                            renderer: !!renderer
-                        });
                     }
                 } catch (error) {
                     console.error('Error in animation loop:', error);
