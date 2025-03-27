@@ -559,15 +559,14 @@
                 let geometry;
                 switch(type) {
                     case 'cylinder':
-                        geometry = new THREE.CylinderGeometry(params.radius, params.radius, params.height, params.segments);
+                        geometry = new THREE.CylinderGeometry(params.radius, params.radius, params.height, Math.min(params.segments, 8)); // Limit segments
                         break;
                     case 'box':
                         geometry = new THREE.BoxGeometry(params.width, params.height, params.depth);
                         break;
                     case 'cone':
-                        geometry = new THREE.ConeGeometry(params.radius, params.height, params.segments);
+                        geometry = new THREE.ConeGeometry(params.radius, params.height, Math.min(params.segments, 6)); // Limit segments
                         break;
-                    // Add more cases as needed
                 }
                 geometryCache.set(key, geometry);
             }
@@ -592,108 +591,63 @@
             return materialCache.get(key);
         }
 
-        // Modify the createTowerFromData function to use cached geometries and materials
+        // Add after the material cache
+        const sharedMaterials = {
+            tower: new THREE.MeshBasicMaterial({ color: 0x000000 }),
+            towerEdges: new THREE.LineBasicMaterial({ color: 0xffffff })
+        };
+
+        // Modify createTowerFromData to use shared materials
         function createTowerFromData(towerData) {
             const height = towerData.height;
             const baseHeight = towerData.baseHeight;
             
-            // Use cached materials
-            const materials = [
-                getMaterialFromCache('basic', { color: 0x000000 }),
-                getMaterialFromCache('line', { color: 0xffffff })
-            ];
-
             let geometry;
-            let towerHeight = height; // Store the height for orb placement
+            let towerHeight = height;
             
             switch(towerData.type) {
                 case 0: // Cylindrical tower
                     geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
                     break;
                 case 1: // Tapered tower
-                    geometry = new THREE.CylinderGeometry(12, 24, height, 6);
+                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 6 });
                     break;
                 case 2: // Square tower
-                    geometry = new THREE.BoxGeometry(36, height, 36);
+                    geometry = getGeometryFromCache('box', { width: 36, height, depth: 36 });
                     break;
                 case 3: // Hexagonal tower
-                    geometry = new THREE.CylinderGeometry(20, 20, height, 6);
+                    geometry = getGeometryFromCache('cylinder', { radius: 20, height, segments: 6 });
                     break;
                 case 4: // Twisted tower
-                    geometry = new THREE.CylinderGeometry(15, 15, height, 8, 10, true);
+                    geometry = getGeometryFromCache('cylinder', { radius: 15, height, segments: 8 });
                     break;
                 case 5: // Pyramid tower
-                    geometry = new THREE.ConeGeometry(24, height, 4);
+                    geometry = getGeometryFromCache('cone', { radius: 24, height, segments: 4 });
                     break;
                 case 6: // Octagonal tower
-                    geometry = new THREE.CylinderGeometry(19, 19, height, 8);
+                    geometry = getGeometryFromCache('cylinder', { radius: 19, height, segments: 8 });
                     break;
                 case 7: // Double width tower
-                    geometry = new THREE.BoxGeometry(42, height, 42);
+                    geometry = getGeometryFromCache('box', { width: 42, height, depth: 42 });
                     break;
                 case 8: // Inverse pyramid
-                    geometry = new THREE.CylinderGeometry(12, 28, height, 4);
+                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 4 });
                     break;
                 case 9: // Star tower
-                    geometry = new THREE.CylinderGeometry(24, 24, height, 5);
+                    geometry = getGeometryFromCache('cylinder', { radius: 24, height, segments: 5 });
                     break;
                 case 10: // Thin spire
-                    geometry = new THREE.CylinderGeometry(8, 16, height, 6);
+                    geometry = getGeometryFromCache('cylinder', { radius: 8, height, segments: 6 });
                     break;
-                case 11: // Complex tower (stacked shapes)
-                    const baseHeight = height * 0.6;
-                    const topHeight = height * 0.4;
-                    geometry = new THREE.BoxGeometry(38, baseHeight, 38);
-                    const topGeometry = new THREE.ConeGeometry(28, topHeight, 6);
-                    
-                    // Create base with edges
-                    const baseMesh = new THREE.Mesh(geometry, materials[0]);
-                    const baseEdges = new THREE.LineSegments(
-                        new THREE.EdgesGeometry(geometry),
-                        materials[1]
-                    );
-                    
-                    // Create top with edges
-                    const topMesh = new THREE.Mesh(topGeometry, materials[0]);
-                    const topEdges = new THREE.LineSegments(
-                        new THREE.EdgesGeometry(topGeometry),
-                        materials[1]
-                    );
-                    
-                    topMesh.position.y = (baseHeight + topHeight) / 2;
-                    topEdges.position.y = (baseHeight + topHeight) / 2;
-                    
-                    const group = new THREE.Group();
-                    group.add(baseMesh);
-                    group.add(baseEdges);
-                    group.add(topMesh);
-                    group.add(topEdges);
-                    group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
-
-                    // Create a single box collider for the entire tower
-                    const collisionBox = new THREE.Box3();
-                    const collisionMesh = new THREE.Mesh(
-                        new THREE.BoxGeometry(38, height, 38)
-                    );
-                    collisionMesh.position.copy(group.position);
-                    collisionBox.setFromObject(collisionMesh);
-                    
-                    towers.push({
-                        mesh: group,
-                        collisionBoxes: [collisionBox]
-                    });
-
-                    scene.add(group);
-                    return;
             }
 
-            // Create the main mesh with solid faces
-            const mesh = new THREE.Mesh(geometry, materials[0]);
+            // Create the main mesh with solid faces using shared material
+            const mesh = new THREE.Mesh(geometry, sharedMaterials.tower);
             
-            // Create the edges
+            // Create the edges using shared material
             const edges = new THREE.LineSegments(
                 new THREE.EdgesGeometry(geometry),
-                materials[1]
+                sharedMaterials.towerEdges
             );
             
             // Group the mesh and edges together
@@ -706,7 +660,7 @@
             // Create a single box collider for the tower
             const collisionBox = new THREE.Box3();
             const collisionMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(36, height, 36)
+                getGeometryFromCache('box', { width: 36, height, depth: 36 })
             );
             collisionMesh.position.copy(group.position);
             collisionBox.setFromObject(collisionMesh);
@@ -921,11 +875,8 @@
                             playerStates.set(playerUsername, currentPlayerState);
                         }
                         
-                        // Clear existing towers and bridges
-                        towers.forEach(tower => {
-                            scene.remove(tower.mesh);
-                        });
-                        towers.length = 0;
+                        // Clear existing towers and bridges using the new function
+                        clearTowers();
                         
                         // Create towers from server data first
                         if (data.towers) {
@@ -2248,6 +2199,10 @@
                 updatePellets();
                 
                 if (gameStarted) {
+                    // Update frustum for culling
+                    projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+                    frustum.setFromProjectionMatrix(projScreenMatrix);
+                    
                     // Update other players' positions with throttling
                     if (currentTime - lastCollisionCheck > COLLISION_CHECK_INTERVAL) {
                         playerStates.forEach((playerState, username) => {
@@ -2278,15 +2233,18 @@
                     }
 
                     // Rotate star fields with reduced frequency
-                    if (starField && largeStarField) {
-                        // Rotate star fields at different speeds for parallax effect (10x faster)
-                        starField.rotation.y += 0.0005; // Increased from 0.00025 (2x)
-                        largeStarField.rotation.y += 0.001; // Increased from 0.0005 (2x)
-                        
-                        // Add slight wobble to create more dynamic movement (10x faster)
-                        starField.rotation.x = Math.sin(currentTime * 0.001) * 0.01; // Increased from 0.0005 (2x)
-                        largeStarField.rotation.x = Math.sin(currentTime * 0.0015) * 0.015; // Increased from 0.00075 (2x)
+                    if (currentTime % 2 === 0) { // Update every other frame
+                        starField.rotation.y += 0.0001;
+                        largeStarField.rotation.y += 0.00005;
                     }
+
+                    // Update tower visibility based on frustum culling
+                    towers.forEach(tower => {
+                        if (tower.mesh) {
+                            const box = new THREE.Box3().setFromObject(tower.mesh);
+                            tower.mesh.visible = frustum.containsBox(box);
+                        }
+                    });
 
                     // Only process movement and game logic if controls are locked and game is started
                     if (controls.isLocked && gameStarted) {
