@@ -3218,31 +3218,13 @@
                 
                 // Check bridge collisions
                 for (const bridge of bridges) {
-                    const bridgeStart = new THREE.Vector3(bridge.startX, bridge.height, bridge.startZ);
-                    const bridgeEnd = new THREE.Vector3(bridge.endX, bridge.height, bridge.endZ);
-                    const bridgeDir = bridgeEnd.clone().sub(bridgeStart);
-                    const bridgeLength = bridgeDir.length();
-                    bridgeDir.normalize();
-                    
-                    // Check if pellet is within bridge length
-                    const pelletToStart = pellet.position.clone().sub(bridgeStart);
-                    const pelletToEnd = pellet.position.clone().sub(bridgeEnd);
-                    const dotStart = pelletToStart.dot(bridgeDir);
-                    const dotEnd = pelletToEnd.dot(bridgeDir);
-                    
-                    // Only check collision if pellet is within bridge length
-                    if (dotStart > 0 && dotEnd < 0) {
-                        // Calculate perpendicular distance from bridge line
-                        const perpendicularDist = pellet.position.distanceToLine(bridgeStart, bridgeEnd);
-                        
-                        // Check if pellet is within bridge width and height
-                        if (perpendicularDist < 0.5 && // Bridge width
-                            Math.abs(pellet.position.y - bridge.height) < 0.5) { // Bridge height
-                            // Calculate collision normal (bridge is horizontal, so normal is up)
-                            collisionNormal.set(0, 1, 0);
-                            collision = true;
-                            break;
-                        }
+                    const bridgeBox = new THREE.Box3().setFromObject(bridge.mesh);
+                    if (bridgeBox.containsSphere(pelletCollider)) {
+                        // Calculate collision normal from bridge center
+                        const center = bridgeBox.getCenter(new THREE.Vector3());
+                        collisionNormal.copy(pellet.position).sub(center).normalize();
+                        collision = true;
+                        break;
                     }
                 }
                 
