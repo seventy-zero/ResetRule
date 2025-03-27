@@ -256,7 +256,8 @@
 
         // Scene-related variables
         let scene, camera, renderer, controls;
-        let starField, largeStarField; // <-- MOVED DECLARATION HERE
+        let starField, largeStarField;
+        let tubeMesh, tubeMaterial, curvePoints, curve; // <-- MOVED DECLARATIONS HERE
 
         // Collections
         const towers = []; // Stores { mesh: collisionMesh, boundingBox: Box3, visualGroup: Group }
@@ -1118,7 +1119,7 @@
             }
             starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
             const starMaterial = new THREE.PointsMaterial({
-                color: 0xffffff,
+                color: 0xffa500, // <-- Orange color for small stars
                 size: 2,
                 sizeAttenuation: false // Consistent size regardless of distance
             });
@@ -1136,7 +1137,7 @@
              }
              largeStarGeometry.setAttribute('position', new THREE.Float32BufferAttribute(largeStarVertices, 3));
              const largeStarMaterial = new THREE.PointsMaterial({
-                 color: 0xeeeeff,
+                 color: 0xffcc66, // <-- Lighter orange color for large stars
                  size: 5,
                  sizeAttenuation: false
              });
@@ -1354,37 +1355,39 @@
                 velocity.add(moveImpulse); // Add impulse to current velocity
 
                 // --- Fling Line Trace ---
-                tubeMesh.visible = showLine;
-                if (showLine) {
-                     const lineDirection = new THREE.Vector3();
-                     camera.getWorldDirection(lineDirection);
-                     const startPoint = cameraObject.position.clone().addScaledVector(lineDirection, 0.5); // Start slightly in front
-                     startPoint.y -= 0.5; // Start slightly lower
+                if (tubeMesh && tubeMaterial && curve && curvePoints) { // Check if initialized
+                    tubeMesh.visible = showLine;
+                    if (showLine) {
+                        const lineDirection = new THREE.Vector3();
+                        camera.getWorldDirection(lineDirection);
+                        const startPoint = cameraObject.position.clone().addScaledVector(lineDirection, 0.5); // Start slightly in front
+                        startPoint.y -= 0.5; // Start slightly lower
 
-                     raycaster.set(startPoint, lineDirection);
-                     raycaster.far = 330; // Max fling range
+                        raycaster.set(startPoint, lineDirection);
+                        raycaster.far = 330; // Max fling range
 
-                     const intersects = raycaster.intersectObjects(towers.map(t => t.mesh), false); // Check only collision meshes
+                        const intersects = raycaster.intersectObjects(towers.map(t => t.mesh), false); // Check only collision meshes
 
-                     let finalEndPoint;
-                     if (intersects.length > 0) {
-                         // intersects are sorted by distance automatically
-                         lineCollisionPoint = intersects[0].point;
-                         finalEndPoint = lineCollisionPoint;
-                         tubeMaterial.color.setHex(0x00ff00); // Green: Target locked
-                     } else {
-                         lineCollisionPoint = null;
-                         finalEndPoint = startPoint.clone().addScaledVector(lineDirection, raycaster.far); // Extend to max range
-                         tubeMaterial.color.setHex(0xff0000); // Red: No target
-                     }
+                        let finalEndPoint;
+                        if (intersects.length > 0) {
+                            // intersects are sorted by distance automatically
+                            lineCollisionPoint = intersects[0].point;
+                            finalEndPoint = lineCollisionPoint;
+                            tubeMaterial.color.setHex(0x00ff00); // Green: Target locked
+                        } else {
+                            lineCollisionPoint = null;
+                            finalEndPoint = startPoint.clone().addScaledVector(lineDirection, raycaster.far); // Extend to max range
+                            tubeMaterial.color.setHex(0xff0000); // Red: No target
+                        }
 
-                     // Update tube geometry vertices smoothly
-                     curvePoints[0].lerp(startPoint, 0.6);
-                     curvePoints[1].lerp(finalEndPoint, 0.6);
-                     tubeMesh.geometry.setFromPoints(curve.getPoints(8)); // Update existing geometry vertices
-                     tubeMesh.geometry.verticesNeedUpdate = true; // Flag for update
-                } else {
-                     lineCollisionPoint = null; // Ensure reset when not showing line
+                        // Update tube geometry vertices smoothly
+                        curvePoints[0].lerp(startPoint, 0.6);
+                        curvePoints[1].lerp(finalEndPoint, 0.6);
+                        tubeMesh.geometry.setFromPoints(curve.getPoints(8)); // Update existing geometry vertices
+                        tubeMesh.geometry.verticesNeedUpdate = true; // Flag for update
+                    } else {
+                        lineCollisionPoint = null; // Ensure reset when not showing line
+                    }
                 }
 
                 // --- Apply Physics (Gravity, Velocity, Fling) ---
@@ -1573,7 +1576,6 @@
             const farGridHelper = new THREE.GridHelper(16000, 160, 0x333333, 0x111111); // Far grid
             scene.add(farGridHelper);
             // Stars
-            // let starField, largeStarField; // <-- REMOVE THIS LINE
             createStars(); // Populate star fields
 
             // --- Lighting ---
@@ -1584,16 +1586,16 @@
             scene.add(directionalLight);
 
             // --- Fling Line Trace ---
-            const curvePoints = [new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,1)];
-            const curve = new THREE.CatmullRomCurve3(curvePoints, false, 'catmullrom', 0.1);
+            curvePoints = [new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,1)]; // <-- ASSIGNMENT
+            curve = new THREE.CatmullRomCurve3(curvePoints, false, 'catmullrom', 0.1); // <-- ASSIGNMENT
             const tubeGeometry = new THREE.TubeGeometry(curve, 2, 0.1, 6, false); // Simpler geometry
-            const tubeMaterial = new THREE.MeshBasicMaterial({
+            tubeMaterial = new THREE.MeshBasicMaterial({ // <-- ASSIGNMENT
                 color: 0x00ff00,
                 transparent: true,
                 opacity: 0.7,
                 depthWrite: false
             });
-            const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
+            tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial); // <-- ASSIGNMENT
             tubeMesh.visible = false; // Start hidden
             scene.add(tubeMesh);
 
