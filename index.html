@@ -2262,7 +2262,7 @@
                     towers.forEach(tower => {
                         if (tower.mesh) {
                             const box = new THREE.Box3().setFromObject(tower.mesh);
-                            tower.mesh.visible = frustum.containsBox(box);
+                            tower.mesh.visible = frustum.intersectsBox(box);
                         }
                     });
 
@@ -2282,6 +2282,13 @@
                         // Apply movement
                         controls.moveRight(-velocity.x);
                         controls.moveForward(-velocity.z);
+
+                        // Update player collider position
+                        playerCollider.center.copy(camera.position);
+
+                        // Check collisions with all towers
+                        const movementCollision = checkCollision(camera.position, playerRadius);
+                        handleCollision(movementCollision, isFlinging);
 
                         // Update line trace position
                         const cameraDirection = new THREE.Vector3();
@@ -2368,17 +2375,17 @@
                             playerCollider.center.copy(camera.position);
 
                             // Check collisions with all towers
-                            const collisionResult = checkCollision(camera.position, playerRadius);
+                            const movementCollision = checkCollision(camera.position, playerRadius);
                             
                             // If there's a collision during fling, push out and continue
-                            if (collisionResult.collision) {
+                            if (movementCollision.collision) {
                                 if (isFlinging) {
                                     // During fling, push out strongly and redirect velocity
                                     const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    pushDir.copy(camera.position).sub(movementCollision.closestPoint).normalize();
                                     
                                     // Push out with a stronger force
-                                    const pushDistance = playerRadius - collisionResult.distance;
+                                    const pushDistance = playerRadius - movementCollision.distance;
                                     camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
                                     camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
                                     
@@ -2431,17 +2438,15 @@
                             playerCollider.center.copy(camera.position);
 
                             // Check collisions after vertical movement
-                            const collisionResult = checkCollision(camera.position, playerRadius);
-                            
-                            // If there's a collision during vertical movement, push out
-                            if (collisionResult.collision) {
+                            const verticalCollision = checkCollision(camera.position, playerRadius);
+                            if (verticalCollision.collision) {
                                 if (isFlinging) {
                                     // During fling, push out strongly and redirect velocity
                                     const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    pushDir.copy(camera.position).sub(verticalCollision.closestPoint).normalize();
                                     
                                     // Push out with a stronger force
-                                    const pushDistance = playerRadius - collisionResult.distance;
+                                    const pushDistance = playerRadius - verticalCollision.distance;
                                     camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
                                     camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
                                     
@@ -2465,10 +2470,10 @@
                                 } else {
                                     // During normal movement, push out smoothly
                                     const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    pushDir.copy(camera.position).sub(verticalCollision.closestPoint).normalize();
                                     
                                     // Push out with a smoother force
-                                    const pushDistance = playerRadius - collisionResult.distance;
+                                    const pushDistance = playerRadius - verticalCollision.distance;
                                     camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
                                     camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
                                     
@@ -2532,17 +2537,17 @@
                         }
 
                         // Check collisions for normal movement
-                        const collisionResult = checkCollision(camera.position, playerRadius);
+                        const normalCollision = checkCollision(camera.position, playerRadius);
                         
                         // Handle normal movement collisions with push-out
-                        if (collisionResult.collision) {
-                            const distance = camera.position.distanceTo(collisionResult.closestPoint);
+                        if (normalCollision.collision) {
+                            const distance = camera.position.distanceTo(normalCollision.closestPoint);
                             const isStuck = distance < playerRadius * STUCK_THRESHOLD;
                             
                             if (isStuck) {
                                 // Player is stuck, apply stronger push-out force
                                 const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                pushDir.copy(camera.position).sub(normalCollision.closestPoint).normalize();
                                 
                                 // Apply extra push force when stuck
                                 const pushDistance = playerRadius * STUCK_PUSH_FORCE;
@@ -2568,7 +2573,7 @@
                                 if (isFlinging) {
                                     // During fling, apply stronger push-out
                                     const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    pushDir.copy(camera.position).sub(normalCollision.closestPoint).normalize();
                                     
                                     // Push out with increased force during fling
                                     const pushDistance = playerRadius - distance;
@@ -2582,7 +2587,7 @@
                                 } else {
                                     // During normal movement, push out smoothly
                                     const pushDir = new THREE.Vector3();
-                                    pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+                                    pushDir.copy(camera.position).sub(normalCollision.closestPoint).normalize();
                                     
                                     const pushDistance = playerRadius - distance;
                                     camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
