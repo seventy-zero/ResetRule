@@ -6,15 +6,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // World generation constants
-const NUM_TOWERS = 3200;
+const NUM_TOWERS = 3000;
 const MAX_RADIUS = 4800;
 const BRIDGE_CHANCE = 0.12;
 const NUM_ORBS = 120;
 
 // Tower dimensions
-const TOWER_RADIUS = 50; // Increased from 18
-const TOWER_WIDTH = 100; // Increased from 36
-const TOWER_DEPTH = 100; // Increased from 36
+const TOWER_RADIUS = 50; // Increased from 30
+const TOWER_WIDTH = 100; // Increased from 60
+const TOWER_DEPTH = 100; // Increased from 60
 
 // Word lists for room names
 const adjectives = [
@@ -46,8 +46,8 @@ function generateRoomName() {
 function createTower(type, x, z) {
     // Increased height ranges for more dramatic towers
     const height = Math.random() < 0.08 ? // 8% chance for tall towers
-        Math.random() * 600 + 400 : // 400-1000 units for tall towers
-        Math.random() * 400 + 200; // 200-600 units for normal towers
+        Math.random() * 800 + 600 : // 600-1400 units for tall towers
+        Math.random() * 500 + 300; // 300-800 units for normal towers
     
     const isFloating = Math.random() < 0.18;
     const baseHeight = isFloating ? Math.random() * 40 + 20 : 0;
