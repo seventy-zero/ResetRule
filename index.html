@@ -740,7 +740,10 @@
             
             // Create collision box that exactly matches the bridge mesh
             const collisionBox = new THREE.Box3();
-            collisionBox.setFromObject(bridgeMesh);
+            const collisionMesh = new THREE.Mesh(bridgeGeometry);
+            collisionMesh.position.copy(bridgeGroup.position);
+            collisionMesh.rotation.copy(bridgeGroup.rotation);
+            collisionBox.setFromObject(collisionMesh);
 
             // Add bridge to towers array for consistent handling
             const bridgeObject = {
@@ -774,7 +777,9 @@
                     // Calculate distance to closest point
                     const distance = position.distanceTo(closestPoint);
                     
-                    // Treat all objects (towers and bridges) the same
+                    // Check if this is a bridge
+                    const isBridge = tower.mesh.name === 'bridge';
+                    
                     if (distance < minDistance) {
                         minDistance = distance;
                         closestCollision = {
@@ -783,7 +788,7 @@
                             collisionBox: collisionBox,
                             distance: distance,
                             closestPoint: closestPoint,
-                            isBridge: false // Treat bridges like towers
+                            isBridge: isBridge
                         };
                     }
                 }
