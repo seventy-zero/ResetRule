@@ -830,6 +830,75 @@
             return closestOrb;
         }
 
+        // Function to handle player collision response
+        function handleCollision(collisionResult, deltaTime) {
+            if (!collisionResult || !collisionResult.collision) {
+                return; // No collision
+            }
+
+            const collisionNormal = objectPool.getVector();
+            camera.position.clone().sub(collisionResult.closestPoint).normalizeTo(collisionNormal);
+            
+            const penetrationDepth = playerRadius - collisionResult.distance;
+            
+            // Push the player out of the object
+            const pushBack = collisionNormal.clone().multiplyScalar(penetrationDepth * 1.05); // Slightly stronger push
+            camera.position.add(pushBack);
+
+            // --- Handle Horizontal Velocity (Regular + Fling) ---
+            const totalHorizontalVelocity = objectPool.getVector().set(velocity.x + flingVelocity.x, 0, velocity.z + flingVelocity.z);
+            const speed = totalHorizontalVelocity.length();
+
+            if (speed > MIN_VELOCITY_THRESHOLD) {
+                // Project velocity onto the collision plane to allow sliding
+                const slideDirection = totalHorizontalVelocity.clone().projectOnPlane(collisionNormal).normalize();
+                
+                // Apply sliding velocity, adjusting based on collision angle
+                const slideFactor = 1.0 - Math.abs(collisionNormal.dot(totalHorizontalVelocity.normalize()));
+                const slideVelocity = slideDirection.multiplyScalar(speed * slideFactor * CORNER_SLIDE_FORCE);
+
+                // Update velocity components (distribute back to regular and fling if needed)
+                // For simplicity, just update the main 'velocity' for now
+                velocity.x = slideVelocity.x;
+                velocity.z = slideVelocity.z;
+                flingVelocity.x *= 0.1; // Drastically reduce fling velocity on collision
+                flingVelocity.z *= 0.1;
+
+            } else {
+                // If speed is very low, just stop horizontal movement
+                velocity.x = 0;
+                velocity.z = 0;
+                flingVelocity.x = 0;
+                flingVelocity.z = 0;
+            }
+
+            // --- Handle Vertical Velocity ---
+            // Check if hitting the top surface
+            const verticalThreshold = 0.5; // How close to the top to count as landing
+            const boxTopY = collisionResult.collisionBox.max.y;
+            const playerBottomY = camera.position.y - playerHeight / 2; // Approximate player bottom
+
+            if (collisionNormal.y > 0.7 && playerBottomY < boxTopY + verticalThreshold) { // Landed on top
+                isGrounded = true;
+                verticalVelocity = 0;
+                flingVelocity.y = 0; // Stop vertical fling
+                camera.position.y = boxTopY + playerHeight / 2; // Place player precisely on top
+            } else if (collisionNormal.y < -0.7) { // Hitting underside
+                verticalVelocity = Math.max(0, verticalVelocity * -0.1); // Bounce slightly or stop
+                flingVelocity.y = Math.max(0, flingVelocity.y * -0.1);
+            } else { // Hitting a side wall
+                // Allow sliding vertically if moving downwards
+                if (verticalVelocity < 0) {
+                     verticalVelocity *= Math.abs(collisionNormal.y) * 0.5; // Reduce vertical speed based on wall angle
+                }
+                // Potentially reduce vertical fling velocity slightly on wall impact
+                 flingVelocity.y *= 0.9;
+            }
+
+            objectPool.releaseVector(collisionNormal);
+            objectPool.releaseVector(totalHorizontalVelocity);
+        }
+
         // WebSocket setup with Railway support
         const getWebSocketUrl = () => {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
