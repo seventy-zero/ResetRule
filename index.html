@@ -587,6 +587,9 @@
                     case 'cone':
                         geometry = new THREE.ConeGeometry(params.radius, params.height, Math.min(params.segments, 6)); // Limit segments
                         break;
+                    case 'sphere': // Added sphere case
+                        geometry = new THREE.SphereGeometry(params.radius, params.widthSegments || 8, params.heightSegments || 6); // Default segments
+                        break;
                 }
                 geometryCache.set(key, geometry);
             }
@@ -760,6 +763,34 @@
             });
 
             return bridgeGroup;
+        }
+
+        // Function to create orb from server data
+        function createOrb(orbData) {
+            if (!orbData || !orbData.position || !orbData.id) {
+                console.error('Invalid orb data received:', orbData);
+                return null;
+            }
+
+            // Use a shared geometry and material for performance
+            const orbGeometry = getGeometryFromCache('sphere', { radius: 1, widthSegments: 8, heightSegments: 6 });
+            const orbMaterial = getMaterialFromCache('basic', { color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.5 });
+
+            const orbMesh = new THREE.Mesh(orbGeometry, orbMaterial);
+            
+            // Set position
+            orbMesh.position.set(orbData.position.x, orbData.position.y, orbData.position.z);
+            
+            // Store original scale and ID for collision checks
+            orbMesh.userData.originalScale = 1; // Assuming base radius is 1
+            orbMesh.userData.id = orbData.id;
+
+            // Add to scene and map
+            scene.add(orbMesh);
+            orbs.set(orbData.id, orbMesh);
+
+            console.log('Orb created:', orbData.id, orbMesh.position);
+            return orbMesh;
         }
 
         // Update collision check function to handle bridges like towers
