@@ -677,11 +677,9 @@
             group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
             scene.add(group);
 
-            // Create a single box collider for the tower
+            // Create a collision mesh matching the visual geometry
             const collisionBox = new THREE.Box3();
-            const collisionMesh = new THREE.Mesh(
-                getGeometryFromCache('box', { width: 36, height, depth: 36 })
-            );
+            const collisionMesh = new THREE.Mesh(geometry); // Use the visual geometry
             collisionMesh.position.copy(group.position);
             collisionBox.setFromObject(collisionMesh);
             
@@ -740,25 +738,11 @@
             
             // Create collision box that exactly matches the bridge mesh
             const collisionBox = new THREE.Box3();
-            const collisionMesh = new THREE.Mesh(bridgeGeometry);
+            const collisionMesh = new THREE.Mesh(bridgeGeometry); // Use the visual bridge geometry
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
             collisionMesh.scale.set(1, 1, 1); // Ensure proper scaling
-            collisionBox.setFromObject(collisionMesh);
-
-            // Adjust collision box size to match bridge dimensions
-            const size = new THREE.Vector3();
-            collisionBox.getSize(size);
-            const bridgeCollisionWidth = 16; // Match the bridge width constant
-            const adjustedSize = new THREE.Vector3(
-                size.x,
-                bridgeCollisionWidth,
-                bridgeCollisionWidth
-            );
-            collisionBox.setFromCenterAndSize(
-                collisionBox.getCenter(new THREE.Vector3()),
-                adjustedSize
-            );
+            collisionBox.setFromObject(collisionMesh); // Create box directly from mesh
 
             // Add bridge to towers array for consistent handling
             const bridgeObject = {
