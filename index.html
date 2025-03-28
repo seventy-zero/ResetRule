@@ -2314,23 +2314,26 @@
 
                     // Only process movement and game logic if controls are locked and game is started
                     if (controls.isLocked && gameStarted) {
-                        // Store current position (useful for delta calculations if needed elsewhere)
-                        // const oldPosition = camera.position.clone(); 
 
                         // Calculate input direction
                         direction.z = Number(moveForward) - Number(moveBackward);
                         direction.x = Number(moveRight) - Number(moveLeft);
                         direction.normalize(); // Ensure consistent speed diagonally
 
-                        // Apply input acceleration scaled by deltaTime
-                        if (moveForward || moveBackward) velocity.z -= direction.z * moveSpeed * deltaTime;
-                        if (moveLeft || moveRight) velocity.x -= direction.x * moveSpeed * deltaTime;
+                        // Apply input impulse to velocity (NOT scaled by deltaTime here)
+                        // Treat moveSpeed as the amount to change velocity by when key is pressed
+                        if (moveForward || moveBackward) velocity.z -= direction.z * moveSpeed;
+                        if (moveLeft || moveRight) velocity.x -= direction.x * moveSpeed;
 
-                        // --- REMOVE controls.moveRight/moveForward --- 
-                        // These likely interfere with manual delta-scaled position updates
-                        // controls.moveRight(-velocity.x);
-                        // controls.moveForward(-velocity.z);
-                        // --- END REMOVAL ---
+                        // Apply friction/damping to normal movement velocity (framerate independent)
+                        // Do this *before* calculating the frame's movement vector
+                        const effectiveMovementSmoothing = Math.pow(MOVEMENT_SMOOTHING, deltaTime * 60); 
+                        velocity.x *= effectiveMovementSmoothing;
+                        velocity.z *= effectiveMovementSmoothing;
+
+                        // Stop normal movement when velocity is very small 
+                        if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
+                        if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
 
                         // --- Collision Check Block (Ran Before Movement) ---
                         // Update player collider position
