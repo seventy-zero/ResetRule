@@ -2296,30 +2296,16 @@
                         });
                     }
 
-                    // Rotate star fields with reduced frequency
-                    if (currentTime % 2 === 0) { // Update every other frame
-                        starField.rotation.y += 0.0001;
-                        largeStarField.rotation.y += 0.00005;
-                    }
-
-                    // Update tower visibility based on frustum culling
-                    towers.forEach(tower => {
-                        if (tower.mesh) {
-                            const box = new THREE.Box3().setFromObject(tower.mesh);
-                            tower.mesh.visible = frustum.intersectsBox(box);
-                        }
-                    });
-
                     // Rotate star fields (framerate independent)
                     // Define base rotation speeds (radians per second)
                     const starFieldSpeed = 0.005;
                     const largeStarFieldSpeed = 0.003;
                     
                     if (starField) {
-                        starField.rotation.y += starFieldSpeed * delta;
+                        starField.rotation.y += starFieldSpeed * deltaTime; // Use deltaTime
                     }
                     if (largeStarField) {
-                        largeStarField.rotation.y += largeStarFieldSpeed * delta;
+                        largeStarField.rotation.y += largeStarFieldSpeed * deltaTime; // Use deltaTime
                     }
 
                     // Update nebula opacity (example - add your nebula logic here if needed)
