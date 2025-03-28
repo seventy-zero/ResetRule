@@ -501,35 +501,64 @@ wss.on('connection', (ws) => {
                     }
                     break;
 
-                case 'hit_player':
+                case 'shotgun_shot':
                     if (currentRoom) {
-                        const attacker = currentRoom.players.get(ws); // Find who sent the message
-                        // Basic validation: Check if target exists and damage is reasonable
-                        if (attacker && data.targetUsername && data.damage > 0 && data.damage <= SHOTGUN_DAMAGE_PER_PELLET) {
-                            // Find the target player's WebSocket connection
-                            let targetWs = null;
-                            currentRoom.players.forEach((playerData, playerWs) => {
-                                if (playerData.username === data.targetUsername) {
-                                    targetWs = playerWs;
+                        const shooter = currentRoom.players.get(ws);
+                        if (shooter) {
+                            // Broadcast shot to all players in the room
+                            currentRoom.broadcast(JSON.stringify({
+                                type: 'shotgun_shot',
+                                username: shooter.username,
+                                position: data.position,
+                                directions: data.directions
+                            }), ws);
+
+                            // Check for hits on other players
+                            currentRoom.players.forEach((player, playerWs) => {
+                                if (playerWs === ws) return; // Skip shooter
+
+                                const playerPos = new THREE.Vector3(
+                                    player.position[0],
+                                    player.position[1],
+                                    player.position[2]
+                                );
+                                const shooterPos = new THREE.Vector3(
+                                    data.position[0],
+                                    data.position[1],
+                                    data.position[2]
+                                );
+                                
+                                const distance = playerPos.distanceTo(shooterPos);
+                                
+                                // Check if player is within range (10 units)
+                                if (distance <= 10) {
+                                    // Check each pellet direction
+                                    data.directions.forEach(pelletDir => {
+                                        const direction = new THREE.Vector3(
+                                            pelletDir[0],
+                                            pelletDir[1],
+                                            pelletDir[2]
+                                        ).normalize();
+                                        
+                                        const toPlayer = playerPos.clone()
+                                            .sub(shooterPos)
+                                            .normalize();
+                                        
+                                        // Calculate angle between shot and player
+                                        const angle = direction.angleTo(toPlayer);
+                                        
+                                        // If player is within the cone (45 degrees = 0.785 radians)
+                                        if (angle <= 0.785) {
+                                            // Send damage message to hit player
+                                            playerWs.send(JSON.stringify({
+                                                type: 'player_damaged',
+                                                username: player.username,
+                                                damage: 20 // Damage per pellet
+                                            }));
+                                        }
+                                    });
                                 }
                             });
-
-                            // If target found, broadcast the hit event to everyone in the room
-                            if (targetWs) {
-                                console.log(`Broadcasting hit: ${attacker.username} -> ${data.targetUsername} for ${data.damage} damage`);
-                                currentRoom.broadcast(JSON.stringify({
-                                    type: 'player_hit',
-                                    targetUsername: data.targetUsername,
-                                    damage: data.damage,
-                                    attackerUsername: attacker.username // Include attacker
-                                }));
-                                // Note: Server doesn't track health here, just relays the message.
-                                // A more robust implementation would manage health server-side.
-                            } else {
-                                 console.log(`Hit target ${data.targetUsername} not found in room.`);
-                            }
-                        } else {
-                             console.log('Invalid hit_player message received:', data);
                         }
                     }
                     break;
