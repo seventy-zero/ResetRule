@@ -267,7 +267,7 @@
         const moveSpeed = 22.0; // Units per second
         const gravity = 0.025; // Reduced from 0.015 for longer air time
         const flingStrength = 3.0; // Increased from 2.75
-        const flingDamping = 0.8; // Controls how quickly the fling velocity decreases (closer to 1 means less damping)
+        const flingDamping = 0.999; // Controls how quickly the fling velocity decreases (closer to 1 means less damping)
         const clock = new THREE.Clock();
         const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
         const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
