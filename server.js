@@ -207,7 +207,7 @@ function generateWorld() {
             const z = (Math.random() - 0.5) * MAX_RADIUS * 2;
             
             // Increase vertical range for orbs
-            const y = Math.random() * 1000 + 90; // Height between 30 and 1030 (was 50-250)
+            const y = Math.random() * 800 + 50; // Height between 30 and 1030 (was 50-250)
             
             // Check if we're inside a tower with more lenient distance
             let insideTower = false;
