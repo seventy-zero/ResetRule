@@ -380,7 +380,7 @@
                 if (!this.isVisible) return; // Don't update if not visible
 
                 // Use exponential smoothing for interpolation towards the authoritative position
-                const lerpFactor = 1 - Math.exp(-10 * deltaTime); // Adjust -10 to make smoothing faster/slower
+                const lerpFactor = 1 - Math.exp(-20 * deltaTime); // Adjust -20 to make smoothing faster/slower
 
                 // Smoothly interpolate position towards the last known server position
                 this.mesh.position.lerp(this.position, lerpFactor);
