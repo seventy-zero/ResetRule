@@ -261,6 +261,47 @@
         import * as THREE from 'three';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
+        // Initialize scene, camera, and renderer
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000);
+        document.body.appendChild(renderer.domElement);
+
+        // Add controls
+        controls = new PointerLockControls(camera, document.body);
+
+        // Add pointer lock controls event listeners
+        controls.addEventListener('lock', function () {
+            document.getElementById('instructions').classList.add('hidden');
+        });
+
+        controls.addEventListener('unlock', function () {
+            document.getElementById('instructions').classList.remove('hidden');
+        });
+
+        // Position camera
+        camera.position.y = playerHeight;
+
+        // Add ambient light
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        // Add directional light
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        // Add event listener for window resize
+        window.addEventListener('resize', onWindowResize, false);
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
         // Global variables and constants
         const playerHeight = 10;
         const playerRadius = 2;
@@ -1349,6 +1390,9 @@
                 fireShotgun();
             });
         }
+
+        // Start the animation loop
+        animate();
     </script>
 </body>
 </html>
