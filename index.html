@@ -2336,12 +2336,108 @@
                         if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
 
                         // --- Collision Check Block (Ran Before Movement) ---
-                        // Update player collider position
-                        playerCollider.center.copy(camera.position);
+                        // Update player collider position (using position BEFORE this frame's movement is applied)
+                        const positionBeforeFrame = camera.position.clone();
+                        playerCollider.center.copy(positionBeforeFrame);
 
-                        // Check collisions with all towers
-                        const movementCollision = checkCollision(camera.position, playerRadius);
-                        handleCollision(movementCollision, isFlinging);
+                        // Check collisions based on the position before movement
+                        const movementCollision = checkCollision(positionBeforeFrame, playerRadius);
+                        
+                        // --- [REMOVE] Old simple handleCollision call ---
+                        // handleCollision(movementCollision, isFlinging); 
+                        // --- [END REMOVAL] ---
+
+                        // --- [INSERT] Detailed Collision Response Logic --- 
+                        if (movementCollision.collision) {
+                            const distance = positionBeforeFrame.distanceTo(movementCollision.closestPoint);
+                            const isStuck = distance < playerRadius * STUCK_THRESHOLD;
+                            
+                            if (isStuck) {
+                                // Player is stuck, apply stronger push-out force (immediate correction, no delta)
+                                const pushDir = new THREE.Vector3();
+                                pushDir.copy(positionBeforeFrame).sub(movementCollision.closestPoint).normalize();
+                                const pushDistance = playerRadius * STUCK_PUSH_FORCE;
+                                camera.position.x += pushDir.x * pushDistance;
+                                camera.position.z += pushDir.z * pushDistance;
+
+                                // Add upward velocity impulse to help escape
+                                verticalVelocity = 1.0; // Reset vertical velocity for escape attempt
+                                isGrounded = false;
+
+                                // Modify horizontal velocity for escape
+                                if (isFlinging) {
+                                    const flingSpeed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                    flingVelocity.x = pushDir.x * flingSpeed * 2.0;
+                                    flingVelocity.z = pushDir.z * flingSpeed * 2.0;
+                                } else {
+                                    velocity.x = pushDir.x * 2.0;
+                                    velocity.z = pushDir.z * 2.0;
+                                }
+                            } else {
+                                // Normal collision response (not stuck)
+                                const pushDir = new THREE.Vector3();
+                                pushDir.copy(positionBeforeFrame).sub(movementCollision.closestPoint).normalize();
+                                const pushDistance = playerRadius - distance; // Penetration depth
+
+                                // Store vertical velocity *before* potential gravity application
+                                const verticalVelocityBeforeCheck = verticalVelocity;
+
+                                // Check if hitting an underside while moving up
+                                if (pushDir.y < -0.1 && verticalVelocityBeforeCheck > 0) {
+                                    // Log hitting underside
+                                    console.log('Collision: Hitting underside', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck });
+
+                                    // Stop upward movement immediately
+                                    verticalVelocity = 0;
+                                    isGrounded = false;
+
+                                    // Apply full 3D push-out (immediate correction, no delta)
+                                    camera.position.addScaledVector(pushDir, pushDistance * COLLISION_PUSH_FORCE);
+
+                                    // Dampen horizontal velocity after hitting ceiling
+                                    if (isFlinging) {
+                                        flingVelocity.x *= 0.5;
+                                        flingVelocity.z *= 0.5;
+                                    } else {
+                                        velocity.x = 0;
+                                        velocity.z = 0;
+                                    }
+                                } else {
+                                    // Standard collision response (horizontal push/sliding)
+                                    // Log standard collision
+                                    console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
+
+                                    // Apply horizontal push-out (immediate correction, no delta)
+                                    const horizontalPushForce = isFlinging ? COLLISION_PUSH_FORCE * 1.5 : COLLISION_PUSH_FORCE;
+                                    camera.position.x += pushDir.x * pushDistance * horizontalPushForce;
+                                    camera.position.z += pushDir.z * pushDistance * horizontalPushForce;
+
+                                    // Adjust velocities based on collision (Sliding / Reflection)
+                                    const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
+                                    if (isFlinging) {
+                                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                        // Reflect velocity (simple version) + dampen
+                                        const dot = flingVelocity.x * horizontalPushNormal.x + flingVelocity.z * horizontalPushNormal.z;
+                                        if (dot < 0) { // Only reflect if moving towards collision normal
+                                          flingVelocity.x -= 2 * dot * horizontalPushNormal.x * 0.8; // Reflect with some energy loss
+                                          flingVelocity.z -= 2 * dot * horizontalPushNormal.z * 0.8;
+                                        }
+                                        flingVelocity.multiplyScalar(0.8); // Extra dampening on fling collision
+                                    } else {
+                                        // Normal movement sliding
+                                        const dotProduct = horizontalPushNormal.x * velocity.x + horizontalPushNormal.z * velocity.z;
+                                        if (dotProduct < 0) { // Moving into the wall
+                                            // Project velocity onto the collision plane (slide)
+                                            const slideVelX = velocity.x - dotProduct * horizontalPushNormal.x;
+                                            const slideVelZ = velocity.z - dotProduct * horizontalPushNormal.z;
+                                            velocity.x = slideVelX * CORNER_SLIDE_FORCE; // Apply sliding with force factor
+                                            velocity.z = slideVelZ * CORNER_SLIDE_FORCE;
+                                        } // else: moving away or parallel, let friction handle it
+                                    }
+                                }
+                            }
+                        } // End of movementCollision response block
+                        // --- [END INSERT] ---
 
                         // Update line trace position
                         const cameraDirection = new THREE.Vector3();
