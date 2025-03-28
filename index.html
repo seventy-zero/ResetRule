@@ -692,7 +692,7 @@
         // Function to create bridge from server data
         function createBridgeFromData(bridgeData) {
             // Calculate bridge dimensions
-            const bridgeWidth = 16;
+            const bridgeWidth = 8; // Reduced width for narrower bridges
             const startPos = new THREE.Vector3(
                 bridgeData.startX || bridgeData.start.x,
                 bridgeData.height,
@@ -2254,8 +2254,8 @@
 
                     // Rotate star fields with reduced frequency
                     if (currentTime % 2 === 0) { // Update every other frame
-                        starField.rotation.y += 0.0001;
-                        largeStarField.rotation.y += 0.00005;
+                        starField.rotation.y += 0.001; // Increased rotation speed
+                        largeStarField.rotation.y += 0.0005; // Increased rotation speed
                     }
 
                     // Update tower visibility based on frustum culling
