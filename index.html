@@ -375,31 +375,28 @@
                     return;
                 }
 
-                const currentTime = Date.now();
-                const timeSinceUpdate = currentTime - this.lastUpdateTime;
-                
-                // Make sure mesh is visible
-                this.mesh.visible = true;
+                // Make sure mesh is visible if it should be
+                this.mesh.visible = this.isVisible;
+                if (!this.isVisible) return; // Don't update if not visible
 
-                // Calculate movement based on speed and heading
+                // Use exponential smoothing for interpolation towards the authoritative position
+                const lerpFactor = 1 - Math.exp(-10 * deltaTime); // Adjust -10 to make smoothing faster/slower
+
+                // Smoothly interpolate position towards the last known server position
+                this.mesh.position.lerp(this.position, lerpFactor);
+
+                // Smoothly interpolate rotation (using slerp for Quaternions is better, but lerp for Euler might suffice)
+                // For simplicity, let's stick to setting rotation directly based on heading for now,
+                // assuming heading is updated reliably with position.
+                // If rotation also jitters, we'll need to interpolate playerState.rotation too.
                 const headingRad = (this.heading * Math.PI) / 180;
-                const distanceMoved = this.speed * deltaTime;
+                this.mesh.rotation.y = -headingRad; // Still setting directly based on heading
 
-                // Calculate target positions
-                const targetX = this.position.x - Math.sin(headingRad) * distanceMoved;
-                const targetZ = this.position.z - Math.cos(headingRad) * distanceMoved;
-                const targetY = this.position.y + this.verticalSpeed * deltaTime;
-
-                // Use exponential smoothing for interpolation
-                const lerpFactor = 1 - Math.exp(-10 * deltaTime);
-
-                // Smoothly interpolate position
-                this.mesh.position.x += (targetX - this.mesh.position.x) * lerpFactor;
-                this.mesh.position.z += (targetZ - this.mesh.position.z) * lerpFactor;
-                this.mesh.position.y += (targetY - this.mesh.position.y) * lerpFactor;
-
-                // Update rotation
-                this.mesh.rotation.y = -headingRad;
+                // Optionally, you could lerp rotation as well:
+                // const targetRotation = new THREE.Euler(0, -headingRad, 0); // Assuming Y-axis rotation based on heading
+                // this.mesh.rotation.x += (targetRotation.x - this.mesh.rotation.x) * lerpFactor;
+                // this.mesh.rotation.y += (targetRotation.y - this.mesh.rotation.y) * lerpFactor;
+                // this.mesh.rotation.z += (targetRotation.z - this.mesh.rotation.z) * lerpFactor;
             }
         }
 
