@@ -730,6 +730,9 @@
                 bridgeMaterials[1]
             );
 
+            // Calculate local bounding box (Axis-Aligned relative to the bridge geometry)
+            const localCollisionBox = new THREE.Box3().setFromObject(bridgeMesh);
+
             // Position bridge
             bridgeGroup.add(bridgeMesh);
             bridgeGroup.add(bridgeEdges);
@@ -737,44 +740,22 @@
             bridgeGroup.rotation.y = angle;
 
             scene.add(bridgeGroup);
-            
-            // Create collision box that exactly matches the bridge mesh
-            const collisionBox = new THREE.Box3();
-            const collisionMesh = new THREE.Mesh(bridgeGeometry);
-            collisionMesh.position.copy(bridgeGroup.position);
-            collisionMesh.rotation.copy(bridgeGroup.rotation);
-            collisionMesh.scale.set(1, 1, 1); // Ensure proper scaling
-            collisionBox.setFromObject(collisionMesh);
-
-            // Adjust collision box size to match bridge dimensions
-            const size = new THREE.Vector3();
-            collisionBox.getSize(size);
-            const bridgeCollisionWidth = 16; // Match the bridge width constant
-            const adjustedSize = new THREE.Vector3(
-                size.x,
-                bridgeCollisionWidth,
-                bridgeCollisionWidth
-            );
-            collisionBox.setFromCenterAndSize(
-                collisionBox.getCenter(new THREE.Vector3()),
-                adjustedSize
-            );
 
             // Add bridge to towers array for consistent handling
             const bridgeObject = {
-                mesh: bridgeGroup,
-                collisionBoxes: [collisionBox],
+                mesh: bridgeGroup, // Store the group which has world transform
+                localCollisionBox: localCollisionBox, // Store the local box
                 isBridge: true // Add flag to identify bridges
             };
             towers.push(bridgeObject);
-            
-            // Verify collision box was added
-            console.log('Bridge added to collision system:', {
-                totalObjects: towers.length,
-                hasCollisionBox: bridgeObject.collisionBoxes.length > 0,
-                collisionBoxSize: collisionBox.getSize(new THREE.Vector3())
-            });
 
+            // Log bridge collision box details for debugging
+            console.log('Bridge added to collision system:', {
+                center: bridgeObject.localCollisionBox.getCenter(new THREE.Vector3()), // Log local center
+                size: bridgeObject.localCollisionBox.getSize(new THREE.Vector3()),     // Log local size
+                hasCollisionBox: !!bridgeObject.localCollisionBox, // Check if local box exists
+                isBridge: bridgeObject.isBridge
+            });
             return bridgeGroup;
         }
 
@@ -783,39 +764,86 @@
             const playerCollider = new THREE.Sphere(position, radius);
             let closestCollision = null;
             let minDistance = Infinity;
-
+            
+            // Temporary vectors for calculations to avoid re-allocation in loop
+            const worldToLocalMatrix = new THREE.Matrix4();
+            const localPosition = new THREE.Vector3();
+            const localClosestPoint = new THREE.Vector3();
+            const worldClosestPoint = new THREE.Vector3();
+            
             for (const tower of towers) {
-                for (const collisionBox of tower.collisionBoxes) {
-                    // Get the closest point on the collision box to the player
-                    const closestPoint = new THREE.Vector3();
-                    collisionBox.clampPoint(position, closestPoint);
+                const isBridge = tower.isBridge;
+                
+                if (isBridge && tower.localCollisionBox && tower.mesh) {
+                    // --- OBB Check for Bridges ---
+                    const bridgeMesh = tower.mesh;
+                    const localBox = tower.localCollisionBox;
+                    
+                    // Ensure world matrix is up-to-date
+                    bridgeMesh.updateMatrixWorld(true);
+                    
+                    // Get matrix to transform world -> local
+                    worldToLocalMatrix.copy(bridgeMesh.matrixWorld).invert();
+                    
+                    // Transform player position to bridge's local space
+                    localPosition.copy(position).applyMatrix4(worldToLocalMatrix);
+                    
+                    // Find closest point on the local AABB
+                    localBox.clampPoint(localPosition, localClosestPoint);
+                    
+                    // Calculate distance in local space
+                    const distance = localPosition.distanceTo(localClosestPoint);
+                    
+                    // Check if the player sphere intersects the box
+                    if (distance < radius) {
+                        // Transform the local closest point back to world space for response
+                        worldClosestPoint.copy(localClosestPoint).applyMatrix4(bridgeMesh.matrixWorld);
+                        
+                        // Check if this is the closest collision so far
+                        const worldDistance = position.distanceTo(worldClosestPoint); // Use world distance for comparison
+                        if (worldDistance < minDistance) {
+                            minDistance = worldDistance;
+                            closestCollision = {
+                                collision: true,
+                                tower: tower,
+                                collisionBox: localBox, // Store local box for potential debug?
+                                distance: worldDistance,      // Store world distance
+                                closestPoint: worldClosestPoint.clone(), // Store world point
+                                isBridge: true
+                            };
+                        }
+                    }
+                } else if (!isBridge && tower.collisionBoxes && tower.collisionBoxes.length > 0) {
+                    // --- AABB Check for Towers (existing logic) ---
+                    const collisionBox = tower.collisionBoxes[0]; // Assume first box is the main one
+                    
+                    // Get the closest point on the world AABB to the player
+                    worldClosestPoint.copy(position); // Use worldClosestPoint vector
+                    collisionBox.clampPoint(worldClosestPoint, worldClosestPoint);
                     
                     // Calculate distance to closest point
-                    const distance = position.distanceTo(closestPoint);
+                    const distance = position.distanceTo(worldClosestPoint);
                     
-                    // Check if this is a bridge
-                    const isBridge = tower.isBridge || tower.mesh.name === 'bridge';
-                    
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestCollision = {
-                            collision: true,
-                            tower: tower,
-                            collisionBox: collisionBox,
-                            distance: distance,
-                            closestPoint: closestPoint,
-                            isBridge: isBridge
-                        };
+                    // Check if sphere intersects AABB
+                    if (distance < radius) {
+                        // Check if this is the closest collision so far
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            closestCollision = {
+                                collision: true,
+                                tower: tower,
+                                collisionBox: collisionBox, // Store world AABB
+                                distance: distance,
+                                closestPoint: worldClosestPoint.clone(), // Store world point
+                                isBridge: false
+                            };
+                        }
                     }
                 }
             }
             
-            // Only return collision if we're actually within the collision radius
-            if (closestCollision && closestCollision.distance < radius) {
-                return closestCollision;
-            }
-            
-            return {
+            // Return the closest valid collision found
+            return closestCollision || {
                 collision: false,
                 tower: null,
                 collisionBox: null,
