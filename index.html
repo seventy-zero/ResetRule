@@ -2310,6 +2310,21 @@
                         }
                     });
 
+                    // Rotate star fields (framerate independent)
+                    // Define base rotation speeds (radians per second)
+                    const starFieldSpeed = 0.005;
+                    const largeStarFieldSpeed = 0.003;
+                    
+                    if (starField) {
+                        starField.rotation.y += starFieldSpeed * delta;
+                    }
+                    if (largeStarField) {
+                        largeStarField.rotation.y += largeStarFieldSpeed * delta;
+                    }
+
+                    // Update nebula opacity (example - add your nebula logic here if needed)
+                    // if (nebulaMaterial) { ... }
+
                     // Only process movement and game logic if controls are locked and game is started
                     if (controls.isLocked && gameStarted) {
                         // Store current position
