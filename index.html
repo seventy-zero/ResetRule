@@ -2340,26 +2340,82 @@
                         const movementCollision = checkCollision(positionBeforeFrame, playerRadius);
                         
                         if (movementCollision.collision) {
-                            // ... [Detailed Collision Response Logic - largely unchanged] ...
-                            // This block will correct the camera.position based on the collision
-                            // It might need slight adjustments if velocity interaction was removed
+                            // --- Define pushDir early, it's needed for multiple conditions ---
+                            const pushDir = new THREE.Vector3();
+                            pushDir.copy(positionBeforeFrame).sub(movementCollision.closestPoint).normalize();
+                            const distance = positionBeforeFrame.distanceTo(movementCollision.closestPoint);
+                            const pushDistance = playerRadius - distance; // Penetration depth
+                            
+                            const isStuck = distance < playerRadius * STUCK_THRESHOLD;
+                            
+                            if (isStuck) {
+                                // Player is stuck, apply stronger push-out force (immediate correction, no delta)
+                                // pushDir is already calculated
+                                camera.position.x += pushDir.x * (playerRadius * STUCK_PUSH_FORCE); // Apply specific stuck force
+                                camera.position.z += pushDir.z * (playerRadius * STUCK_PUSH_FORCE);
 
-                            // Inside the 'else' block for non-stuck collision:
-                            // Find the section adjusting velocities:
-                            // If not hitting ceiling else block:
-                            if (!(pushDir.y < -0.1 && verticalVelocityBeforeCheck > 0)) {
-                               // ... (horizontal push out) ...
-                                const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
+                                // Add upward velocity impulse to help escape
+                                verticalVelocity = 1.0; 
+                                isGrounded = false;
+
+                                // Modify horizontal velocity for escape
                                 if (isFlinging) {
-                                    // Fling reflection/dampening - OK
-                                    // ... 
+                                    const flingSpeed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                    flingVelocity.x = pushDir.x * flingSpeed * 2.0;
+                                    flingVelocity.z = pushDir.z * flingSpeed * 2.0;
+                                } 
+                                // No else needed for velocity here, as WASD velocity isn't used
+                            } else {
+                                // Normal collision response (not stuck)
+                                // pushDir and pushDistance are already calculated
+                                
+                                // Store vertical velocity *before* potential gravity application
+                                const verticalVelocityBeforeCheck = verticalVelocity;
+
+                                // Check if hitting an underside while moving up
+                                if (pushDir.y < -0.1 && verticalVelocityBeforeCheck > 0) {
+                                    // Log hitting underside
+                                    console.log('Collision: Hitting underside', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck });
+
+                                    // Stop upward movement immediately
+                                    verticalVelocity = 0;
+                                    isGrounded = false;
+
+                                    // Apply full 3D push-out using pre-calculated pushDistance
+                                    camera.position.addScaledVector(pushDir, pushDistance * COLLISION_PUSH_FORCE);
+
+                                    // Dampen horizontal velocity after hitting ceiling
+                                    if (isFlinging) {
+                                        flingVelocity.x *= 0.5;
+                                        flingVelocity.z *= 0.5;
+                                    } 
+                                    // No else needed for velocity here
                                 } else {
-                                    // Normal movement sliding - REMOVE or COMMENT OUT as 'velocity' isn't used for WASD now
-                                    // const dotProduct = horizontalPushNormal.x * velocity.x + horizontalPushNormal.z * velocity.z;
-                                    // if (dotProduct < 0) { ... velocity.x = slideVelX * ... etc }
+                                    // Standard collision response (horizontal push/sliding)
+                                    // Log standard collision
+                                    console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
+
+                                    // Apply horizontal push-out using pre-calculated pushDistance
+                                    const horizontalPushForce = isFlinging ? COLLISION_PUSH_FORCE * 1.5 : COLLISION_PUSH_FORCE;
+                                    camera.position.x += pushDir.x * pushDistance * horizontalPushForce;
+                                    camera.position.z += pushDir.z * pushDistance * horizontalPushForce;
+
+                                    // Adjust velocities based on collision (Sliding / Reflection)
+                                    const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
+                                    if (isFlinging) {
+                                        // Fling reflection/dampening - OK
+                                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                        const dot = flingVelocity.x * horizontalPushNormal.x + flingVelocity.z * horizontalPushNormal.z;
+                                        if (dot < 0) { 
+                                          flingVelocity.x -= 2 * dot * horizontalPushNormal.x * 0.8; 
+                                          flingVelocity.z -= 2 * dot * horizontalPushNormal.z * 0.8;
+                                        }
+                                        flingVelocity.multiplyScalar(0.8); 
+                                    } 
+                                    // No else for normal velocity sliding needed anymore
                                 }
                             }
-                        }
+                        } // End of movementCollision response block
                         // --- [End Collision Response Block] ---
 
                         // --- Movement Update --- 
