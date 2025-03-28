@@ -261,6 +261,10 @@
         import * as THREE from 'three';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
+        // --- Device Detection ---
+        const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
+        console.log('Is Touch Device:', isTouchDevice);
+
         // Global variables and constants
         const playerHeight = 10;
         const playerRadius = 2;
@@ -334,7 +338,8 @@
         let moveRight = false;
 
         // Scene-related variables
-        let scene, camera, renderer, controls;
+        let scene, camera, renderer, controls; // Keep controls variable
+        let leftJoystick, rightJoystick; // Variables for joysticks
 
         // Collections
         const towers = [];
@@ -1279,40 +1284,39 @@
             document.body.appendChild(renderer.domElement);
             console.log('Renderer initialized');
 
-            // Controls setup
+            // Controls setup - Initialize PointerLockControls BUT only attach listeners if not touch
             controls = new PointerLockControls(camera, document.body);
             controls.minPolarAngle = 0.1; // Limit looking up (in radians)
             controls.maxPolarAngle = Math.PI - 0.1; // Limit looking down (in radians)
-            controls.enableDamping = true; // Add smooth damping
-            controls.dampingFactor = 0.05; // Adjust damping factor
+            // Disable PointerLockControls damping if using touch, as we handle rotation manually
+            controls.enableDamping = !isTouchDevice; 
+            controls.dampingFactor = 0.05; 
             
-            // Add camera rotation constraints
-            camera.rotation.order = 'YXZ'; // Set rotation order to prevent gimbal lock
-            camera.rotation.x = 0; // Reset initial rotation
-            camera.rotation.z = 0; // Reset initial rotation
-            
-            // Add camera rotation update function
+            // Ensure camera rotation order for manual control too
+            camera.rotation.order = 'YXZ'; 
+            camera.rotation.x = 0; 
+            camera.rotation.z = 0; 
+
+            // Add camera rotation update function (used by both PointerLock and touch)
             function updateCameraRotation() {
                 // Clamp vertical rotation (X axis)
                 camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
-                
                 // Force roll to 0 (Z axis)
                 camera.rotation.z = 0;
-                
                 // Normalize Y rotation to prevent overflow
                 camera.rotation.y = ((camera.rotation.y % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
             }
-            
-            // Add camera rotation update to animation loop
-            const originalAnimate = animate;
-            animate = function() {
-                if (gameStarted && controls.isLocked) {
+
+            // Modify animate function slightly to always call updateCameraRotation if game started
+            const originalAnimate = animate; // Assuming animate is defined later
+            animate = function() { // Redefine animate to wrap the original
+                if (gameStarted) { // No need to check controls.isLocked for manual rotation
                     updateCameraRotation();
                 }
                 originalAnimate();
             };
-            
-            console.log('Controls initialized');
+
+            console.log('Controls initialized (PointerLock listeners attached only for non-touch)');
 
             // Collision setup
             const playerCollider = new THREE.Sphere(new THREE.Vector3(0, playerHeight, 0), playerRadius);
@@ -3603,6 +3607,190 @@
         
         // Also try to play immediately
         resumeAudio();
+
+        function initializeUI() {
+            if (isTouchDevice) {
+                document.getElementById('mobileInstructions').style.display = 'block';
+                // Show mobile controls via CSS already happens with @media
+            } else {
+                document.getElementById('mobileInstructions').style.display = 'none';
+            }
+        }
+
+        // --- Event Listeners Setup ---
+        function setupEventListeners() {
+            // ... (removeEventListener calls if needed) ...
+
+            if (isTouchDevice) {
+                // Setup Touch Listeners
+                setupTouchControls();
+            } else {
+                // Setup Keyboard/Mouse Listeners
+                setupDesktopControls();
+            }
+        }
+
+        function setupDesktopControls() {
+            console.log('Setting up Desktop Controls');
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            // Listener to lock pointer on click (only for desktop)
+            document.addEventListener('click', () => {
+                 if (gameStarted && !controls.isLocked) { // Only lock if game started and not already locked
+                    controls.lock();
+                 }
+            });
+            // Mouse down/up for fling (desktop)
+            document.addEventListener('mousedown', handleFlingStart);
+            document.addEventListener('mouseup', handleFlingEnd);
+            // Pointer lock change listeners (desktop)
+            controls.addEventListener('lock', () => { console.log('Pointer Locked'); });
+            controls.addEventListener('unlock', () => { console.log('Pointer Unlocked'); });
+        }
+
+        function setupTouchControls() {
+            console.log('Setting up Touch Controls');
+            // Initialize Joysticks 
+            initJoysticks();
+            // Fling Button Listeners
+            const flingBtn = document.getElementById('flingButton');
+            flingBtn.addEventListener('touchstart', handleFlingStart, { passive: false });
+            flingBtn.addEventListener('touchend', handleFlingEnd);
+            // Right Stick Look Listeners
+            const rightZone = document.getElementById('rightJoystick');
+            rightZone.addEventListener('touchstart', handleLookStart, { passive: false });
+            rightZone.addEventListener('touchmove', handleLookMove, { passive: false });
+            rightZone.addEventListener('touchend', handleLookEnd);
+            rightZone.addEventListener('touchcancel', handleLookEnd); // Handle cancellation
+        }
+        
+        // --- Input Handlers ---
+        // Keyboard (Desktop)
+        function onKeyDown(event) {
+            switch (event.code) {
+                case 'ArrowUp': case 'KeyW': playerInput.moveForward = true; break;
+                case 'ArrowLeft': case 'KeyA': playerInput.moveLeft = true; break;
+                case 'ArrowDown': case 'KeyS': playerInput.moveBackward = true; break;
+                case 'ArrowRight': case 'KeyD': playerInput.moveRight = true; break;
+            }
+        }
+        function onKeyUp(event) {
+             switch (event.code) {
+                case 'ArrowUp': case 'KeyW': playerInput.moveForward = false; break;
+                case 'ArrowLeft': case 'KeyA': playerInput.moveLeft = false; break;
+                case 'ArrowDown': case 'KeyS': playerInput.moveBackward = false; break;
+                case 'ArrowRight': case 'KeyD': playerInput.moveRight = false; break;
+            }
+        }
+        
+        // Fling Start/End (Shared Logic for Mouse/Touch)
+        function handleFlingStart(event) {
+            // Prevent default only if it's a touch event on the button itself
+            if (event.type === 'touchstart' && event.target.id === 'flingButton') {
+                 event.preventDefault();
+            }
+            // Only activate fling if controls are locked (desktop) or game started (mobile)
+             if (gameStarted && (!isTouchDevice ? controls.isLocked : true)) {
+                 showLine = true;
+             }
+        }
+        function handleFlingEnd() {
+            if (showLine) {
+                showLine = false; // This triggers fling logic in animate
+            }
+        }
+
+        // Touch Look Handlers (Mobile)
+        function handleLookStart(event) {
+            event.preventDefault();
+            if (event.touches.length > 0) {
+                touchLook.active = true;
+                touchLook.startX = event.touches[0].clientX;
+                touchLook.startY = event.touches[0].clientY;
+                touchLook.lastX = touchLook.startX;
+                touchLook.lastY = touchLook.startY;
+            }
+        }
+        function handleLookMove(event) {
+            event.preventDefault();
+            if (!touchLook.active || event.touches.length === 0) return;
+            
+            const currentX = event.touches[0].clientX;
+            const currentY = event.touches[0].clientY;
+            
+            const deltaX = currentX - touchLook.lastX;
+            const deltaY = currentY - touchLook.lastY;
+            
+            // Apply rotation (similar to PointerLockControls internals)
+            camera.rotation.y -= deltaX * touchLook.sensitivity;
+            camera.rotation.x -= deltaY * touchLook.sensitivity;
+            
+            // We call updateCameraRotation() in animate loop to handle clamping
+            
+            touchLook.lastX = currentX;
+            touchLook.lastY = currentY;
+        }
+        function handleLookEnd() {
+            touchLook.active = false;
+        }
+
+        // Joystick Init (Mobile)
+        function initJoysticks() {
+             // Ensure the container exists in HTML for the left joystick
+            let leftZone = document.createElement('div');
+            leftZone.id = 'leftJoystick';
+            leftZone.className = 'joystick-zone';
+            leftZone.style.position = 'fixed'; // Use fixed positioning
+            leftZone.style.bottom = '20px';
+            leftZone.style.left = '20px'; 
+            leftZone.style.width = '120px'; // Match right stick size
+            leftZone.style.height = '120px';
+            leftZone.style.display = 'block'; // Ensure it's visible
+            document.body.appendChild(leftZone);
+
+            console.log("Creating left joystick");
+            leftJoystick = new VirtualJoystick({
+                container: leftZone,
+                mouseSupport: false, // Disable mouse support on touch device
+                limitStickTravel: true,
+                stickRadius: 50 // Adjust size as needed
+            });
+
+            // Right joystick area already exists in HTML (#rightJoystick)
+            // We use its touch events directly for looking, not VirtualJoystick lib
+        }
+        
+        // --- Start Button Logic ---
+        // ... (Make sure startButton listener correctly calls setupEventListeners) ...
+        // Modified start button handler
+        startButton.addEventListener('click', function(event) {
+            // ... (get username, hide instructions) ...
+            playerUsername = usernameInput.value.trim();
+            instructionsDiv.classList.add('hidden');
+            gameStarted = true;
+
+            // Setup appropriate controls
+            setupEventListeners(); 
+
+            // Lock pointer only on desktop
+            if (!isTouchDevice) {
+                controls.lock();
+            }
+
+            // Send join message if WebSocket is ready
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                 ws.send(JSON.stringify({ type: 'join', username: playerUsername }));
+            }
+            // Request world data if needed
+            // ... 
+        });
+        
+        // Call setupWebSocket if not already done
+        // if (!wsConnectionAttempted) { setupWebSocket(); wsConnectionAttempted = true; }
+
+        // Placeholder for the actual animate function definition
+        // function animate() { ... }
+
     </script>
 </body>
 </html>
