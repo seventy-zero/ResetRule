@@ -2617,9 +2617,15 @@
                                 const pushDir = new THREE.Vector3();
                                 pushDir.copy(camera.position).sub(normalCollision.closestPoint).normalize();
                                 const pushDistance = playerRadius - distance; // penetration depth
+                                
+                                // Store vertical velocity *before* gravity might affect it later in the loop
+                                const verticalVelocityBeforeCheck = verticalVelocity; 
 
-                                // Check if hitting an underside while moving up
-                                if (pushDir.y < -0.1 && verticalVelocity > 0) { // Collision point is below, and player moving up?
+                                // Check if hitting an underside while moving up (using pre-check velocity)
+                                if (pushDir.y < -0.1 && verticalVelocityBeforeCheck > 0) { 
+                                    // Log hitting underside
+                                    console.log('Collision: Hitting underside', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck });
+                                    
                                     // Stop upward movement immediately
                                     verticalVelocity = 0; 
                                     isGrounded = false; // No longer moving up, but not grounded yet
@@ -2637,7 +2643,10 @@
                                     }
                                 } else {
                                     // Standard collision response (horizontal push, sliding, etc.)
-                                    // This handles collisions from sides, top, or hitting underside while moving down
+                                    // If not hitting underside while moving up, apply horizontal push/slide
+                                    // Log standard collision
+                                    console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
+
                                     if (isFlinging) {
                                         // Push out horizontally
                                         camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE * 1.5;
