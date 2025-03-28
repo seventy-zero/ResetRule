@@ -860,7 +860,18 @@
                 const orbPosition = orb.position;
                 const distance = position.distanceTo(orbPosition);
                 
-                if (distance < (radius * 10) + orb.userData.originalScale) { // Increased from 5x to 10x
+                // --- DEBUG LOGGING START ---
+                if (isMobile) {
+                    // Log distance only for nearby orbs to avoid spamming the console
+                    if (distance < (radius * 10) + orb.userData.originalScale + 50) { // Log if within potential collision range + buffer
+                         console.log(`[Mobile Debug] Orb ${orbId} distance: ${distance.toFixed(2)} | Check: < ${(radius * 10 + orb.userData.originalScale).toFixed(2)}`);
+                    }
+                }
+                // --- DEBUG LOGGING END ---
+
+                // Collision condition: distance < combined radii
+                // Player effective radius = radius * 10
+                if (distance < (radius * 10) + orb.userData.originalScale) {
                     if (distance < minDistance) {
                         minDistance = distance;
                         closestOrb = { orb, orbId };
@@ -2690,6 +2701,11 @@
                     playerCollider.center.copy(camera.position);
 
                     // Check for orb collisions
+                    // --- DEBUG LOGGING START ---
+                    if (isMobile) {
+                        console.log(`[Mobile Debug] Checking orb collision. Orbs count: ${orbs.size}, Player Pos: ${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)}`);
+                    }
+                    // --- DEBUG LOGGING END ---
                     const orbCollision = checkOrbCollision(camera.position, playerRadius);
                     if (orbCollision) {
                         // Send collection message to server
