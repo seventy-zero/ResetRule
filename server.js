@@ -206,8 +206,8 @@ function generateWorld() {
             const x = (Math.random() - 0.5) * MAX_RADIUS * 2;
             const z = (Math.random() - 0.5) * MAX_RADIUS * 2;
             
-            // Simple height distribution
-            const y = Math.random() * 200 + 50; // Height between 50 and 250
+            // Increase vertical range for orbs
+            const y = Math.random() * 1000 + 90; // Height between 30 and 1030 (was 50-250)
             
             // Check if we're inside a tower with more lenient distance
             let insideTower = false;
@@ -250,7 +250,7 @@ function generateWorld() {
             // force place the orb at a random position
             const x = (Math.random() - 0.5) * MAX_RADIUS * 2;
             const z = (Math.random() - 0.5) * MAX_RADIUS * 2;
-            const y = Math.random() * 200 + 50;
+            const y = Math.random() * 1000 + 30;
             const color = Math.floor(Math.random() * 0xFFFFFF);
             const size = Math.random() * 0.5 + 0.5;
 
