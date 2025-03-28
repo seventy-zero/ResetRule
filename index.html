@@ -1720,7 +1720,6 @@
                 // Add fling button event listeners
                 flingBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
-                    e.stopPropagation(); // Prevent event from reaching camera controls
                     flingStartTime = performance.now();
                     console.log('Fling button touch started');
                     showLine = true;
@@ -1751,7 +1750,6 @@
 
                 flingBtn.addEventListener('touchmove', function(e) {
                     e.preventDefault();
-                    e.stopPropagation(); // Prevent event from reaching camera controls
                     if (!showLine) return;
                     
                     // Update line trace position
@@ -1807,7 +1805,6 @@
 
                 flingBtn.addEventListener('touchend', function(e) {
                     e.preventDefault();
-                    e.stopPropagation(); // Prevent event from reaching camera controls
                     const touchDuration = performance.now() - flingStartTime;
                     console.log('Fling button touch ended');
                     showLine = false;
@@ -3308,8 +3305,8 @@
             shotgunButton.id = 'shotgunButton';
             shotgunButton.style.cssText = `
                 position: fixed;
-                bottom: 160px;
-                right: 40px;
+                bottom: 250px; /* Positioned above fling button */
+                left: 40px;    /* Aligned with fling button */
                 width: 80px;
                 height: 80px;
                 background: rgba(255, 165, 0, 0.6);
