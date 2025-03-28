@@ -1898,9 +1898,9 @@
                 let lastUpdateTime = 0;
                 const updateInterval = 1000 / 60;
                 let cameraVelocity = new THREE.Vector2();
-                const CAMERA_ACCELERATION = 0.3; // Reduced from 0.5
+                const CAMERA_ACCELERATION = 0.15; // Halved sensitivity
                 const CAMERA_DECELERATION = 0.8;
-                const MAX_CAMERA_SPEED = 0.05; // Reduced from 0.1
+                const MAX_CAMERA_SPEED = 0.025; // Halved sensitivity
 
                 // Movement control variables
                 let leftTouchStartX = 0;
@@ -1917,6 +1917,7 @@
                 // Right joystick touch handlers
                 rightJoystickZone.addEventListener('touchstart', function(e) {
                     e.preventDefault();
+                    e.stopPropagation(); // Try stopping propagation
                     const touch = e.touches[0];
                     rightTouchStartX = touch.clientX;
                     rightTouchStartY = touch.clientY;
@@ -2366,6 +2367,12 @@
                         inputDirection.z = Number(moveForward) - Number(moveBackward);
                         inputDirection.x = Number(moveRight) - Number(moveLeft);
                         inputDirection.normalize(); // Ensure consistent speed diagonally
+
+                        // --- MOBILE DEBUG LOG START ---
+                        if (isMobile && (moveForward || moveBackward || moveLeft || moveRight)) {
+                           console.log(`[Mobile Debug Animate] Flags: F=${moveForward}, B=${moveBackward}, L=${moveLeft}, R=${moveRight}`);
+                        }
+                        // --- MOBILE DEBUG LOG END ---
 
                         // --- Calculate Movement Distance for this Frame ---
                         // Treat moveSpeed as units per second
