@@ -677,9 +677,11 @@
             group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
             scene.add(group);
 
-            // Create a collision mesh matching the visual geometry
+            // Create a single box collider for the tower
             const collisionBox = new THREE.Box3();
-            const collisionMesh = new THREE.Mesh(geometry); // Use the visual geometry
+            const collisionMesh = new THREE.Mesh(
+                getGeometryFromCache('box', { width: 36, height, depth: 36 })
+            );
             collisionMesh.position.copy(group.position);
             collisionBox.setFromObject(collisionMesh);
             
@@ -692,7 +694,7 @@
         // Function to create bridge from server data
         function createBridgeFromData(bridgeData) {
             // Calculate bridge dimensions
-            const bridgeWidth = 8; // Reduced width for narrower bridges
+            const bridgeWidth = 16;
             const startPos = new THREE.Vector3(
                 bridgeData.startX || bridgeData.start.x,
                 bridgeData.height,
@@ -738,11 +740,25 @@
             
             // Create collision box that exactly matches the bridge mesh
             const collisionBox = new THREE.Box3();
-            const collisionMesh = new THREE.Mesh(bridgeGeometry); // Use the visual bridge geometry
+            const collisionMesh = new THREE.Mesh(bridgeGeometry);
             collisionMesh.position.copy(bridgeGroup.position);
             collisionMesh.rotation.copy(bridgeGroup.rotation);
             collisionMesh.scale.set(1, 1, 1); // Ensure proper scaling
-            collisionBox.setFromObject(collisionMesh); // Create box directly from mesh
+            collisionBox.setFromObject(collisionMesh);
+
+            // Adjust collision box size to match bridge dimensions
+            const size = new THREE.Vector3();
+            collisionBox.getSize(size);
+            const bridgeCollisionWidth = 16; // Match the bridge width constant
+            const adjustedSize = new THREE.Vector3(
+                size.x,
+                bridgeCollisionWidth,
+                bridgeCollisionWidth
+            );
+            collisionBox.setFromCenterAndSize(
+                collisionBox.getCenter(new THREE.Vector3()),
+                adjustedSize
+            );
 
             // Add bridge to towers array for consistent handling
             const bridgeObject = {
@@ -2252,9 +2268,11 @@
                         });
                     }
 
-                    // Rotate star fields every frame for smoothness
-                    starField.rotation.y += 0.003; // Tripled rotation speed
-                    largeStarField.rotation.y += 0.0015; // Tripled rotation speed
+                    // Rotate star fields with reduced frequency
+                    if (currentTime % 2 === 0) { // Update every other frame
+                        starField.rotation.y += 0.0001;
+                        largeStarField.rotation.y += 0.00005;
+                    }
 
                     // Update tower visibility based on frustum culling
                     towers.forEach(tower => {
@@ -2620,9 +2638,776 @@
                 renderer.render(scene, camera);
             }
             animate();
+
+            // Send position updates
+            function sendPositionUpdate() {
+                if (ws.readyState === WebSocket.OPEN && gameStarted) {
+                    // Calculate speed and heading
+                    const dx = camera.position.x - lastSentPosition.x;
+                    const dz = camera.position.z - lastSentPosition.z;
+                    const speed = Math.sqrt(dx * dx + dz * dz) / (0.016); // Assuming 60fps
+                    const heading = Math.atan2(-dx, -dz) * 180 / Math.PI;
+                    const verticalSpeed = (camera.position.y - lastSentPosition.y) / 0.016;
+
+                    // Round position data to 2 decimal places
+                    const positionData = {
+                        position: [
+                            Math.round(camera.position.x * 100) / 100,
+                            Math.round(camera.position.y * 100) / 100,
+                            Math.round(camera.position.z * 100) / 100
+                        ],
+                        rotation: [
+                            Math.round(camera.rotation.x * 100) / 100,
+                            Math.round(camera.rotation.y * 100) / 100,
+                            Math.round(camera.rotation.z * 100) / 100
+                        ],
+                        speed: Math.round(speed),
+                        heading: Math.round(heading),
+                        verticalSpeed: Math.round(verticalSpeed * 100) / 100
+                    };
+
+                    ws.send(JSON.stringify({
+                        type: 'position',
+                        ...positionData
+                    }));
+
+                    lastSentPosition.copy(camera.position);
+                    lastSentRotation.copy(camera.rotation);
+                }
+            }
+
+            // Update position more frequently (16ms = ~60fps)
+            setInterval(sendPositionUpdate, 16);
+
+            // Add periodic player list updates
+            setInterval(() => {
+                if (document.getElementById('playerList').classList.contains('visible')) {
+                    updatePlayerList();
+                }
+            }, 100); // Update every 100ms when visible
         } catch (error) {
-            console.error('Error setting up game:', error);
+            console.error('Error during initialization:', error);
+            document.body.innerHTML = `
+                <div style="color: white; background: rgba(0,0,0,0.8); padding: 20px; text-align: center;">
+                    An error occurred while initializing the game.<br>
+                    Please try refreshing the page or use a different browser.
+                </div>
+            `;
+            throw error;
         }
+
+        // Initialize WebSocket connection AFTER scene is set up
+        setupWebSocket();
+
+        // Function to create an orb
+        function createOrb(orbData) {
+            console.log('Creating orb with data:', orbData);
+            
+            // Make orbs larger (10x instead of 5x)
+            const baseSize = orbData.size * 10;
+            
+            // Use dodecahedron geometry instead of sphere
+            const geometry = new THREE.DodecahedronGeometry(baseSize, 0);
+            
+            // Create a glowing material with enhanced emissive properties
+            const material = new THREE.MeshPhongMaterial({
+                color: orbData.color,
+                emissive: orbData.color,
+                emissiveIntensity: 2.0, // Increased from 1.0 for stronger glow
+                transparent: true,
+                opacity: 0.9,
+                shininess: 200, // Increased from 100 for more shine
+                specular: 0xffffff // Add white specular highlight
+            });
+            
+            const orb = new THREE.Mesh(geometry, material);
+            orb.position.set(
+                orbData.position.x,
+                orbData.position.y,
+                orbData.position.z
+            );
+            
+            // Store original scale but no animation needed
+            orb.userData.originalScale = baseSize;
+            
+            // Add to scene and store in orbs collection
+            scene.add(orb);
+            orbs.set(orbData.id, orb);
+            
+            // Debug logging for position and visibility
+            console.log('Orb created successfully:', {
+                id: orbData.id,
+                position: orb.position,
+                size: baseSize,
+                color: orbData.color,
+                visible: orb.visible,
+                parent: orb.parent,
+                inScene: scene.children.includes(orb)
+            });
+            
+            return orb;
+        }
+
+        // Add after the playerOrbs Map declaration
+        function updateOrbCount() {
+            const orbCountElement = document.getElementById('orbCount');
+            const currentOrbs = playerOrbs.get(playerUsername) || 0;
+            orbCountElement.textContent = `Orbs: ${currentOrbs}`;
+            
+            // Show popup when reaching 30 orbs
+            if (currentOrbs >= 30) {
+                const popup = document.getElementById('orbPopup');
+                popup.style.display = 'block';
+                
+                // Function to handle reset
+                const handleReset = () => {
+                    playerOrbs.set(playerUsername, 0);
+                    updateOrbCount();
+                    popup.style.display = 'none';
+                };
+                
+                // Function to handle rule
+                const handleRule = () => {
+                    console.log('Rule button clicked');
+                    popup.style.display = 'none';
+                };
+                
+                // Add button event listeners
+                document.getElementById('resetButton').onclick = handleReset;
+                document.getElementById('ruleButton').onclick = handleRule;
+                
+                // Add keyboard event listeners
+                const handleKeyPress = (event) => {
+                    if (event.key.toLowerCase() === 'c') {
+                        handleReset();
+                    } else if (event.key.toLowerCase() === 'v') {
+                        handleRule();
+                    }
+                };
+                
+                // Add keyboard listener when popup is shown
+                document.addEventListener('keydown', handleKeyPress);
+                
+                // Remove keyboard listener when popup is closed
+                const removeKeyListener = () => {
+                    document.removeEventListener('keydown', handleKeyPress);
+                };
+                
+                // Update button click handlers to also remove keyboard listener
+                document.getElementById('resetButton').onclick = () => {
+                    handleReset();
+                    removeKeyListener();
+                };
+                
+                document.getElementById('ruleButton').onclick = () => {
+                    handleRule();
+                    removeKeyListener();
+                };
+            }
+        }
+
+        // Shooting system constants
+        const SHOTGUN_COOLDOWN = 1000; // 1 second cooldown
+        const SHOTGUN_RANGE = 2000; // Increased from 1000 to 2000
+        const PELLET_COUNT = 8;
+        const PELLET_SPREAD = 0.2;
+        const PELLET_SPEED = 50; // Increased from 2 to 50 for more noticeable movement
+        const PELLET_LIFETIME = 2000; // Increased from 1000 to 2000ms
+        const PELLET_GRAVITY = 0.5; // Increased from 0.008 to 0.5 for more noticeable gravity
+        const PELLET_BOUNCE = 0.3; // Bounce coefficient
+        const PELLET_FRICTION = 0.98; // Friction coefficient
+        const PELLET_RADIUS = 0.3; // Pellet collision radius
+        let lastShotTime = 0;
+        let playerHealth = 100;
+        let isDead = false;
+
+        // Create shotgun muzzle flash effect
+        const muzzleFlashGeometry = new THREE.SphereGeometry(8, 16, 16);
+        const muzzleFlashMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffff00,
+            transparent: true,
+            opacity: 1.0
+        });
+        const muzzleFlash = new THREE.Mesh(muzzleFlashGeometry, muzzleFlashMaterial);
+        muzzleFlash.visible = false;
+        scene.add(muzzleFlash);
+
+        // Add a second, larger flash for better visibility
+        const outerFlashGeometry = new THREE.SphereGeometry(12, 16, 16);
+        const outerFlashMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff6600,
+            transparent: true,
+            opacity: 0.9
+        });
+        const outerFlash = new THREE.Mesh(outerFlashGeometry, outerFlashMaterial);
+        outerFlash.visible = false;
+        scene.add(outerFlash);
+
+        // Create shotgun pellets with object pooling
+        const pelletPool = {
+            pellets: [],
+            active: new Set(),
+            get: function() {
+                if (this.pellets.length === 0) {
+                    // Create new pellet if pool is empty
+                    const pelletGeometry = new THREE.SphereGeometry(PELLET_RADIUS, 8, 8);
+                    const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                    const pellet = new THREE.Mesh(pelletGeometry, pelletMaterial);
+                    pellet.visible = false;
+                    pellet.velocity = new THREE.Vector3();
+                    pellet.lastPosition = new THREE.Vector3();
+                    pellet.bounces = 0;
+                    pellet.maxBounces = 3;
+                    scene.add(pellet);
+                    return pellet;
+                }
+                return this.pellets.pop();
+            },
+            release: function(pellet) {
+                pellet.visible = false;
+                pellet.position.set(0, 0, 0);
+                pellet.velocity.set(0, 0, 0);
+                pellet.bounces = 0;
+                this.active.delete(pellet);
+                this.pellets.push(pellet);
+            }
+        };
+
+        // Create initial pellet pool
+        for (let i = 0; i < PELLET_COUNT * 2; i++) {
+            const pelletGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+            const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const pellet = new THREE.Mesh(pelletGeometry, pelletMaterial);
+            pellet.visible = false;
+            scene.add(pellet);
+            pelletPool.pellets.push(pellet);
+        }
+
+        // Handle shotgun firing
+        function fireShotgun() {
+            if (!camera) {
+                console.log('Camera not initialized yet');
+                return;
+            }
+
+            const now = Date.now();
+            if (now - lastShotTime < SHOTGUN_COOLDOWN) return;
+            lastShotTime = now;
+
+            // Get camera position and direction
+            const cameraPosition = new THREE.Vector3();
+            camera.getWorldPosition(cameraPosition);
+            const direction = new THREE.Vector3();
+            camera.getWorldDirection(direction);
+
+            // Calculate muzzle position (further in front of camera)
+            const muzzleOffset = new THREE.Vector3(0, -0.5, -2); // Adjusted to be in front of player
+            muzzleOffset.applyQuaternion(camera.quaternion);
+            const muzzlePosition = cameraPosition.clone().add(muzzleOffset);
+
+            // Create muzzle flash
+            const flashGeometry = new THREE.SphereGeometry(0.5, 8, 8);
+            const flashMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffff00,
+                transparent: true,
+                opacity: 0.8
+            });
+            const muzzleFlash = new THREE.Mesh(flashGeometry, flashMaterial);
+            muzzleFlash.position.copy(muzzlePosition);
+            scene.add(muzzleFlash);
+
+            // Create and fire pellets
+            const pelletDirections = [];
+            for (let i = 0; i < PELLET_COUNT; i++) {
+                // Get a pellet from the pool
+                const pellet = pelletPool.get();
+                pellet.position.copy(muzzlePosition);
+                
+                // Calculate spread direction
+                const spread = new THREE.Vector3(
+                    (Math.random() - 0.5) * PELLET_SPREAD,
+                    (Math.random() - 0.5) * PELLET_SPREAD,
+                    -1 // Forward is negative Z in Three.js
+                ).normalize();
+                spread.applyQuaternion(camera.quaternion);
+                
+                // Set pellet velocity with proper speed
+                pellet.velocity = spread.multiplyScalar(PELLET_SPEED);
+                pellet.spawnTime = performance.now();
+                pellet.visible = true;
+                pellet.bounces = 0;
+                
+                pelletPool.active.add(pellet);
+                pelletDirections.push(spread.toArray());
+            }
+
+            // Animate muzzle flash
+            const flashDuration = 100;
+            const startTime = Date.now();
+            const animateFlash = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = elapsed / flashDuration;
+                if (progress < 1) {
+                    muzzleFlash.scale.setScalar(1 + progress * 2);
+                    muzzleFlash.material.opacity = 0.8 * (1 - progress);
+                    requestAnimationFrame(animateFlash);
+                } else {
+                    scene.remove(muzzleFlash);
+                }
+            };
+            animateFlash();
+
+            // Create shotgun blast cone
+            const coneGeometry = new THREE.ConeGeometry(5, 10, 8);
+            const coneMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffff00,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.DoubleSide
+            });
+            const blastCone = new THREE.Mesh(coneGeometry, coneMaterial);
+            blastCone.position.copy(muzzlePosition);
+            blastCone.rotation.x = -Math.PI / 2;
+            blastCone.rotation.z = Math.PI / 2;
+            scene.add(blastCone);
+
+            // Animate blast cone
+            const coneDuration = 200;
+            const coneStartTime = Date.now();
+            const animateCone = () => {
+                const elapsed = Date.now() - coneStartTime;
+                const progress = elapsed / coneDuration;
+                if (progress < 1) {
+                    blastCone.scale.setScalar(1 - progress);
+                    blastCone.material.opacity = 0.3 * (1 - progress);
+                    requestAnimationFrame(animateCone);
+                } else {
+                    scene.remove(blastCone);
+                }
+            };
+            animateCone();
+
+            // Play shotgun sound
+            playShotgunSound();
+
+            // Send shot data to server
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const shotData = {
+                    position: cameraPosition.toArray(),
+                    directions: pelletDirections
+                };
+                ws.send(JSON.stringify({
+                    type: 'shotgun_shot',
+                    ...shotData
+                }));
+            }
+        }
+
+        // Add these new functions
+        function takeDamage(damage) {
+            if (isDead) return;
+            
+            playerHealth -= damage;
+            console.log(`Took ${damage} damage. Health: ${playerHealth}`);
+            
+            // Visual feedback for damage
+            document.body.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
+            setTimeout(() => {
+                document.body.style.backgroundColor = 'transparent';
+            }, 200);
+            
+            if (playerHealth <= 0) {
+                die();
+            }
+        }
+
+        function die() {
+            isDead = true;
+            playerHealth = 0;
+            
+            // Visual feedback for death
+            document.body.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+            
+            // Show death message
+            const deathMessage = document.createElement('div');
+            deathMessage.style.position = 'fixed';
+            deathMessage.style.top = '50%';
+            deathMessage.style.left = '50%';
+            deathMessage.style.transform = 'translate(-50%, -50%)';
+            deathMessage.style.color = 'white';
+            deathMessage.style.fontSize = '24px';
+            deathMessage.style.textAlign = 'center';
+            deathMessage.textContent = 'You died! Press SPACE to respawn';
+            document.body.appendChild(deathMessage);
+            
+            // Handle respawn
+            const handleRespawn = (event) => {
+                if (event.code === 'Space') {
+                    respawn();
+                }
+            };
+            document.addEventListener('keydown', handleRespawn);
+            
+            // Store the event listener for cleanup
+            deathMessage.dataset.listener = handleRespawn;
+        }
+
+        function respawn() {
+            isDead = false;
+            playerHealth = 100;
+            
+            // Reset visual effects
+            document.body.style.backgroundColor = 'transparent';
+            
+            // Remove death message and its event listener
+            const deathMessage = document.querySelector('div[data-listener]');
+            if (deathMessage) {
+                document.removeEventListener('keydown', deathMessage.dataset.listener);
+                deathMessage.remove();
+            }
+            
+            // Reset position
+            camera.position.set(0, playerHeight, 0);
+            camera.rotation.set(0, 0, 0);
+            velocity.set(0, 0, 0);
+            flingVelocity.set(0, 0, 0);
+            verticalVelocity = 0;
+            isFlinging = false;
+            isGrounded = true;
+            
+            // Notify server of respawn
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'player_respawned',
+                    position: camera.position.toArray()
+                }));
+            }
+        }
+
+        // Add to the desktop controls section
+        if (!isMobile) {
+            // Add shotgun firing to mouse controls
+            document.addEventListener('mousedown', (event) => {
+                if (event.button === 2) { // Right mouse button (changed from 1 to 2)
+                    console.log('Firing shotgun (right mouse button)');
+                    fireShotgun();
+                }
+            });
+        }
+
+        // Add to the mobile controls section
+        if (isMobile) {
+            // Add shotgun button
+            const shotgunButton = document.createElement('div');
+            shotgunButton.id = 'shotgunButton';
+            shotgunButton.style.cssText = `
+                position: fixed;
+                bottom: 160px;
+                right: 40px;
+                width: 80px;
+                height: 80px;
+                background: rgba(255, 165, 0, 0.6);
+                border: 2px solid rgba(255, 255, 255, 0.8);
+                border-radius: 50%;
+                color: white;
+                font-size: 32px;
+                line-height: 80px;
+                text-align: center;
+                pointer-events: auto;
+                cursor: pointer;
+                z-index: 1000;
+                touch-action: none;
+                transition: all 0.1s ease-out;
+                user-select: none;
+            `;
+            shotgunButton.innerHTML = '🔫';
+            document.body.appendChild(shotgunButton);
+            
+            // Add shotgun button event listeners
+            shotgunButton.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                console.log('Firing shotgun (mobile button)');
+                fireShotgun();
+            }, { passive: false });
+        }
+
+        // Add health display
+        const healthDisplay = document.createElement('div');
+        healthDisplay.id = 'healthDisplay';
+        healthDisplay.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            gap: 5px;
+            z-index: 1000;
+        `;
+
+        // Create 5 health segments
+        for (let i = 0; i < 5; i++) {
+            const segment = document.createElement('div');
+            segment.style.cssText = `
+                width: 20px;
+                height: 30px;
+                background-color: #00ff00;
+                border: 2px solid rgba(255, 255, 255, 0.5);
+                transition: background-color 0.2s ease;
+                box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+            `;
+            healthDisplay.appendChild(segment);
+        }
+
+        document.body.appendChild(healthDisplay);
+
+        // Update health display
+        function updateHealthDisplay() {
+            const segments = healthDisplay.children;
+            const healthPerSegment = 20; // 100 health / 5 segments
+            
+            for (let i = 0; i < segments.length; i++) {
+                const segmentHealth = Math.max(0, playerHealth - (i * healthPerSegment));
+                const segmentPercentage = Math.min(100, (segmentHealth / healthPerSegment) * 100);
+                
+                if (segmentPercentage <= 0) {
+                    segments[i].style.backgroundColor = '#ff0000'; // Brighter red when empty
+                    segments[i].style.boxShadow = '0 0 10px rgba(255, 0, 0, 0.5)';
+                } else {
+                    segments[i].style.backgroundColor = '#00ff00'; // Brighter green when full
+                    segments[i].style.boxShadow = '0 0 10px rgba(0, 255, 0, 0.5)';
+                }
+            }
+        }
+
+        // Add health display update to animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update health display
+            updateHealthDisplay();
+            
+            // Update pellet animations
+            animatePellets();
+            
+            // ... rest of animate function ...
+        }
+
+        // Add pellet animation to the main animation loop
+        function animatePellets() {
+            const currentTime = Date.now();
+            const deltaTime = clock.getDelta();
+            
+            pelletPool.active.forEach(pellet => {
+                // Check if pellet has expired
+                if (currentTime - pellet.spawnTime > PELLET_LIFETIME) {
+                    pelletPool.release(pellet);
+                    return;
+                }
+                
+                // Store last position for collision detection
+                pellet.lastPosition.copy(pellet.position);
+                
+                // Apply gravity
+                pellet.velocity.y -= PELLET_GRAVITY * deltaTime;
+                
+                // Apply friction
+                pellet.velocity.multiplyScalar(PELLET_FRICTION);
+                
+                // Update position
+                pellet.position.add(pellet.velocity.clone().multiplyScalar(deltaTime));
+                
+                // Check for collisions with towers
+                const pelletCollider = new THREE.Sphere(pellet.position, PELLET_RADIUS);
+                let collision = false;
+                let collisionNormal = new THREE.Vector3();
+                
+                // Check tower collisions
+                for (const tower of towers) {
+                    const towerBox = new THREE.Box3().setFromObject(tower.mesh);
+                    if (towerBox.containsSphere(pelletCollider)) {
+                        // Calculate collision normal
+                        const center = towerBox.getCenter(new THREE.Vector3());
+                        collisionNormal.copy(pellet.position).sub(center).normalize();
+                        collision = true;
+                        break;
+                    }
+                }
+                
+                // Check bridge collisions
+                for (const bridge of bridges) {
+                    // Get the bridge's collision box from the towers array
+                    const bridgeObject = towers.find(t => t.mesh === bridge.mesh);
+                    if (bridgeObject && bridgeObject.collisionBoxes) {
+                        const bridgeBox = bridgeObject.collisionBoxes[0];
+                        if (bridgeBox.containsSphere(pelletCollider)) {
+                            // Calculate collision normal from bridge center
+                            const center = bridgeBox.getCenter(new THREE.Vector3());
+                            collisionNormal.copy(pellet.position).sub(center).normalize();
+                            collision = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // Handle collision response
+                if (collision) {
+                    // Move pellet back to last position
+                    pellet.position.copy(pellet.lastPosition);
+                    
+                    // Reflect velocity based on collision normal
+                    pellet.velocity.reflect(collisionNormal);
+                    
+                    // Apply bounce and friction
+                    pellet.velocity.multiplyScalar(PELLET_BOUNCE * PELLET_FRICTION);
+                    
+                    // Increment bounce counter
+                    pellet.bounces++;
+                    
+                    // Remove pellet if too many bounces
+                    if (pellet.bounces >= pellet.maxBounces) {
+                        pelletPool.release(pellet);
+                    }
+                }
+                
+                // Check for collisions with players
+                playerStates.forEach((playerState, username) => {
+                    if (username !== playerUsername) {
+                        const playerCollider = new THREE.Sphere(playerState.mesh.position, playerRadius);
+                        const distance = pellet.position.distanceTo(playerState.mesh.position);
+                        
+                        if (distance < playerRadius + PELLET_RADIUS) {
+                            // Player was hit
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({
+                                    type: 'player_damaged',
+                                    username: username,
+                                    damage: SHOTGUN_DAMAGE
+                                }));
+                            }
+                            pelletPool.release(pellet);
+                        }
+                    }
+                });
+                
+                // Remove pellet if it's fallen too far
+                if (pellet.position.y < -1000) {
+                    pelletPool.release(pellet);
+                }
+            });
+        }
+
+        // Update the collision handling in the animation loop
+        function handleCollision(collisionResult, isFlinging) {
+            if (!collisionResult.collision) return;
+            
+            const pushDir = new THREE.Vector3();
+            pushDir.copy(camera.position).sub(collisionResult.closestPoint).normalize();
+            
+            // Apply the same collision response for all objects (towers and bridges)
+            const pushDistance = playerRadius - collisionResult.distance;
+            camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+            camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+            
+            // Handle velocity changes based on movement type
+            if (isFlinging) {
+                const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                flingVelocity.x = pushDir.x * speed * 0.8;
+                flingVelocity.z = pushDir.z * speed * 0.8;
+            } else {
+                velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
+                velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
+            }
+        }
+
+        // Set up event listeners after camera is initialized
+        function setupEventListeners() {
+            if (!camera) {
+                console.log('Waiting for camera initialization...');
+                setTimeout(setupEventListeners, 100);
+                return;
+            }
+            
+            // Remove any existing listeners to prevent duplicates
+            document.removeEventListener('mousedown', handleShotgunFire);
+            
+            // Add new listener
+            document.addEventListener('mousedown', handleShotgunFire);
+        }
+
+        // Define the shotgun firing handler
+        function handleShotgunFire(event) {
+            if (event.button === 2) { // Right mouse button
+                console.log('Firing shotgun (right mouse button)');
+                fireShotgun();
+            }
+        }
+
+        // Call setupEventListeners after camera initialization
+        setupEventListeners();
+
+        // Sound effects
+        function playShotgunSound() {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            // Configure oscillator
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(200, audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + 0.1);
+            
+            // Configure gain
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+            
+            // Connect nodes
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // Play sound
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + 0.1);
+        }
+
+        // Handle player health updates
+        ws.addEventListener('message', (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'playerHealthUpdate') {
+                if (data.id === ws.id) {
+                    // Handle health update
+                }
+            }
+        });
+
+        // Handle orb drops
+        ws.addEventListener('message', (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'orbDrop') {
+                // Handle orb drop
+            }
+        });
+
+        // Initialize game audio
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Play background music on startup
+        const backgroundMusic = new Audio('leader-ultra-essence-lossy-64.mp3');
+        backgroundMusic.loop = true;
+        backgroundMusic.volume = 0.5; // Set to 50% volume by default
+        
+        // Handle audio context suspension (needed for some browsers)
+        const resumeAudio = () => {
+            audioContext.resume().then(() => {
+                backgroundMusic.play().catch(error => console.log('Error playing background music:', error));
+            });
+        };
+        
+        // Try to play on any user interaction
+        document.addEventListener('click', resumeAudio, { once: true });
+        document.addEventListener('touchstart', resumeAudio, { once: true });
+        document.addEventListener('keydown', resumeAudio, { once: true });
+        
+        // Also try to play immediately
+        resumeAudio();
     </script>
 </body>
 </html>
