@@ -1690,6 +1690,40 @@
                 leftControls.appendChild(leftJoystickZone);
                 document.body.appendChild(leftControls);
 
+                // --- Left Joystick (Movement) Logic using VirtualJoystick ---
+                if (typeof VirtualJoystick !== 'undefined') {
+                    const moveJoystick = new VirtualJoystick({
+                        container: leftJoystickZone,
+                        mouseSupport: true, // Allow testing on desktop
+                        limitStickTravel: true,
+                        stickRadius: 50,
+                    });
+
+                    moveJoystick.addEventListener('touchStart', () => {
+                         // Optional: Add visual feedback on touch start
+                    });
+
+                    moveJoystick.addEventListener('touchMove', (event) => {
+                        const threshold = 0.2; // Adjust sensitivity
+                        // Y-axis controls forward/backward
+                        moveForward = moveJoystick.deltaY < -threshold;
+                        moveBackward = moveJoystick.deltaY > threshold;
+                        // X-axis controls left/right
+                        moveLeft = moveJoystick.deltaX < -threshold;
+                        moveRight = moveJoystick.deltaX > threshold;
+                    });
+
+                    moveJoystick.addEventListener('touchEnd', () => {
+                        moveForward = false;
+                        moveBackward = false;
+                        moveLeft = false;
+                        moveRight = false;
+                    });
+                } else {
+                    console.error('VirtualJoystick library not loaded!');
+                }
+                // --- End Left Joystick Logic ---
+
                 // Fling button setup
                 const flingBtn = document.getElementById('flingButton');
                 let flingStartTime = 0;
