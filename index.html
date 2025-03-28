@@ -2282,19 +2282,20 @@
                         lastCollisionCheck = currentTime;
                     }
                     
-                    // Update nebula animations with reduced frequency
-                    if (currentTime % 2 === 0) { // Update every other frame
-                        const time = currentTime * 0.001;
-                        nebulas.forEach((nebula, index) => {
-                            if (nebula && nebula.material && nebula.material.uniforms) {
-                                nebula.material.uniforms.time.value = time;
-                                nebula.rotation.y += 0.0001;
-                                nebula.rotation.x += 0.00005;
-                                nebula.position.y += Math.sin(time * 0.1 + index) * 0.05;
-                                nebula.position.x += Math.cos(time * 0.15 + index) * 0.05;
-                            }
-                        });
-                    }
+                    // Update nebula animations (framerate independent)
+                    const time = currentTime * 0.001; // Keep time for shader effects if needed
+                    nebulas.forEach((nebula, index) => {
+                        if (nebula && nebula.material && nebula.material.uniforms) {
+                            nebula.material.uniforms.time.value = time;
+                            // Scale rotation and position changes by deltaTime
+                            const nebulaRotSpeed = 0.01; // Adjust speed as needed
+                            const nebulaDriftSpeed = 0.5; // Adjust speed as needed
+                            nebula.rotation.y += nebulaRotSpeed * deltaTime;
+                            nebula.rotation.x += (nebulaRotSpeed * 0.5) * deltaTime;
+                            nebula.position.y += Math.sin(time * 0.1 + index) * nebulaDriftSpeed * deltaTime;
+                            nebula.position.x += Math.cos(time * 0.15 + index) * nebulaDriftSpeed * deltaTime;
+                        }
+                    });
 
                     // Rotate star fields (framerate independent)
                     // Define base rotation speeds (radians per second)
@@ -2313,21 +2314,25 @@
 
                     // Only process movement and game logic if controls are locked and game is started
                     if (controls.isLocked && gameStarted) {
-                        // Store current position
-                        const oldPosition = camera.position.clone();
+                        // Store current position (useful for delta calculations if needed elsewhere)
+                        // const oldPosition = camera.position.clone(); 
 
-                        // Calculate movement
+                        // Calculate input direction
                         direction.z = Number(moveForward) - Number(moveBackward);
                         direction.x = Number(moveRight) - Number(moveLeft);
-                        direction.normalize();
+                        direction.normalize(); // Ensure consistent speed diagonally
 
-                        if (moveForward || moveBackward) velocity.z -= direction.z * moveSpeed;
-                        if (moveLeft || moveRight) velocity.x -= direction.x * moveSpeed;
+                        // Apply input acceleration scaled by deltaTime
+                        if (moveForward || moveBackward) velocity.z -= direction.z * moveSpeed * deltaTime;
+                        if (moveLeft || moveRight) velocity.x -= direction.x * moveSpeed * deltaTime;
 
-                        // Apply movement
-                        controls.moveRight(-velocity.x);
-                        controls.moveForward(-velocity.z);
+                        // --- REMOVE controls.moveRight/moveForward --- 
+                        // These likely interfere with manual delta-scaled position updates
+                        // controls.moveRight(-velocity.x);
+                        // controls.moveForward(-velocity.z);
+                        // --- END REMOVAL ---
 
+                        // --- Collision Check Block (Ran Before Movement) ---
                         // Update player collider position
                         playerCollider.center.copy(camera.position);
 
@@ -3265,14 +3270,16 @@
                 // Store last position for collision detection
                 pellet.lastPosition.copy(pellet.position);
                 
-                // Apply gravity
+                // Apply gravity (framerate independent)
                 pellet.velocity.y -= PELLET_GRAVITY * deltaTime;
                 
-                // Apply friction
-                pellet.velocity.multiplyScalar(PELLET_FRICTION);
+                // Apply friction (framerate independent)
+                // Assume PELLET_FRICTION (e.g., 0.99) was tuned for 60fps
+                const effectivePelletFriction = Math.pow(PELLET_FRICTION, deltaTime * 60);
+                pellet.velocity.multiplyScalar(effectivePelletFriction); 
                 
-                // Update position
-                pellet.position.add(pellet.velocity.clone().multiplyScalar(deltaTime));
+                // Update position (already framerate independent)
+                pellet.position.addScaledVector(pellet.velocity, deltaTime); // Use addScaledVector for clarity
                 
                 // Check for collisions with towers
                 const pelletCollider = new THREE.Sphere(pellet.position, PELLET_RADIUS);
