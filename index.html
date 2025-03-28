@@ -380,23 +380,26 @@
                 if (!this.isVisible) return; // Don't update if not visible
 
                 // Use exponential smoothing for interpolation towards the authoritative position
-                const lerpFactor = 1 - Math.exp(-20 * deltaTime); // Adjust -20 to make smoothing faster/slower
+                // Reduced from -20 to -15 for smoother interpolation
+                const lerpFactor = 1 - Math.exp(-15 * deltaTime); 
 
                 // Smoothly interpolate position towards the last known server position
                 this.mesh.position.lerp(this.position, lerpFactor);
 
-                // Smoothly interpolate rotation (using slerp for Quaternions is better, but lerp for Euler might suffice)
-                // For simplicity, let's stick to setting rotation directly based on heading for now,
-                // assuming heading is updated reliably with position.
-                // If rotation also jitters, we'll need to interpolate playerState.rotation too.
+                // Smoothly interpolate rotation using Euler angles
                 const headingRad = (this.heading * Math.PI) / 180;
-                this.mesh.rotation.y = -headingRad; // Still setting directly based on heading
+                // this.mesh.rotation.y = -headingRad; // Old direct setting
 
-                // Optionally, you could lerp rotation as well:
-                // const targetRotation = new THREE.Euler(0, -headingRad, 0); // Assuming Y-axis rotation based on heading
-                // this.mesh.rotation.x += (targetRotation.x - this.mesh.rotation.x) * lerpFactor;
-                // this.mesh.rotation.y += (targetRotation.y - this.mesh.rotation.y) * lerpFactor;
-                // this.mesh.rotation.z += (targetRotation.z - this.mesh.rotation.z) * lerpFactor;
+                // Lerp rotation 
+                const targetRotation = objectPool.getVector(); // Use object pool
+                targetRotation.set(0, -headingRad, 0); // Assuming Y-axis rotation based on heading
+
+                // Interpolate Euler angles (ensure angles wrap correctly if needed, though lerp might handle it)
+                this.mesh.rotation.x += (targetRotation.x - this.mesh.rotation.x) * lerpFactor;
+                this.mesh.rotation.y += (targetRotation.y - this.mesh.rotation.y) * lerpFactor;
+                this.mesh.rotation.z += (targetRotation.z - this.mesh.rotation.z) * lerpFactor;
+
+                objectPool.releaseVector(targetRotation); // Release vector back to pool
             }
         }
 
