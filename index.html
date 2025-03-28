@@ -1691,6 +1691,7 @@
                 document.body.appendChild(leftControls);
 
                 // --- Left Joystick (Movement) Logic using VirtualJoystick ---
+                console.log('VirtualJoystick library type:', typeof VirtualJoystick); // Check if library is loaded
                 if (typeof VirtualJoystick !== 'undefined') {
                     const moveJoystick = new VirtualJoystick({
                         container: leftJoystickZone,
@@ -1700,10 +1701,12 @@
                     });
 
                     moveJoystick.addEventListener('touchStart', () => {
+                         console.log('[Mobile Debug] Left Joystick Touch Start');
                          // Optional: Add visual feedback on touch start
                     });
 
                     moveJoystick.addEventListener('touchMove', (event) => {
+                        console.log(`[Mobile Debug] Left Joystick Touch Move: dX=${moveJoystick.deltaX.toFixed(2)}, dY=${moveJoystick.deltaY.toFixed(2)}`); // Log delta values
                         const threshold = 0.2; // Adjust sensitivity
                         // Y-axis controls forward/backward
                         moveForward = moveJoystick.deltaY < -threshold;
@@ -1714,6 +1717,7 @@
                     });
 
                     moveJoystick.addEventListener('touchEnd', () => {
+                        console.log('[Mobile Debug] Left Joystick Touch End'); // Log touch end
                         moveForward = false;
                         moveBackward = false;
                         moveLeft = false;
