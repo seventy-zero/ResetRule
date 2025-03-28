@@ -868,7 +868,8 @@
             }
 
             const collisionNormal = objectPool.getVector();
-            camera.position.clone().sub(collisionResult.closestPoint).normalizeTo(collisionNormal);
+            // Calculate the direction from collision point to player and normalize it
+            collisionNormal.subVectors(camera.position, collisionResult.closestPoint).normalize();
             
             const penetrationDepth = playerRadius - collisionResult.distance;
             
@@ -2462,12 +2463,12 @@
                         // Apply fling velocity if active
                         if (isFlinging) {
                             // Move in world space
-                            camera.position.x += flingVelocity.x;
-                            camera.position.z += flingVelocity.z;
-                            camera.position.y += verticalVelocity;
+                            camera.position.x += flingVelocity.x * deltaTime;
+                            camera.position.z += flingVelocity.z * deltaTime;
+                            camera.position.y += verticalVelocity * deltaTime;
 
                             // Apply gravity
-                            verticalVelocity -= gravity;
+                            verticalVelocity -= gravity * deltaTime;
 
                             // Update player collider position
                             playerCollider.center.copy(camera.position);
