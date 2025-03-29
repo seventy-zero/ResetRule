@@ -228,7 +228,7 @@
             Fling Button = Aim & Release to Fling
         </p>
         <div style="margin-top: 20px;">
-            <input type="checkbox" id="musicToggle" name="musicToggle">
+            <input type="checkbox" id="musicToggle" name="musicToggle" checked>
             <label for="musicToggle" style="color: white; font-size: 18px;">Play Music</label>
         </div>
     </div>
@@ -2572,9 +2572,9 @@
                                     console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
 
                                     // Apply horizontal push-out using pre-calculated pushDistance
-                                    const horizontalPushForce = isFlinging ? COLLISION_PUSH_FORCE * 1.5 : COLLISION_PUSH_FORCE;
-                                    camera.position.x += pushDir.x * pushDistance * horizontalPushForce;
-                                    camera.position.z += pushDir.z * pushDistance * horizontalPushForce;
+                                    
+                                    camera.position.x += pushDir.x * pushDistance;
+                                    camera.position.z += pushDir.z * pushDistance;
 
                                     // Adjust velocities based on collision (Sliding / Reflection)
                                     const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
