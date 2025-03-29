@@ -3047,9 +3047,10 @@
         function createOrb(orbData) {
             console.log("Creating orb mesh with data:", orbData); // Add detailed logging
 
-            if (!orbData || typeof orbData.x !== 'number' || typeof orbData.y !== 'number' || typeof orbData.z !== 'number') {
-                 console.error("Invalid orbData received in createOrb:", orbData);
-                 return null; // Return null if data is invalid
+            if (!orbData || !orbData.position || typeof orbData.position.x !== 'number' || 
+                typeof orbData.position.y !== 'number' || typeof orbData.position.z !== 'number') {
+                console.error("Invalid orbData received in createOrb:", orbData);
+                return null; // Return null if data is invalid
             }
             
             // Define a smaller, more vibrant set of neon colors
@@ -3064,20 +3065,20 @@
             const chosenColor = colorData[Math.floor(Math.random() * colorData.length)];
 
             // Create geometry and material
-            const orbRadius = 5; // Adjust size as needed
+            const orbRadius = orbData.size || 5; // Use provided size or default to 5
             const orbGeometry = new THREE.SphereGeometry(orbRadius, 16, 16);
             const orbMaterial = new THREE.MeshBasicMaterial({ 
-                color: chosenColor.color, 
+                color: orbData.color || chosenColor.color, 
                 wireframe: true // Keep wireframe style
             });
 
             const orbMesh = new THREE.Mesh(orbGeometry, orbMaterial);
-            orbMesh.position.set(orbData.x, orbData.y, orbData.z);
+            orbMesh.position.set(orbData.position.x, orbData.position.y, orbData.position.z);
             
             // Store original scale and color data for potential effects
             orbMesh.userData = {
                 originalScale: orbRadius,
-                color: chosenColor.color,
+                color: orbData.color || chosenColor.color,
                 intensity: chosenColor.intensity,
                 id: orbData.id // Store the orb's unique ID
             };
