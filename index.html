@@ -696,13 +696,26 @@
             group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
             scene.add(group);
 
-            // Calculate local collision box from the main tower mesh (like bridges)
-            const localCollisionBox = new THREE.Box3().setFromObject(mesh); // Use the actual tower mesh
+            // --- Create a simplified local box based on the actual mesh bounds ---
+            // 1. Get the bounding box of the actual visual mesh geometry
+            const actualMeshBBox = new THREE.Box3().setFromObject(mesh);
+            const actualSize = new THREE.Vector3();
+            actualMeshBBox.getSize(actualSize);
+            
+            // 2. Create a simple BoxGeometry using these dimensions
+            //    (Use BufferGeometry directly for Box3 calculation)
+            const simpleCollisionGeometry = new THREE.BoxGeometry(actualSize.x, actualSize.y, actualSize.z);
 
-            // Store tower info with localCollisionBox
+            // 3. Create the localCollisionBox from this size-matched simple geometry
+            const localCollisionBox = new THREE.Box3().setFromBufferAttribute(
+                simpleCollisionGeometry.attributes.position
+            );
+            simpleCollisionGeometry.dispose(); // Dispose temporary geometry
+
+            // Store tower info with the size-matched simplified localCollisionBox
             towers.push({
-                mesh: group,             // The group containing mesh and edges (has world transform)
-                localCollisionBox: localCollisionBox, // The local box relative to the mesh's geometry
+                mesh: group,             // The visual group (has world transform)
+                localCollisionBox: localCollisionBox, // The SIMPLIFIED but size-matched local box
                 isBridge: false          // Flag this as not a bridge
             });
         }
