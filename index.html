@@ -2534,11 +2534,7 @@
                                 camera.position.x += pushDir.x * pushDistance * STUCK_PUSH_FORCE;
                                 camera.position.z += pushDir.z * pushDistance * STUCK_PUSH_FORCE;
 
-                                // 2. Add upward velocity impulse
-                                verticalVelocity = 0.4; // Increased vertical pop
-                                isGrounded = false;
-
-                                // 3. Set fling velocity to bounce away with more force
+                                // 2. Set fling velocity to bounce away with more force
                                 flingVelocity.x = pushDir.x * STUCK_BOUNCE_SPEED;
                                 flingVelocity.z = pushDir.z * STUCK_BOUNCE_SPEED;
                                 isFlinging = true;
