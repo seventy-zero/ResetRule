@@ -1111,34 +1111,37 @@
                         break;
 
                     case 'shotgun_shot':
+                        // Ensure this message is not from the current player and game has started
                         if (data.username !== playerUsername && gameStarted) {
                             const shooterPos = new THREE.Vector3().fromArray(data.position);
+                            const now = performance.now(); // Use consistent timing
 
-                            // Create visual pellets for other players' shots using the pool
+                            // Create visual representation of pellets fired by other players using the pool
                             data.directions.forEach(directionArray => {
-                                const pellet = pelletPool.get(); // Get from pool
+                                const pellet = pelletPool.get(); // Get a pellet from the pool
                                 if (pellet) {
                                     const direction = new THREE.Vector3().fromArray(directionArray);
-                                    pellet.position.copy(shooterPos);
-                                    // Set velocity using the correct constant and direction
-                                    pellet.velocity = direction.multiplyScalar(PELLET_SPEED); 
-                                    pellet.spawnTime = performance.now();
-                                    pellet.visible = true;
-                                    pellet.bounces = 0; // Reset bounces
-                                    pelletPool.active.add(pellet); // Add to active set
+                                    pellet.position.copy(shooterPos); // Start at shooter's reported position
+                                    pellet.velocity.copy(direction).multiplyScalar(PELLET_SPEED); // Set velocity
+                                    pellet.spawnTime = now; // Set spawn time
+                                    pellet.bounces = 0; // Reset bounces (though we won't use them)
+                                    pellet.visible = true; // Make it visible
+                                    // Note: pellet is already added to the scene during pool initialization
                                 } else {
-                                    console.warn("Pellet pool exhausted during network update");
+                                    console.warn("Pellet pool exhausted during network update for shotgun_shot");
                                 }
                             });
 
-                            // Play sound effect for other player's shot
-                            playShotgunSound(); 
+                            // Play sound effect for other player's shot (consider adding positional audio later)
+                            playShotgunSound();
                         }
                         break;
 
                     case 'player_damaged':
-                        if (data.username === playerUsername) {
-                            takeDamage(data.damage);
+                        // Check if the damage message is intended for this player
+                        if (data.victimUsername === playerUsername) {
+                             console.log(`Received damage: ${data.damage} from ${data.attackerUsername}`); // Log received damage
+                            takeDamage(data.damage); // Apply damage locally
                         }
                         break;
 
@@ -1268,8 +1271,12 @@
         try {
             // Scene initialization
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x000000);
+            scene.background = new THREE.Color(0x000000); // Dark background
             console.log('Scene created');
+
+            // --- Initialize Pellet Pool HERE ---
+            pelletPool.initialize(scene);
+            // ---
 
             // Camera setup
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000);
@@ -2206,7 +2213,7 @@
                     pellet.visible = true;
                     pellet.trailPoints = [];
                     pellet.spawnTime = Date.now();
-                    this.active.push(pellet);
+                    this.active.add(pellet);
                     return pellet;
                 },
                 
@@ -3104,17 +3111,15 @@
             }
         }
 
-        // Shooting system constants
-        const SHOTGUN_COOLDOWN = 1000; // 1 second cooldown
-        const SHOTGUN_RANGE = 2000; // Increased from 1000 to 2000
-        const PELLET_COUNT = 8;
-        const PELLET_SPREAD = 0.2;
-        const PELLET_SPEED = 50; // Increased from 2 to 50 for more noticeable movement
-        const PELLET_LIFETIME = 2000; // Increased from 1000 to 2000ms
-        const PELLET_GRAVITY = 0.5; // Increased from 0.008 to 0.5 for more noticeable gravity
-        const PELLET_BOUNCE = 0.3; // Bounce coefficient
-        const PELLET_FRICTION = 0.98; // Friction coefficient
-        const PELLET_RADIUS = 0.3; // Pellet collision radius
+        // Shooting system constants - Adjusted for shotgun feel
+        const SHOTGUN_COOLDOWN = 800; // milliseconds cooldown
+        const PELLET_COUNT = 10;       // Number of pellets per shot
+        const PELLET_SPREAD = 0.15;    // Cone spread factor (radians)
+        const PELLET_SPEED = 350;      // Units per second - MUCH faster
+        const PELLET_LIFETIME = 600;  // Milliseconds - shorter lifespan
+        const PELLET_GRAVITY = 0.0;     // Gravity effect on pellets (0 for straight line)
+        const PELLET_RADIUS = 0.15;    // Pellet collision radius
+        const SHOTGUN_DAMAGE = 10;     // Damage per pellet hit
         let lastShotTime = 0;
         let playerHealth = 100;
         let isDead = false;
@@ -3143,147 +3148,155 @@
 
         // Create shotgun pellets with object pooling
         const pelletPool = {
-            pellets: [],
-            active: new Set(),
-            get: function() {
-                if (this.pellets.length === 0) {
-                    // Create new pellet if pool is empty
-                    const pelletGeometry = new THREE.SphereGeometry(PELLET_RADIUS, 8, 8);
-                    const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-                    const pellet = new THREE.Mesh(pelletGeometry, pelletMaterial);
-                    pellet.visible = false;
-                    pellet.velocity = new THREE.Vector3();
-                    pellet.lastPosition = new THREE.Vector3();
-                    pellet.bounces = 0;
-                    pellet.maxBounces = 3;
-                    scene.add(pellet);
-                    return pellet;
+            pool: [],           // Array for available pellet objects
+            active: new Set(),  // Set for active pellet objects (efficient add/delete)
+            maxSize: PELLET_COUNT * 10, // Max pellets to pool (adjust as needed)
+
+            // Initialize the pool - call this once after scene is created
+            initialize(scene) {
+                for (let i = 0; i < this.maxSize; i++) {
+                    const pelletMesh = this._createPelletMesh();
+                    pelletMesh.visible = false; // Start invisible
+                    scene.add(pelletMesh);    // Add to scene immediately
+                    this.pool.push(pelletMesh); // Add mesh to the available pool
                 }
-                return this.pellets.pop();
+                console.log(`Pellet pool initialized with ${this.pool.length} pellets.`);
             },
-            release: function(pellet) {
-                pellet.visible = false;
-                pellet.position.set(0, 0, 0);
-                pellet.velocity.set(0, 0, 0);
-                pellet.bounces = 0;
-                this.active.delete(pellet);
-                this.pellets.push(pellet);
+
+            _createPelletMesh() {
+                const pelletGeometry = new THREE.SphereGeometry(PELLET_RADIUS, 6, 6); // Simpler geometry
+                const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                const pelletMesh = new THREE.Mesh(pelletGeometry, pelletMaterial);
+
+                // Add properties needed for simulation directly to the mesh object
+                pelletMesh.userData = {
+                    velocity: new THREE.Vector3(),
+                    spawnTime: 0,
+                };
+                return pelletMesh;
+            },
+
+            // Get a pellet from the pool
+            get() {
+                let pellet = null;
+                if (this.pool.length > 0) {
+                    pellet = this.pool.pop(); // Get from available pool
+                } else {
+                    // Optional: Create a new one if pool is empty (can help prevent errors)
+                    // pellet = this._createPelletMesh();
+                    // scene.add(pellet); // Add to scene if newly created
+                     console.warn("Pellet pool empty! Consider increasing maxSize.");
+                     return null; // Or return null if creation on-demand is not desired
+                }
+
+                if (pellet) {
+                    this.active.add(pellet); // Add to the active set
+                    pellet.visible = true;   // Make it visible
+                }
+                return pellet;
+            },
+
+            // Release a pellet back to the pool
+            release(pellet) {
+                if (this.active.delete(pellet)) { // Remove from active set (returns true if successful)
+                    pellet.visible = false;         // Make invisible
+                    pellet.userData.velocity.set(0, 0, 0); // Reset velocity
+                    pellet.position.set(0, -10000, 0); // Move it far away
+                    this.pool.push(pellet);        // Add back to the available pool
+                }
             }
         };
 
-        // Create initial pellet pool
-        for (let i = 0; i < PELLET_COUNT * 2; i++) {
-            const pelletGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-            const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-            const pellet = new THREE.Mesh(pelletGeometry, pelletMaterial);
-            pellet.visible = false;
-            scene.add(pellet);
-            pelletPool.pellets.push(pellet);
-        }
-
-        // Handle shotgun firing
+        // Handle shotgun firing - Rewritten
         function fireShotgun() {
-            if (!camera) {
-                console.log('Camera not initialized yet');
+            if (!camera || !controls.isLocked) { // Ensure camera exists and controls are locked
+                // console.log('Cannot fire: Camera not ready or pointer not locked.');
                 return;
             }
 
-            const now = Date.now();
-            if (now - lastShotTime < SHOTGUN_COOLDOWN) return;
+            const now = performance.now();
+            if (now - lastShotTime < SHOTGUN_COOLDOWN) {
+                // console.log('Shotgun cooldown');
+                return; // Cooldown active
+            }
             lastShotTime = now;
 
-            // Get camera position and direction
+            // Get camera position and direction accurately
             const cameraPosition = new THREE.Vector3();
             camera.getWorldPosition(cameraPosition);
-            const direction = new THREE.Vector3();
-            camera.getWorldDirection(direction);
+            const cameraDirection = new THREE.Vector3();
+            camera.getWorldDirection(cameraDirection);
 
-            // Calculate muzzle position (further in front of camera)
-            const muzzleOffset = new THREE.Vector3(0, -0.5, -2); // Adjusted to be in front of player
-            muzzleOffset.applyQuaternion(camera.quaternion);
-            const muzzlePosition = cameraPosition.clone().add(muzzleOffset);
+            // Calculate muzzle position slightly in front of the camera
+            const muzzleOffset = -1.5; // How far in front of camera view
+            const muzzlePosition = cameraPosition.clone().addScaledVector(cameraDirection, muzzleOffset);
 
-            // Create muzzle flash
-            const flashGeometry = new THREE.SphereGeometry(0.5, 8, 8);
-            const flashMaterial = new THREE.MeshBasicMaterial({
-                color: 0xffff00,
-                transparent: true,
-                opacity: 0.8
-            });
-            const muzzleFlash = new THREE.Mesh(flashGeometry, flashMaterial);
-            muzzleFlash.position.copy(muzzlePosition);
-            scene.add(muzzleFlash);
+
+            // Array to store pellet directions for network message
+            const pelletDirections = [];
 
             // Create and fire pellets
-            const pelletDirections = [];
             for (let i = 0; i < PELLET_COUNT; i++) {
-                // Get a pellet from the pool
-                const pellet = pelletPool.get();
+                const pellet = pelletPool.get(); // Get a pellet from the pool
+                if (!pellet) continue; // Skip if pool is empty
+
+                // Set initial position
                 pellet.position.copy(muzzlePosition);
-                
+
                 // Calculate spread direction
-                const spread = new THREE.Vector3(
-                    (Math.random() - 0.5) * PELLET_SPREAD,
-                    (Math.random() - 0.5) * PELLET_SPREAD,
-                    -1 // Forward is negative Z in Three.js
-                ).normalize();
-                spread.applyQuaternion(camera.quaternion);
-                
-                // Set pellet velocity with proper speed
-                pellet.velocity = spread.multiplyScalar(PELLET_SPEED);
-                pellet.spawnTime = performance.now();
-                pellet.visible = true;
-                pellet.bounces = 0;
-                
-                pelletPool.active.add(pellet);
-                pelletDirections.push(spread.toArray());
+                // Start with camera direction
+                const spreadDirection = cameraDirection.clone();
+                // Create a random offset vector perpendicular to the view direction
+                const randomAngle = Math.random() * Math.PI * 2;
+                const randomSpread = Math.random() * PELLET_SPREAD;
+                const spreadOffset = new THREE.Vector3(
+                    Math.cos(randomAngle) * randomSpread,
+                    Math.sin(randomAngle) * randomSpread,
+                    0 // Z offset is handled by applying quaternion
+                );
+                // Apply camera rotation to the offset and add it to the direction
+                spreadOffset.applyQuaternion(camera.quaternion);
+                spreadDirection.add(spreadOffset).normalize(); // Add offset and normalize
+
+                // Set pellet velocity
+                pellet.userData.velocity.copy(spreadDirection).multiplyScalar(PELLET_SPEED);
+                pellet.userData.spawnTime = now;
+
+                // Store direction for network
+                pelletDirections.push(spreadDirection.toArray());
             }
 
-            // Animate muzzle flash
+            // Muzzle flash effect (optional, keep existing if desired)
+            // ... (muzzle flash code can remain here) ...
+             // Animate muzzle flash (reuse existing flash animation if available)
             const flashDuration = 100;
-            const startTime = Date.now();
-            const animateFlash = () => {
-                const elapsed = Date.now() - startTime;
-                const progress = elapsed / flashDuration;
-                if (progress < 1) {
-                    muzzleFlash.scale.setScalar(1 + progress * 2);
-                    muzzleFlash.material.opacity = 0.8 * (1 - progress);
-                    requestAnimationFrame(animateFlash);
-                } else {
-                    scene.remove(muzzleFlash);
-                }
-            };
-            animateFlash();
+            const flashStartTime = Date.now();
+            // Assuming muzzleFlash mesh exists and is added to scene
+             if (muzzleFlash && outerFlash) { // Check if flashes exist
+                 muzzleFlash.position.copy(muzzlePosition);
+                 outerFlash.position.copy(muzzlePosition);
+                 muzzleFlash.visible = true;
+                 outerFlash.visible = true;
 
-            // Create shotgun blast cone
-            const coneGeometry = new THREE.ConeGeometry(5, 10, 8);
-            const coneMaterial = new THREE.MeshBasicMaterial({
-                color: 0xffff00,
-                transparent: true,
-                opacity: 0.3,
-                side: THREE.DoubleSide
-            });
-            const blastCone = new THREE.Mesh(coneGeometry, coneMaterial);
-            blastCone.position.copy(muzzlePosition);
-            blastCone.rotation.x = -Math.PI / 2;
-            blastCone.rotation.z = Math.PI / 2;
-            scene.add(blastCone);
+                 const animateFlash = () => {
+                    const elapsed = Date.now() - flashStartTime;
+                    const progress = elapsed / flashDuration;
+                    if (progress < 1) {
+                        const scale = 1 + progress * 5; // Flash expands
+                        const opacity = 1.0 * (1 - progress); // Flash fades
+                        muzzleFlash.scale.setScalar(scale * 0.8);
+                        muzzleFlash.material.opacity = opacity * 0.8;
+                        outerFlash.scale.setScalar(scale);
+                        outerFlash.material.opacity = opacity * 0.6;
+                        requestAnimationFrame(animateFlash);
+                    } else {
+                        muzzleFlash.visible = false;
+                        outerFlash.visible = false;
+                    }
+                };
+                animateFlash();
+            }
 
-            // Animate blast cone
-            const coneDuration = 200;
-            const coneStartTime = Date.now();
-            const animateCone = () => {
-                const elapsed = Date.now() - coneStartTime;
-                const progress = elapsed / coneDuration;
-                if (progress < 1) {
-                    blastCone.scale.setScalar(1 - progress);
-                    blastCone.material.opacity = 0.3 * (1 - progress);
-                    requestAnimationFrame(animateCone);
-                } else {
-                    scene.remove(blastCone);
-                }
-            };
-            animateCone();
 
             // Play shotgun sound
             playShotgunSound();
@@ -3291,7 +3304,8 @@
             // Send shot data to server
             if (ws && ws.readyState === WebSocket.OPEN) {
                 const shotData = {
-                    position: cameraPosition.toArray(),
+                    username: playerUsername, // Include who fired
+                    position: muzzlePosition.toArray(), // Use muzzle position
                     directions: pelletDirections
                 };
                 ws.send(JSON.stringify({
@@ -3299,6 +3313,97 @@
                     ...shotData
                 }));
             }
+        }
+
+        // Update pellet physics and collisions - Rewritten
+        function updatePellets(deltaTime) {
+            if (pelletPool.active.size === 0) return; // Skip if no active pellets
+
+            const currentTime = performance.now();
+            // Get potential collision objects (visible towers and bridges)
+            const collisionObjects = towers.filter(t => t.mesh.visible).map(t => t.mesh)
+                                    .concat(bridges.filter(b => b.mesh.visible).map(b => b.mesh));
+
+            // Reusable Raycaster for efficiency
+            const pelletRaycaster = new THREE.Raycaster();
+            pelletRaycaster.far = PELLET_SPEED * deltaTime + PELLET_RADIUS; // Set max distance based on frame movement
+
+            pelletPool.active.forEach(pellet => {
+                // 1. Check Lifetime
+                if (currentTime - pellet.userData.spawnTime > PELLET_LIFETIME) {
+                    pelletPool.release(pellet);
+                    return; // Go to next pellet
+                }
+
+                // 2. Calculate Movement for this Frame
+                const velocity = pellet.userData.velocity;
+                // Apply gravity (optional, PELLET_GRAVITY is likely 0)
+                if (PELLET_GRAVITY > 0) {
+                     velocity.y -= PELLET_GRAVITY * deltaTime;
+                }
+                // Calculate position change based on velocity and time
+                const deltaPosition = velocity.clone().multiplyScalar(deltaTime);
+                const currentPosition = pellet.position.clone();
+                const nextPosition = currentPosition.clone().add(deltaPosition);
+
+                let collided = false;
+
+                // 3. Check Environment Collision (Raycast)
+                if (deltaPosition.lengthSq() > 0.0001 && collisionObjects.length > 0) { // Only cast if moving
+                    pelletRaycaster.set(currentPosition, deltaPosition.normalize());
+                    pelletRaycaster.far = deltaPosition.length() + PELLET_RADIUS; // Update ray length precisely
+
+                    const intersects = pelletRaycaster.intersectObjects(collisionObjects, false); // Don't check children
+
+                    if (intersects.length > 0 && intersects[0].distance < deltaPosition.length() + PELLET_RADIUS) {
+                        // Collision detected with environment
+                        // console.log('Pellet hit environment');
+                        // Optional: Spawn impact effect at intersects[0].point
+                        pelletPool.release(pellet);
+                        collided = true;
+                    }
+                }
+
+                // 4. Check Player Collision (if not already collided)
+                if (!collided) {
+                    playerStates.forEach((playerState, username) => {
+                        // Skip self, check if already collided, or if player mesh invalid
+                         if (collided || username === playerUsername || !playerState.mesh || !playerState.mesh.visible) return;
+
+                        const distanceSq = nextPosition.distanceToSquared(playerState.mesh.position);
+                        const collisionRadius = playerRadius + PELLET_RADIUS; // Use defined player/pellet radii
+                        const collisionRadiusSq = collisionRadius * collisionRadius;
+
+                        if (distanceSq < collisionRadiusSq) {
+                            // Player hit
+                            // console.log(`Pellet hit player: ${username}`);
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                // Send damage message WITH attacker info
+                                ws.send(JSON.stringify({
+                                    type: 'player_damaged',
+                                    victimUsername: username,
+                                    attackerUsername: playerUsername, // Identify who shot
+                                    damage: SHOTGUN_DAMAGE
+                                }));
+                                // console.log(`Sent player_damaged message for ${username} from ${playerUsername}`);
+                            }
+                            pelletPool.release(pellet);
+                            collided = true;
+                        }
+                    });
+                }
+
+                 // 5. Update Position if no collision occurred
+                 if (!collided) {
+                    pellet.position.copy(nextPosition);
+
+                    // 6. Check Out-of-Bounds (if still active)
+                    if (pellet.position.y < -500) { // Simplified OOB check
+                       // console.log('Pellet out of bounds');
+                       pelletPool.release(pellet);
+                    }
+                 }
+            }); // End forEach active pellet
         }
 
         // Add these new functions
