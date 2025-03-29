@@ -228,7 +228,7 @@
             Fling Button = Aim & Release to Fling
         </p>
         <div style="margin-top: 20px;">
-            <input type="checkbox" id="musicToggle" name="musicToggle">
+            <input type="checkbox" id="musicToggle" name="musicToggle" checked>
             <label for="musicToggle" style="color: white; font-size: 18px;">Play Music</label>
         </div>
     </div>
@@ -3076,51 +3076,65 @@
 
         // Function to create an orb
         function createOrb(orbData) {
+            if (!orbData || typeof orbData.x === 'undefined' || typeof orbData.y === 'undefined' || typeof orbData.z === 'undefined' || typeof orbData.id === 'undefined') {
+                console.error('Invalid orb data received:', orbData);
+                return null;
+            }
+            
             console.log('Creating orb with data:', orbData);
             
-            // Make orbs larger (10x instead of 5x)
-            const baseSize = orbData.size * 10;
+            const orbId = orbData.id;
             
-            // Use dodecahedron geometry instead of sphere
-            const geometry = new THREE.DodecahedronGeometry(baseSize, 0);
+            // Check if orb already exists
+            if (orbs.has(orbId)) {
+                console.log(`Orb ${orbId} already exists, updating position.`);
+                const existingOrb = orbs.get(orbId);
+                existingOrb.position.set(orbData.x, orbData.y, orbData.z);
+                return existingOrb;
+            }
             
-            // Create a glowing material with enhanced emissive properties
-            const material = new THREE.MeshPhongMaterial({
-                color: orbData.color,
-                emissive: orbData.color,
-                emissiveIntensity: 2.0, // Increased from 1.0 for stronger glow
-                transparent: true,
-                opacity: 0.9,
-                shininess: 200, // Increased from 100 for more shine
-                specular: 0xffffff // Add white specular highlight
+            const geometry = new THREE.SphereGeometry(3, 16, 16); // Use consistent size
+            
+            // Define the allowed neon colors
+            const neonColors = [
+                0x39FF14, // Neon Green
+                0x1B03A3, // Neon Blue
+                0xBC13FE, // Neon Purple
+                0xFF10F0  // Neon Pink
+            ];
+            
+            // Select a random neon color
+            const randomColor = neonColors[Math.floor(Math.random() * neonColors.length)];
+            
+            const material = new THREE.MeshBasicMaterial({ 
+                color: randomColor,
+                wireframe: true // Keep wireframe for style
             });
             
             const orb = new THREE.Mesh(geometry, material);
-            orb.position.set(
-                orbData.position.x,
-                orbData.position.y,
-                orbData.position.z
-            );
+            orb.position.set(orbData.x, orbData.y, orbData.z);
+            orb.userData = { id: orbId, originalScale: 3 }; // Store ID and original scale
             
-            // Store original scale but no animation needed
-            orb.userData.originalScale = baseSize;
-            
-            // Add to scene and store in orbs collection
-            scene.add(orb);
-            orbs.set(orbData.id, orb);
-            
-            // Debug logging for position and visibility
-            console.log('Orb created successfully:', {
-                id: orbData.id,
-                position: orb.position,
-                size: baseSize,
-                color: orbData.color,
-                visible: orb.visible,
-                parent: orb.parent,
-                inScene: scene.children.includes(orb)
+            // Add glow effect
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: randomColor,
+                transparent: true,
+                opacity: 0.3
             });
+            const glowMesh = new THREE.Mesh(geometry.clone(), glowMaterial);
+            glowMesh.scale.multiplyScalar(1.5); // Slightly larger scale for glow
+            orb.add(glowMesh);
             
-            return orb;
+            // Add to scene and map
+            if (scene) {
+                 scene.add(orb);
+                 orbs.set(orbId, orb);
+                 console.log(`Orb ${orbId} created and added to scene at`, orb.position);
+                 return orb;
+            } else {
+                 console.error('Scene not initialized when trying to create orb', orbId);
+                 return null;
+            }
         }
 
         // Add after the playerOrbs Map declaration
@@ -3684,6 +3698,17 @@
             });
         }
 
+        // Play music if the checkbox is checked on load
+        if (musicCheckbox && musicCheckbox.checked) {
+            resumeAudio(); // Ensure context is active
+            // Use a timeout to ensure context is resumed before playing
+             setTimeout(() => {
+                  backgroundMusic.loop = true;
+                  backgroundMusic.play().catch(error => console.log('Error playing background music on load:', error));
+                  console.log("Music started on load");
+             }, 100); // Small delay
+        }
+        
         // Removed immediate call to resumeAudio() - it should only happen on interaction or toggle
         // resumeAudio();
     </script>
