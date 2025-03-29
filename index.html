@@ -3332,13 +3332,11 @@
         // Handle shotgun firing - Rewritten
         function fireShotgun() {
             if (!camera || !controls.isLocked) { // Ensure camera exists and controls are locked
-                // console.log('Cannot fire: Camera not ready or pointer not locked.');
                 return;
             }
 
             const now = performance.now();
             if (now - lastShotTime < SHOTGUN_COOLDOWN) {
-                // console.log('Shotgun cooldown');
                 return; // Cooldown active
             }
             lastShotTime = now;
