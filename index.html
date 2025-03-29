@@ -3076,7 +3076,8 @@
 
         // Function to create an orb
         function createOrb(orbData) {
-            if (!orbData || typeof orbData.x === 'undefined' || typeof orbData.y === 'undefined' || typeof orbData.z === 'undefined' || typeof orbData.id === 'undefined') {
+            // Updated validation to check nested position properties
+            if (!orbData || !orbData.position || typeof orbData.position.x === 'undefined' || typeof orbData.position.y === 'undefined' || typeof orbData.position.z === 'undefined' || typeof orbData.id === 'undefined') {
                 console.error('Invalid orb data received:', orbData);
                 return null;
             }
@@ -3089,7 +3090,8 @@
             if (orbs.has(orbId)) {
                 console.log(`Orb ${orbId} already exists, updating position.`);
                 const existingOrb = orbs.get(orbId);
-                existingOrb.position.set(orbData.x, orbData.y, orbData.z);
+                // Update position using nested properties
+                existingOrb.position.set(orbData.position.x, orbData.position.y, orbData.position.z);
                 return existingOrb;
             }
             
@@ -3112,7 +3114,8 @@
             });
             
             const orb = new THREE.Mesh(geometry, material);
-            orb.position.set(orbData.x, orbData.y, orbData.z);
+            // Set position using nested properties
+            orb.position.set(orbData.position.x, orbData.position.y, orbData.position.z);
             orb.userData = { id: orbId, originalScale: 3 }; // Store ID and original scale
             
             // Add glow effect
