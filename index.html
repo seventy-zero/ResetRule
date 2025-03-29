@@ -643,59 +643,97 @@
             towerEdges: new THREE.LineBasicMaterial({ color: 0xffffff })
         };
 
-        // Modify createTowerFromData to use shared materials
+        // Function to create tower from server data
         function createTowerFromData(towerData) {
-            const height = towerData.height;
-            const baseHeight = towerData.baseHeight;
-            
+            const baseHeight = 0;
+            const height = towerData.height || 20;
             let geometry;
-            let towerHeight = height;
-            
-            switch(towerData.type) {
-                case 0: // Cylindrical tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
-                    break;
-                case 1: // Tapered tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 6 });
-                    break;
-                case 2: // Square tower
-                    geometry = getGeometryFromCache('box', { width: 36, height, depth: 36 });
-                    break;
-                case 3: // Hexagonal tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 20, height, segments: 6 });
-                    break;
-                case 4: // Twisted tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 15, height, segments: 8 });
-                    break;
-                case 5: // Pyramid tower
-                    geometry = getGeometryFromCache('cone', { radius: 24, height, segments: 4 });
-                    break;
-                case 6: // Octagonal tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 19, height, segments: 8 });
-                    break;
-                case 7: // Double width tower
-                    geometry = getGeometryFromCache('box', { width: 42, height, depth: 42 });
-                    break;
-                case 8: // Inverse pyramid
-                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 4 });
-                    break;
-                case 9: // Star tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 24, height, segments: 5 });
-                    break;
-                case 10: // Thin spire
-                    geometry = getGeometryFromCache('cylinder', { radius: 8, height, segments: 6 });
-                    break;
+            let towerRadius = 8; // Default radius
+
+            // Use geometry cache
+            const geometryKey = `tower_${towerData.type}_${height}`;
+            const cachedGeometry = getGeometryFromCache(geometryKey);
+
+            if (cachedGeometry) {
+                geometry = cachedGeometry;
+                // Infer radius if possible from cached geometry type (example)
+                if (geometry.parameters && geometry.parameters.radiusTop !== undefined) {
+                     towerRadius = geometry.parameters.radiusTop; // Assuming CylinderGeometry or similar
+                } else if (geometry.parameters && geometry.parameters.width !== undefined) {
+                     towerRadius = geometry.parameters.width / 2; // Assuming BoxGeometry width
+                }
+            } else {
+                switch (towerData.type) {
+                    case 0:
+                        geometry = new THREE.CylinderGeometry(8, 8, height, 6);
+                        towerRadius = 8;
+                        break;
+                    case 1:
+                        geometry = new THREE.CylinderGeometry(6, 10, height, 8);
+                        towerRadius = 10; // Use largest radius for collision
+                        break;
+                    case 2:
+                        geometry = new THREE.BoxGeometry(12, height, 12);
+                        towerRadius = 6 * Math.sqrt(2); // Approx radius for box diagonal
+                        break;
+                    case 3:
+                        geometry = new THREE.CylinderGeometry(10, 6, height, 8);
+                         towerRadius = 10;
+                        break;
+                    case 4:
+                         geometry = new THREE.CylinderGeometry(4, 4, height, 4);
+                         towerRadius = 4;
+                         break;
+                    case 5:
+                         geometry = new THREE.CylinderGeometry(9, 9, height, 3); // Triangle prism
+                         towerRadius = 9;
+                         break;
+                    // Add cases for new tower types 6-11 if necessary, defining geometry and radius
+                    case 6: // Example: Wider Cylinder
+                        geometry = new THREE.CylinderGeometry(15, 15, height, 12);
+                        towerRadius = 15;
+                        break;
+                    case 7: // Example: Tall Thin Box
+                         geometry = new THREE.BoxGeometry(5, height * 1.5, 5); // Adjust height if needed
+                         towerRadius = 2.5 * Math.sqrt(2);
+                         break;
+                    case 8: // Example: Octagonal Prism
+                         geometry = new THREE.CylinderGeometry(10, 10, height, 8);
+                         towerRadius = 10;
+                         break;
+                     case 9: // Special tower type 1 (e.g., thin spire)
+                         geometry = new THREE.CylinderGeometry(2, 2, height * 1.8, 6);
+                         towerRadius = 2;
+                         break;
+                    case 10: // Special tower type 2 (e.g., wide platform)
+                        geometry = new THREE.CylinderGeometry(20, 20, height * 0.5, 16);
+                         towerRadius = 20;
+                        break;
+                    case 11: // Special tower type 3 (e.g., complex shape - still use simple collider)
+                        // Visually complex geometry...
+                        geometry = new THREE.TorusKnotGeometry(10, 3, 100, 16); // Example complex shape
+                        // ...but use a simple cylinder for collision
+                        towerRadius = 13; // Estimate based on visual size
+                        break;
+                    default: // Default to cylinder
+                        geometry = new THREE.CylinderGeometry(8, 8, height, 6);
+                         towerRadius = 8;
+                        break;
+                }
+                 // Store in cache if needed
+                 // setGeometryInCache(geometryKey, geometry); // Assuming you have this function
             }
+
 
             // Create the main mesh with solid faces using shared material
             const mesh = new THREE.Mesh(geometry, sharedMaterials.tower);
-            
+
             // Create the edges using shared material
             const edges = new THREE.LineSegments(
                 new THREE.EdgesGeometry(geometry),
                 sharedMaterials.towerEdges
             );
-            
+
             // Group the mesh and edges together
             const group = new THREE.Group();
             group.add(mesh);
@@ -703,26 +741,20 @@
             group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
             scene.add(group);
 
-            // --- Create a simplified local box based on the actual mesh bounds ---
-            // 1. Get the bounding box of the actual visual mesh geometry
-            const actualMeshBBox = new THREE.Box3().setFromObject(mesh);
-            const actualSize = new THREE.Vector3();
-            actualMeshBBox.getSize(actualSize);
-            
-            // 2. Create a simple BoxGeometry using these dimensions
-            //    (Use BufferGeometry directly for Box3 calculation)
-            const simpleCollisionGeometry = new THREE.BoxGeometry(actualSize.x, actualSize.y, actualSize.z);
-
-            // 3. Create the localCollisionBox from this size-matched simple geometry
-            const localCollisionBox = new THREE.Box3().setFromBufferAttribute(
-                simpleCollisionGeometry.attributes.position
+            // --- Create a simplified local box based on the DEFINED dimensions ---
+            // Use towerRadius and height to define the collision box extents
+            // We'll use a Box3 that encompasses a cylinder of towerRadius and height
+            const halfHeight = height / 2;
+            const localCollisionBox = new THREE.Box3(
+                new THREE.Vector3(-towerRadius, -halfHeight, -towerRadius),
+                new THREE.Vector3(towerRadius, halfHeight, towerRadius)
             );
-            simpleCollisionGeometry.dispose(); // Dispose temporary geometry
 
-            // Store tower info with the size-matched simplified localCollisionBox
+
+            // Store tower info with the defined simplified localCollisionBox
             towers.push({
                 mesh: group,             // The visual group (has world transform)
-                localCollisionBox: localCollisionBox, // The SIMPLIFIED but size-matched local box
+                localCollisionBox: localCollisionBox, // The SIMPLIFIED local box based on parameters
                 isBridge: false          // Flag this as not a bridge
             });
         }
