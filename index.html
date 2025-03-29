@@ -284,6 +284,7 @@
         const PELLET_GRAVITY = 0.0;     // Gravity effect on pellets (0 for straight line)
         const PELLET_RADIUS = 0.15;    // Pellet collision radius
         const SHOTGUN_DAMAGE = 10;     // Damage per pellet hit
+        const PELLET_FRICTION = 0.99;  // Damping factor for pellets (0=stop, 1=no friction)
         let lastShotTime = 0;
         let playerHealth = 100;
         let isDead = false;
