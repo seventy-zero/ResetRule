@@ -653,24 +653,38 @@
             
             switch(towerData.type) {
                 case 0: // Cylindrical tower
-                case 3: // Hexagonal tower
-                case 6: // Octagonal tower
-                case 10: // Thin spire
                     geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
                     break;
                 case 1: // Tapered tower
-                case 4: // Twisted tower
-                case 8: // Inverse pyramid
-                case 9: // Star tower
-                    // Treat these complex/tapered shapes as cylindrical for LOD base
-                    geometry = getGeometryFromCache('cylinder', { radius: 15, height, segments: 8 });
+                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 6 });
                     break;
                 case 2: // Square tower
-                case 5: // Pyramid tower (base is square)
-                case 7: // Double width tower
                     geometry = getGeometryFromCache('box', { width: 36, height, depth: 36 });
                     break;
-                // Default case or handle potential errors if necessary
+                case 3: // Hexagonal tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 20, height, segments: 6 });
+                    break;
+                case 4: // Twisted tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 15, height, segments: 8 });
+                    break;
+                case 5: // Pyramid tower
+                    geometry = getGeometryFromCache('cone', { radius: 24, height, segments: 4 });
+                    break;
+                case 6: // Octagonal tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 19, height, segments: 8 });
+                    break;
+                case 7: // Double width tower
+                    geometry = getGeometryFromCache('box', { width: 42, height, depth: 42 });
+                    break;
+                case 8: // Inverse pyramid
+                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 4 });
+                    break;
+                case 9: // Star tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 24, height, segments: 5 });
+                    break;
+                case 10: // Thin spire
+                    geometry = getGeometryFromCache('cylinder', { radius: 8, height, segments: 6 });
+                    break;
             }
 
             // Create the main mesh with solid faces using shared material
@@ -687,25 +701,29 @@
             group.add(mesh);
             group.add(edges);
             group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
-            // scene.add(group); // Don't add directly to scene here, will be handled by LOD setup
+            scene.add(group);
 
             // --- Create a simplified local box based on the actual mesh bounds ---
+            // 1. Get the bounding box of the actual visual mesh geometry
             const actualMeshBBox = new THREE.Box3().setFromObject(mesh);
             const actualSize = new THREE.Vector3();
             actualMeshBBox.getSize(actualSize);
             
+            // 2. Create a simple BoxGeometry using these dimensions
+            //    (Use BufferGeometry directly for Box3 calculation)
             const simpleCollisionGeometry = new THREE.BoxGeometry(actualSize.x, actualSize.y, actualSize.z);
+
+            // 3. Create the localCollisionBox from this size-matched simple geometry
             const localCollisionBox = new THREE.Box3().setFromBufferAttribute(
                 simpleCollisionGeometry.attributes.position
             );
-            simpleCollisionGeometry.dispose();
+            simpleCollisionGeometry.dispose(); // Dispose temporary geometry
 
-            // Store tower info including the original type for LOD decisions
+            // Store tower info with the size-matched simplified localCollisionBox
             towers.push({
-                mesh: group,             // The visual group (high detail)
-                localCollisionBox: localCollisionBox, 
-                isBridge: false,
-                type: towerData.type // <-- Store the original type
+                mesh: group,             // The visual group (has world transform)
+                localCollisionBox: localCollisionBox, // The SIMPLIFIED but size-matched local box
+                isBridge: false          // Flag this as not a bridge
             });
         }
 
@@ -757,7 +775,7 @@
             bridgeGroup.position.copy(midPoint);
             bridgeGroup.rotation.y = angle;
 
-            // scene.add(bridgeGroup); // REMOVED: Don't add directly, will be handled by LOD setup
+            scene.add(bridgeGroup);
 
             // Add bridge to towers array for consistent handling
             const bridgeObject = {
@@ -774,7 +792,7 @@
                 hasCollisionBox: !!bridgeObject.localCollisionBox, // Check if local box exists
                 isBridge: bridgeObject.isBridge
             });
-            return bridgeGroup; // Still return the group, though it's not added directly here
+            return bridgeGroup;
         }
 
         // Update collision check function to handle bridges like towers
@@ -997,108 +1015,9 @@
                         // Create bridges from server data
                         if (data.bridges) {
                             data.bridges.forEach(bridgeData => {
-                                // createBridgeFromData adds the group to the scene and pushes {mesh: group, ...} to towers array
                                 createBridgeFromData(bridgeData);
                             });
                         }
-
-                        // --- NEW LOD IMPLEMENTATION START ---
-                        console.log(`Setting up LOD for ${towers.length} objects...`);
-                        const lodDistanceThreshold = 1000; // Distance for switching to low detail
-                        const tempSize = new THREE.Vector3(); // Reuse vector for performance
-                        const lowDetailSegmentCount = 6; // Segments for low-detail cylinders
-
-                        // Clear previous LOD objects if any (important for subsequent world_data messages)
-                        scene.children = scene.children.filter(child => !(child instanceof THREE.LOD));
-
-                        towers.forEach((towerInfo, index) => {
-                            const originalMeshGroup = towerInfo.mesh; // This is the THREE.Group
-
-                            if (!originalMeshGroup || !towerInfo.localCollisionBox) {
-                                console.warn(`Skipping LOD setup for tower/bridge index ${index}: Missing mesh or collision box.`);
-                                return; // Skip if data is incomplete
-                            }
-
-                            // 1. Create LOD object
-                            const lod = new THREE.LOD();
-                            // Ensure original mesh's world matrix is up-to-date before copying
-                            originalMeshGroup.updateMatrixWorld(true); 
-                            lod.position.copy(originalMeshGroup.position);
-                            lod.rotation.copy(originalMeshGroup.rotation);
-                            // Update the LOD object's world matrix immediately
-                            lod.updateMatrixWorld(true); 
-                            lod.matrixAutoUpdate = true; 
-                            lod.visible = originalMeshGroup.visible; // Inherit visibility
-
-                            // 2. Create simplified geometry (Low Detail Mesh)
-                            try {
-                                towerInfo.localCollisionBox.getSize(tempSize);
-                                if (tempSize.x <= 0 || tempSize.y <= 0 || tempSize.z <= 0) {
-                                    console.warn(`Skipping LOD setup for tower/bridge index ${index}: Invalid size from collision box`, tempSize);
-                                    return;
-                                }
-                                
-                                let simpleGeometry;
-                                if (towerInfo.isBridge) {
-                                    // Bridges always use BoxGeometry for low detail
-                                    simpleGeometry = new THREE.BoxGeometry(tempSize.x, tempSize.y, tempSize.z);
-                                } else {
-                                    // Towers: Decide shape based on original type
-                                    switch(towerInfo.type) {
-                                        case 0: // Cylindrical
-                                        case 1: // Tapered
-                                        case 3: // Hexagonal
-                                        case 4: // Twisted
-                                        case 6: // Octagonal
-                                        case 8: // Inverse pyramid 
-                                        case 9: // Star 
-                                        case 10: // Thin spire
-                                            // Use low-segment Cylinder for cylinder-like towers
-                                            // Use average of x/z for radius, keep original height
-                                            const radius = (tempSize.x + tempSize.z) / 4; // Average radius from box
-                                            simpleGeometry = new THREE.CylinderGeometry(radius, radius, tempSize.y, lowDetailSegmentCount);
-                                            break;
-                                        case 2: // Square 
-                                        case 5: // Pyramid 
-                                        case 7: // Double width 
-                                        default:
-                                            // Use Box for square/boxy towers
-                                            simpleGeometry = new THREE.BoxGeometry(tempSize.x, tempSize.y, tempSize.z);
-                                            break;
-                                    }
-                                }
-
-                                // Use the shared *wireframe* material for low detail
-                                const simpleMesh = new THREE.LineSegments(
-                                    new THREE.EdgesGeometry(simpleGeometry),
-                                    sharedMaterials.towerEdges // Use the white wireframe material
-                                );
-                                simpleMesh.visible = true; 
-                                simpleMesh.matrixAutoUpdate = false; // Optimize low-detail mesh updates
-                                simpleMesh.updateMatrix();
-
-                                // 3. Add levels to LOD
-                                // Level 0: Original detailed mesh group (distance 0)
-                                // Ensure the original group is not parented elsewhere before adding
-                                if (originalMeshGroup.parent) {
-                                    originalMeshGroup.parent.remove(originalMeshGroup);
-                                }
-                                lod.addLevel(originalMeshGroup, 0);
-
-                                // Level 1: Simplified wireframe mesh (distance threshold)
-                                lod.addLevel(simpleMesh, lodDistanceThreshold);
-
-                                // 4. Add LOD to the scene (replacing original group)
-                                scene.add(lod); 
-
-                                // 5. Collision logic continues to use towerInfo.mesh (the original group) reference.
-
-                            } catch (error) {
-                                console.error(`Error setting up LOD for tower/bridge index ${index}:`, error, towerInfo);
-                            }
-                        });
-                        console.log("LOD setup finished with improved visuals.");
-                        // --- NEW LOD IMPLEMENTATION END ---
 
                         // Debug logging for orbs
                         console.log('Processing orbs data:', data.orbs);
@@ -2501,44 +2420,601 @@
             // Animation loop with collision detection, star rotation, and nebula animation
             function animate() {
                 requestAnimationFrame(animate);
-                const delta = clock.getDelta();
 
-                // Update LOD levels based on camera distance
-                scene.traverse(obj => {
-                    if (obj.isLOD) {
-                        obj.update(camera);
+                const deltaTime = clock.getDelta();
+                const currentTime = performance.now();
+
+                // Update pellets
+                updatePellets(deltaTime); // Pass deltaTime
+
+                if (gameStarted) {
+                    // Update frustum for culling
+                    projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+                    frustum.setFromProjectionMatrix(projScreenMatrix);
+                    
+                    // Update other players' positions with throttling
+                    if (currentTime - lastCollisionCheck > COLLISION_CHECK_INTERVAL) {
+                        playerStates.forEach((playerState, username) => {
+                            if (username !== playerUsername) {
+                                const timeSinceUpdate = Date.now() - playerState.lastUpdateTime;
+                                if (timeSinceUpdate > 5000) {
+                                    removePlayer(username);
+                                } else {
+                                    playerState.update(deltaTime);
+                                }
+                            }
+                        });
+                        lastCollisionCheck = currentTime;
                     }
-                });
+                    
+                    // Update nebula animations (framerate independent)
+                    const time = currentTime * 0.001; // Keep time for shader effects if needed
+                    nebulas.forEach((nebula, index) => {
+                        if (nebula && nebula.material && nebula.material.uniforms) {
+                            nebula.material.uniforms.time.value = time;
+                            // Scale rotation and position changes by deltaTime
+                            const nebulaRotSpeed = 0.01; // Adjust speed as needed
+                            const nebulaDriftSpeed = 0.5; // Adjust speed as needed
+                            nebula.rotation.y += nebulaRotSpeed * deltaTime;
+                            nebula.rotation.x += (nebulaRotSpeed * 0.5) * deltaTime;
+                            nebula.position.y += Math.sin(time * 0.1 + index) * nebulaDriftSpeed * deltaTime;
+                            nebula.position.x += Math.cos(time * 0.15 + index) * nebulaDriftSpeed * deltaTime;
+                        }
+                    });
 
-                // Update player states for interpolation
-                playerStates.forEach(playerState => {
-                    playerState.update(delta);
-                });
+                    // Rotate star fields (framerate independent)
+                    // Define base rotation speeds (radians per second)
+                    const starFieldSpeed = 0.005;
+                    const largeStarFieldSpeed = 0.003;
+                    
+                    if (starField) {
+                        starField.rotation.y += starFieldSpeed * deltaTime; // Use deltaTime
+                    }
+                    if (largeStarField) {
+                        largeStarField.rotation.y += largeStarFieldSpeed * deltaTime; // Use deltaTime
+                    }
 
-                // Update game logic only if game has started and controls are locked
-                if (gameStarted && controls.isLocked) {
-                    updateGameLogic(delta);
-                } else if (gameStarted && isMobile) {
-                    // Allow game logic updates for mobile even if pointer lock isn't active
-                    updateGameLogic(delta);
+                    // Update nebula opacity (example - add your nebula logic here if needed)
+                    // if (nebulaMaterial) { ... }
+
+                    // Only process movement and game logic if controls are locked and game is started
+                    if (controls.isLocked && gameStarted) {
+
+                        // --- Store Position Before Movement for Collision Check ---
+                        const positionBeforeFrame = camera.position.clone();
+
+                        // --- Calculate Input Direction ---
+                        const inputDirection = new THREE.Vector3();
+                        inputDirection.z = Number(moveForward) - Number(moveBackward);
+                        inputDirection.x = Number(moveRight) - Number(moveLeft);
+                        inputDirection.normalize(); // Ensure consistent speed diagonally
+
+                        // --- MOBILE DEBUG LOG START ---
+                        if (isMobile && (moveForward || moveBackward || moveLeft || moveRight)) {
+                           console.log(`[Mobile Debug Animate] Flags: F=${moveForward}, B=${moveBackward}, L=${moveLeft}, R=${moveRight}`);
+                        }
+                        // --- MOBILE DEBUG LOG END ---
+
+                        // --- Calculate Movement Distance for this Frame ---
+                        // Treat moveSpeed as units per second
+                        const moveDistanceZ = inputDirection.z * moveSpeed * deltaTime;
+                        const moveDistanceX = inputDirection.x * moveSpeed * deltaTime;
+
+                        // --- Apply Movement using PointerLockControls ---
+                        // This handles movement relative to camera orientation
+                        controls.moveForward(moveDistanceZ); 
+                        controls.moveRight(moveDistanceX);
+                        // NOTE: We are no longer using the separate 'velocity' vector for WASD
+
+                        // --- Collision Check Block (Uses positionBeforeFrame) ---
+                        playerCollider.center.copy(positionBeforeFrame); // Check based on where we *were*
+                        const movementCollision = checkCollision(positionBeforeFrame, playerRadius);
+                        
+                        if (movementCollision.collision) {
+                            // --- Define pushDir early, it's needed for multiple conditions ---
+                            const pushDir = new THREE.Vector3();
+                            pushDir.copy(positionBeforeFrame).sub(movementCollision.closestPoint).normalize();
+                            const distance = positionBeforeFrame.distanceTo(movementCollision.closestPoint);
+                            const pushDistance = playerRadius - distance; // Penetration depth
+                            
+                            const isStuck = distance < playerRadius * STUCK_THRESHOLD;
+                            
+                            if (isStuck) {
+                                // Player is stuck, apply push-out based on penetration depth and initiate a bounce
+                                // pushDir and pushDistance are already calculated
+                                
+                                // 1. Apply position correction based on penetration depth
+                                camera.position.x += pushDir.x * pushDistance * STUCK_PUSH_FORCE;
+                                camera.position.z += pushDir.z * pushDistance * STUCK_PUSH_FORCE;
+
+                                // 2. Add upward velocity impulse to help escape
+                                verticalVelocity = 0.3; // Small vertical pop
+                                isGrounded = false;
+
+                                // 3. Set fling velocity to bounce directly away
+                                flingVelocity.x = pushDir.x * STUCK_BOUNCE_SPEED;
+                                flingVelocity.z = pushDir.z * STUCK_BOUNCE_SPEED;
+                                isFlinging = true; // Activate fling physics for this bounce
+
+                                // Logging the bounce event
+                                console.log('Player stuck, initiating bounce:', {
+                                    pushDir: pushDir.clone(),
+                                    pushDistance: pushDistance,
+                                    bounceVelocity: flingVelocity.clone()
+                                });
+
+                            } else {
+                                // Normal collision response (not stuck)
+                                // pushDir and pushDistance are already calculated
+                                
+                                // Store vertical velocity *before* potential gravity application
+                                const verticalVelocityBeforeCheck = verticalVelocity;
+
+                                // Check if hitting an underside while moving up
+                                if (pushDir.y < -0.1 && verticalVelocityBeforeCheck > 0) {
+                                    // Log hitting underside
+                                    console.log('Collision: Hitting underside', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck });
+
+                                    // Stop upward movement immediately
+                                    verticalVelocity = 0;
+                                    isGrounded = false;
+
+                                    // Apply full 3D push-out using pre-calculated pushDistance
+                                    camera.position.addScaledVector(pushDir, pushDistance * COLLISION_PUSH_FORCE);
+
+                                    // Dampen horizontal velocity after hitting ceiling
+                                    if (isFlinging) {
+                                        flingVelocity.x *= 0.5;
+                                        flingVelocity.z *= 0.5;
+                                    } 
+                                    // No else needed for velocity here, as WASD velocity isn't used
+                                } else {
+                                    // Standard collision response (horizontal push/sliding)
+                                    // Log standard collision
+                                    console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
+
+                                    // Apply horizontal push-out using pre-calculated pushDistance
+                                    const horizontalPushForce = isFlinging ? COLLISION_PUSH_FORCE * 1.5 : COLLISION_PUSH_FORCE;
+                                    camera.position.x += pushDir.x * pushDistance * horizontalPushForce;
+                                    camera.position.z += pushDir.z * pushDistance * horizontalPushForce;
+
+                                    // Adjust velocities based on collision (Sliding / Reflection)
+                                    const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
+                                    if (isFlinging) {
+                                        // Fling reflection/dampening - OK
+                                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                        const dot = flingVelocity.x * horizontalPushNormal.x + flingVelocity.z * horizontalPushNormal.z;
+                                        if (dot < 0) { 
+                                          flingVelocity.x -= 2 * dot * horizontalPushNormal.x * 0.8; 
+                                          flingVelocity.z -= 2 * dot * horizontalPushNormal.z * 0.8;
+                                        }
+                                        flingVelocity.multiplyScalar(0.8); 
+                                    } 
+                                    // No else for normal velocity sliding needed anymore
+                                }
+                            }
+                        } // End of movementCollision response block
+                        // --- [End Collision Response Block] ---
+
+                        // --- Movement Update --- 
+                        // NO LONGER NEEDED for WASD - PointerLockControls handles it
+                        // Remove calculation of moveVector, totalVelocityX/Z 
+                        // Remove camera.position.x += totalVelocityX * deltaTime; etc.
+
+                        // --- Vertical Movement & Gravity --- (Largely unchanged)
+                        if (!isGrounded) {
+                            // Apply gravity (framerate independent)
+                            // ... (gravity logic - check if needs adjustment without velocity interaction in collision)
+                            verticalVelocity -= gravity * deltaTime;
+                        } else {
+                            verticalVelocity = 0; 
+                        }
+                        // Apply vertical velocity (framerate independent)
+                        // Fling velocity is handled separately
+                        let verticalMove = verticalVelocity * deltaTime;
+                        if(isFlinging) {
+                             // Assuming flingVelocity includes Y component for initial jump
+                             // Need to handle fling vertical movement
+                             // This might need adjustment - let's keep simple verticalVelocity for now
+                        }
+                        camera.position.y += verticalMove;
+
+                        // --- Fling Horizontal Movement --- (Apply separately if needed)
+                        if (isFlinging) {
+                           camera.position.x += flingVelocity.x * deltaTime;
+                           camera.position.z += flingVelocity.z * deltaTime;
+                           // Damping applied later
+                        }
+
+                        // --- Ground Check --- (Unchanged)
+                        // ...
+
+                        // --- Damping / Friction --- 
+                        // Apply damping ONLY to fling velocity 
+                        if (isFlinging) {
+                            const effectiveFlingDamping = Math.pow(flingDamping, deltaTime * 60);
+                            flingVelocity.x *= effectiveFlingDamping;
+                            flingVelocity.z *= effectiveFlingDamping;
+                            if (flingVelocity.lengthSq() < 0.001) {
+                                isFlinging = false;
+                                flingVelocity.set(0, 0, 0);
+                            }
+                        }
+                        // Remove normal velocity damping (velocity no longer used for WASD)
+
+                        // --- Final Updates for Frame --- (Unchanged)
+                        playerCollider.center.copy(camera.position); // Update collider to final position
+                        // ... (Orb check etc) ...
+
+                    } // End of if (controls.isLocked && gameStarted)
+
+                    // Update line trace position
+                    const cameraDirection = new THREE.Vector3();
+                    camera.getWorldDirection(cameraDirection);
+                    const rightVector = new THREE.Vector3();
+                    rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
+                    
+                    // Update line visibility
+                    tubeMesh.visible = showLine;
+                    
+                    if (showLine) {
+                        // Calculate start and end points
+                        const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
+                        startPoint.y = camera.position.y;
+                        
+                        const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(200)); // Increased from 50 to 200
+                        
+                        // Update curve points
+                        curve.points[0].copy(startPoint);
+                        curve.points[1].copy(endPoint);
+                        
+                        // Update the tube geometry
+                        const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
+                        tubeMesh.geometry.dispose();
+                        tubeMesh.geometry = newTubeGeometry;
+
+                        // Check for line collision with towers
+                        raycaster.set(camera.position, cameraDirection);
+                        const intersects = [];
+                        towers.forEach(tower => {
+                            const towerIntersects = raycaster.intersectObject(tower.mesh);
+                            if (towerIntersects.length > 0 && towerIntersects[0].distance <= 430) { // Increased from 330 to 500
+                                intersects.push(towerIntersects[0]);
+                            }
+                        });
+
+                        // Sort intersections by distance and get the closest one
+                        if (intersects.length > 0) {
+                            intersects.sort((a, b) => a.distance - b.distance);
+                            lineCollisionPoint = intersects[0].point;
+                            
+                            // Update line end point to collision point
+                            curve.points[1].copy(lineCollisionPoint);
+                            const collidedTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
+                            tubeMesh.geometry.dispose();
+                            tubeMesh.geometry = collidedTubeGeometry;
+                            
+                            // Change line color to indicate valid target
+                            tubeMaterial.color.setHex(0x00ff00);
+                        } else {
+                            lineCollisionPoint = null;
+                            // Change line color to indicate no target
+                            tubeMaterial.color.setHex(0xff0000);
+                        }
+                    } else if (lineCollisionPoint) {
+                        // Initiate fling when line is released and we had a collision point
+                        const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
+                        
+                        // Increase fling strength based on distance to target, but more gently
+                        const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                        const scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
+                        
+                        // Set velocity components
+                        flingVelocity.x = flingDirection.x * scaledStrength;
+                        flingVelocity.z = flingDirection.z * scaledStrength;
+                        verticalVelocity = flingDirection.y * scaledStrength + 0.5;
+                        
+                        isFlinging = true;
+                        isGrounded = false;
+                        lineCollisionPoint = null;
+                    }
+
+                    // Apply fling velocity if active
+                    if (isFlinging) {
+                        // Move in world space
+                        camera.position.x += flingVelocity.x;
+                        camera.position.z += flingVelocity.z;
+                        camera.position.y += verticalVelocity;
+
+                        // Apply gravity
+                        verticalVelocity -= gravity;
+
+                        // Update player collider position
+                        playerCollider.center.copy(camera.position);
+
+                        // Check collisions with all towers
+                        const movementCollision = checkCollision(camera.position, playerRadius);
+                        
+                        // If there's a collision during fling, push out and continue
+                        if (movementCollision.collision) {
+                            if (isFlinging) {
+                                // During fling, push out strongly and redirect velocity
+                                const pushDir = new THREE.Vector3();
+                                pushDir.copy(camera.position).sub(movementCollision.closestPoint).normalize();
+                                
+                                // Push out with a stronger force
+                                const pushDistance = playerRadius - movementCollision.distance;
+                                camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                                camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                                
+                                // Normal collision response for all objects
+                                const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                
+                                // Add corner sliding effect
+                                const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
+                                if (dotProduct < 0) {
+                                    // We're moving towards the collision, apply stronger bounce
+                                    flingVelocity.x = pushDir.x * speed * 0.8;
+                                    flingVelocity.z = pushDir.z * speed * 0.8;
+                                } else {
+                                    // We're moving along the surface, apply sliding
+                                    flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
+                                    flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
+                                }
+                                
+                                // Add upward velocity for bounce
+                                verticalVelocity = Math.abs(verticalVelocity) * 0.8;
+                            }
+                        }
+
+                        // Apply damping to horizontal movement
+                        flingVelocity.x *= flingDamping;
+                        flingVelocity.z *= flingDamping;
+
+                        // Check for ground collision
+                        if (camera.position.y <= playerHeight) {
+                            camera.position.y = playerHeight;
+                            verticalVelocity = 0;
+                            isGrounded = true;
+                            isFlinging = false;
+                            flingVelocity.set(0, 0, 0);
+                        }
+
+                        // Stop flinging when velocity is very small
+                        if (Math.abs(flingVelocity.x) < 0.001 && Math.abs(flingVelocity.z) < 0.001) {
+                            isFlinging = false;
+                            flingVelocity.set(0, 0, 0);
+                        }
+                    }
+
+                    // Apply gravity and handle ground collision
+                    if (!isGrounded) {
+                        verticalVelocity -= gravity;
+                        camera.position.y += verticalVelocity;
+
+                        // Update player collider position
+                        playerCollider.center.copy(camera.position);
+
+                        // Check collisions after vertical movement
+                        const verticalCollision = checkCollision(camera.position, playerRadius);
+                        if (verticalCollision.collision) {
+                            if (isFlinging) {
+                                // During fling, push out strongly and redirect velocity
+                                const pushDir = new THREE.Vector3();
+                                pushDir.copy(camera.position).sub(verticalCollision.closestPoint).normalize();
+                                
+                                // Push out with a stronger force
+                                const pushDistance = playerRadius - verticalCollision.distance;
+                                camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                                camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                                
+                                // Normal collision response for all objects
+                                const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                
+                                // Add corner sliding effect
+                                const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
+                                if (dotProduct < 0) {
+                                    // We're moving towards the collision, apply stronger bounce
+                                    flingVelocity.x = pushDir.x * speed * 0.8;
+                                    flingVelocity.z = pushDir.z * speed * 0.8;
+                                } else {
+                                    // We're moving along the surface, apply sliding
+                                    flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
+                                    flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
+                                }
+                                
+                                // Add upward velocity for bounce
+                                verticalVelocity = Math.abs(verticalVelocity) * 0.8;
+                            } else {
+                                // During normal movement, push out smoothly
+                                const pushDir = new THREE.Vector3();
+                                pushDir.copy(camera.position).sub(verticalCollision.closestPoint).normalize();
+                                
+                                // Push out with a smoother force
+                                const pushDistance = playerRadius - verticalCollision.distance;
+                                camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                                camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                                
+                                // Add corner sliding for normal movement
+                                const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
+                                if (dotProduct < 0) {
+                                    // We're moving towards the collision, stop movement
+                                    velocity.x = 0;
+                                    velocity.z = 0;
+                                } else {
+                                    // We're moving along the surface, apply sliding
+                                    velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
+                                    velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
+                                }
+                                
+                                // Remove special bridge handling - treat all collisions the same
+                                const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+                                if (currentSpeed > 0.1) { // Only apply bounce if we have significant speed
+                                    const bounceStrength = 0.8; // Consistent bounce for all objects
+                                    velocity.x = pushDir.x * currentSpeed * bounceStrength;
+                                    velocity.z = pushDir.z * currentSpeed * bounceStrength;
+                                    // Further reduced bounce factors
+                                    verticalVelocity = Math.max(currentSpeed * 0.15, 0.1); // Was 0.25, 0.2
+                                    isGrounded = false;
+                                }
+                            }
+                        }
+
+                        // Check for ground collision
+                        if (camera.position.y <= playerHeight) {
+                            camera.position.y = playerHeight;
+                            verticalVelocity = 0;
+                            isGrounded = true;
+                        }
+                    }
+
+                    // Update player collider position for final position
+                    playerCollider.center.copy(camera.position);
+
+                    // Check for orb collisions
+                    // --- DEBUG LOGGING START ---
+                    if (isMobile) {
+                        console.log(`[Mobile Debug] Checking orb collision. Orbs count: ${orbs.size}, Player Pos: ${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)}`);
+                    }
+                    // --- DEBUG LOGGING END ---
+                    const orbCollision = checkOrbCollision(camera.position, playerRadius);
+                    if (orbCollision) {
+                        // Send collection message to server
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({
+                                type: 'collect_orb',
+                                orbId: orbCollision.orbId
+                            }));
+                            
+                            // Remove orb from scene and collection
+                            scene.remove(orbCollision.orb);
+                            orbs.delete(orbCollision.orbId);
+                            
+                            // Update local orb count
+                            const currentOrbs = playerOrbs.get(playerUsername) || 0;
+                            playerOrbs.set(playerUsername, currentOrbs + 1);
+                            updateOrbCount();
+                            
+                            // Play collection sound
+                            playOrbCollectionSound();
+                        }
+                    }
+
+                    // Check collisions for normal movement
+                    const normalCollision = checkCollision(camera.position, playerRadius);
+                    
+                    // Handle normal movement collisions with push-out
+                    if (normalCollision.collision) {
+                        const distance = camera.position.distanceTo(normalCollision.closestPoint);
+                        const isStuck = distance < playerRadius * STUCK_THRESHOLD;
+                        
+                        if (isStuck) {
+                            // Player is stuck, apply stronger push-out force
+                            const pushDir = new THREE.Vector3();
+                            pushDir.copy(camera.position).sub(normalCollision.closestPoint).normalize();
+                            
+                            // Apply extra push force when stuck
+                            const pushDistance = playerRadius * STUCK_PUSH_FORCE;
+                            camera.position.x += pushDir.x * pushDistance;
+                            camera.position.z += pushDir.z * pushDistance;
+                            
+                            // Add upward velocity to help escape
+                            verticalVelocity = 0.3; // Reduced from 1.0
+                            isGrounded = false;
+                            
+                            if (isFlinging) {
+                                // Add extra fling velocity in the push direction
+                                const flingSpeed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                flingVelocity.x = pushDir.x * flingSpeed * 2.0;
+                                flingVelocity.z = pushDir.z * flingSpeed * 2.0;
+                            } else {
+                                // Add some horizontal velocity to help escape
+                                velocity.x = pushDir.x * 2.0;
+                                velocity.z = pushDir.z * 2.0;
+                            }
+                        } else {
+                            // Normal collision response
+                            const pushDir = new THREE.Vector3();
+                            pushDir.copy(camera.position).sub(normalCollision.closestPoint).normalize();
+                            const pushDistance = (playerRadius - distance) + COLLISION_BIAS; // penetration depth + bias
+                            
+                            // Store vertical velocity *before* gravity might affect it later in the loop
+                            const verticalVelocityBeforeCheck = verticalVelocity;
+
+                            // Check if hitting an underside while moving up (using pre-check velocity)
+                            if (pushDir.y < -0.1 && verticalVelocityBeforeCheck > 0) { 
+                                // Log hitting underside
+                                console.log('Collision: Hitting underside', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck });
+                                
+                                // Stop upward movement immediately
+                                verticalVelocity = 0; 
+                                isGrounded = false; // No longer moving up, but not grounded yet
+
+                                // Apply full push-out (including Y) to resolve interpenetration
+                                camera.position.addScaledVector(pushDir, pushDistance * COLLISION_PUSH_FORCE);
+                                
+                                // Optional: Dampen or redirect horizontal velocity after hitting ceiling
+                                if (isFlinging) {
+                                    flingVelocity.x *= 0.5; // Dampen fling
+                                    flingVelocity.z *= 0.5;
+                                } else {
+                                    velocity.x = 0; // Stop horizontal movement
+                                    velocity.z = 0;
+                                }
+                            } else {
+                                // Standard collision response (horizontal push, sliding, etc.)
+                                // If not hitting underside while moving up, apply horizontal push/slide
+                                // Log standard collision
+                                console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
+
+                                if (isFlinging) {
+                                    // Push out horizontally
+                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE * 1.5;
+                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE * 1.5;
+                                    
+                                    // Redirect fling velocity based on horizontal component of collision
+                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                    const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
+                                    // Reflect velocity (simple version)
+                                    const dot = flingVelocity.x * horizontalPushNormal.x + flingVelocity.z * horizontalPushNormal.z;
+                                    flingVelocity.x -= 2 * dot * horizontalPushNormal.x * 0.9;
+                                    flingVelocity.z -= 2 * dot * horizontalPushNormal.z * 0.9;
+                                    // Apply some dampening
+                                    flingVelocity.multiplyScalar(0.8);
+
+                                } else {
+                                    // Push out horizontally during normal movement
+                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                                    
+                                    // Add corner sliding for normal movement
+                                    const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
+                                    const dotProduct = horizontalPushNormal.x * velocity.x + horizontalPushNormal.z * velocity.z;
+                                    if (dotProduct < 0) { // Moving into the wall
+                                        // Project velocity onto the collision plane (slide)
+                                        const slideVelX = velocity.x - dotProduct * horizontalPushNormal.x;
+                                        const slideVelZ = velocity.z - dotProduct * horizontalPushNormal.z;
+                                        velocity.x = slideVelX * CORNER_SLIDE_FORCE; // Apply sliding with force factor
+                                        velocity.z = slideVelZ * CORNER_SLIDE_FORCE;
+                                    } // else: moving away or parallel, let friction handle it
+                                }
+                            }
+                        }
+
+                        // Apply friction to normal movement
+                        velocity.x *= MOVEMENT_SMOOTHING;
+                        velocity.z *= MOVEMENT_SMOOTHING;
+
+                        // Stop movement when velocity is very small
+                        if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
+                        if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
+                    }
                 }
 
-                // Update nebula shaders
-                nebulas.forEach(nebula => {
-                    if (nebula && nebula.material && nebula.material.uniforms && nebula.material.uniforms.time) {
-                        nebula.material.uniforms.time.value += delta * 0.05; 
-                    }
-                });
-                
-                // Update pellets (moved here from updateGameLogic for clarity)
-                updatePellets(delta); 
-                
-                // Update frustum culling matrix
-                projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-                frustum.setFromProjectionMatrix(projScreenMatrix);
-
+                // Always render the scene
                 renderer.render(scene, camera);
             }
+            animate();
 
             // Send position updates
             function sendPositionUpdate() {
