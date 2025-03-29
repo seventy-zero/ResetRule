@@ -1352,8 +1352,73 @@
             scene.background = new THREE.Color(0x000000); // Dark background
             console.log('Scene created');
 
+            // Create shotgun pellets with object pooling
+            const pelletPool = {
+                pool: [],           // Array for available pellet objects
+                active: new Set(),  // Set for active pellet objects (efficient add/delete)
+                maxSize: PELLET_COUNT * 10, // Max pellets to pool (adjust as needed)
+                isInitialized: false, // Flag to track initialization status
+
+                // Initialize the pool - call this once after scene is created
+                initialize(scene) {
+                    if (this.isInitialized) return; // Prevent double initialization
+                    try {
+                        for (let i = 0; i < this.maxSize; i++) {
+                            const pellet = this._createPelletMesh();
+                            if (pellet) {
+                                pellet.visible = false;
+                                pellet.position.set(0, -10000, 0);
+                                this.pool.push(pellet);
+                            }
+                        }
+                        this.isInitialized = true;
+                    } catch (error) {
+                        console.error("Error initializing pellet pool:", error);
+                        this.isInitialized = false; // Ensure flag remains false on error
+                    }
+                },
+
+                _createPelletMesh() {
+                    const pelletGeometry = new THREE.SphereGeometry(PELLET_RADIUS, 6, 6); // Simpler geometry
+                    const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                    const pelletMesh = new THREE.Mesh(pelletGeometry, pelletMaterial);
+                    pelletMesh.userData = {
+                        velocity: new THREE.Vector3(),
+                        birthTime: 0
+                    };
+                    return pelletMesh;
+                },
+
+                // Get a pellet from the pool
+                get() {
+                    let pellet = null;
+                    if (this.pool.length > 0) {
+                        pellet = this.pool.pop(); // Get from available pool
+                    }
+                    if (pellet) {
+                        this.active.add(pellet); // Add to the active set
+                        pellet.visible = true;   // Make it visible
+                    }
+                    return pellet;
+                },
+
+                // Release a pellet back to the pool
+                release(pellet) {
+                    if (this.active.delete(pellet)) { // Remove from active set (returns true if successful)
+                        pellet.visible = false;         // Make invisible
+                        if (pellet.userData && pellet.userData.velocity) {
+                             pellet.userData.velocity.set(0, 0, 0); // Reset velocity if userData exists
+                        } else {
+                             console.warn("Pellet released without userData or velocity", pellet);
+                        }
+                        pellet.position.set(0, -10000, 0); // Move it far away
+                        this.pool.push(pellet);        // Add back to the available pool
+                    }
+                }
+            };
+
             // Initialize pellet pool
-            pelletPool.initialize(scene);
+            pelletPool.initialize(scene); // This should now execute correctly
 
             // Camera setup
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000);
@@ -2246,69 +2311,6 @@
                 document.addEventListener('keydown', onKeyDown);
                 document.addEventListener('keyup', onKeyUp);
             }
-
-            // Initialize pellet pool before any functions that use it
-            const pelletPool = {
-                pool: [],           // Array for available pellet objects
-                active: new Set(),  // Set for active pellet objects (efficient add/delete)
-                maxSize: PELLET_COUNT * 10, // Max pellets to pool (adjust as needed)
-                isInitialized: false, // Flag to track initialization status
-
-                // Initialize the pool - call this once after scene is created
-                initialize(scene) {
-                    if (this.isInitialized) return; // Prevent double initialization
-                    try {
-                        for (let i = 0; i < this.maxSize; i++) {
-                            const pellet = this._createPelletMesh();
-                            if (pellet) {
-                                pellet.visible = false;
-                                pellet.position.set(0, -10000, 0);
-                                this.pool.push(pellet);
-                            }
-                        }
-                        this.isInitialized = true;
-                    } catch (error) {
-                        console.error("Error initializing pellet pool:", error);
-                        this.isInitialized = false; // Ensure flag remains false on error
-                    }
-                },
-
-                _createPelletMesh() {
-                    const pelletGeometry = new THREE.SphereGeometry(PELLET_RADIUS, 6, 6); // Simpler geometry
-                    const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-                    const pelletMesh = new THREE.Mesh(pelletGeometry, pelletMaterial);
-                    pelletMesh.userData = {
-                        velocity: new THREE.Vector3(),
-                        birthTime: 0
-                    };
-                    return pelletMesh;
-                },
-
-                get() {
-                    let pellet = null;
-                    if (this.pool.length > 0) {
-                        pellet = this.pool.pop(); // Get from available pool
-                    }
-                    if (pellet) {
-                        this.active.add(pellet); // Add to the active set
-                        pellet.visible = true;   // Make it visible
-                    }
-                    return pellet;
-                },
-
-                release(pellet) {
-                    if (this.active.delete(pellet)) { // Remove from active set (returns true if successful)
-                        pellet.visible = false;         // Make invisible
-                        if (pellet.userData && pellet.userData.velocity) {
-                             pellet.userData.velocity.set(0, 0, 0); // Reset velocity if userData exists
-                        } else {
-                             console.warn("Pellet released without userData or velocity", pellet);
-                        }
-                        pellet.position.set(0, -10000, 0); // Move it far away
-                        this.pool.push(pellet);        // Add back to the available pool
-                    }
-                }
-            };
 
             // Initialize the pellet pool
             pelletPool.init();
