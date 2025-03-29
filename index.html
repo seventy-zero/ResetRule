@@ -228,7 +228,7 @@
             Fling Button = Aim & Release to Fling
         </p>
         <div style="margin-top: 20px;">
-            <input type="checkbox" id="musicToggle" name="musicToggle">
+            <input type="checkbox" id="musicToggle" name="musicToggle" checked>
             <label for="musicToggle" style="color: white; font-size: 18px;">Play Music</label>
         </div>
     </div>
@@ -3076,51 +3076,49 @@
 
         // Function to create an orb
         function createOrb(orbData) {
-            console.log('Creating orb with data:', orbData);
+            console.log("Creating orb mesh with data:", orbData); // Add detailed logging
+
+            if (!orbData || typeof orbData.x !== 'number' || typeof orbData.y !== 'number' || typeof orbData.z !== 'number') {
+                 console.error("Invalid orbData received in createOrb:", orbData);
+                 return null; // Return null if data is invalid
+            }
             
-            // Make orbs larger (10x instead of 5x)
-            const baseSize = orbData.size * 10;
-            
-            // Use dodecahedron geometry instead of sphere
-            const geometry = new THREE.DodecahedronGeometry(baseSize, 0);
-            
-            // Create a glowing material with enhanced emissive properties
-            const material = new THREE.MeshPhongMaterial({
-                color: orbData.color,
-                emissive: orbData.color,
-                emissiveIntensity: 2.0, // Increased from 1.0 for stronger glow
-                transparent: true,
-                opacity: 0.9,
-                shininess: 200, // Increased from 100 for more shine
-                specular: 0xffffff // Add white specular highlight
+            // Define a smaller, more vibrant set of neon colors
+            const colorData = [
+                { color: 0x00ff00, intensity: 1.5 }, // Neon Green
+                { color: 0x00ffff, intensity: 1.5 }, // Neon Blue (Cyan)
+                { color: 0xbf00ff, intensity: 1.5 }, // Neon Purple
+                { color: 0xff00ff, intensity: 1.5 }, // Neon Pink (Magenta)
+            ];
+
+            // Pick a random color from the list
+            const chosenColor = colorData[Math.floor(Math.random() * colorData.length)];
+
+            // Create geometry and material
+            const orbRadius = 5; // Adjust size as needed
+            const orbGeometry = new THREE.SphereGeometry(orbRadius, 16, 16);
+            const orbMaterial = new THREE.MeshBasicMaterial({ 
+                color: chosenColor.color, 
+                wireframe: true // Keep wireframe style
             });
+
+            const orbMesh = new THREE.Mesh(orbGeometry, orbMaterial);
+            orbMesh.position.set(orbData.x, orbData.y, orbData.z);
             
-            const orb = new THREE.Mesh(geometry, material);
-            orb.position.set(
-                orbData.position.x,
-                orbData.position.y,
-                orbData.position.z
-            );
-            
-            // Store original scale but no animation needed
-            orb.userData.originalScale = baseSize;
-            
-            // Add to scene and store in orbs collection
-            scene.add(orb);
-            orbs.set(orbData.id, orb);
-            
-            // Debug logging for position and visibility
-            console.log('Orb created successfully:', {
-                id: orbData.id,
-                position: orb.position,
-                size: baseSize,
-                color: orbData.color,
-                visible: orb.visible,
-                parent: orb.parent,
-                inScene: scene.children.includes(orb)
-            });
-            
-            return orb;
+            // Store original scale and color data for potential effects
+            orbMesh.userData = {
+                originalScale: orbRadius,
+                color: chosenColor.color,
+                intensity: chosenColor.intensity,
+                id: orbData.id // Store the orb's unique ID
+            };
+
+            // Add to the scene and orbs map
+            scene.add(orbMesh); // Ensure orb is added to the scene here
+            orbs.set(orbData.id, orbMesh); // Use the ID from orbData as the key
+
+            console.log("Orb created and added:", { id: orbData.id, position: orbMesh.position, color: chosenColor.color }); // Log successful creation
+            return orbMesh;
         }
 
         // Add after the playerOrbs Map declaration
