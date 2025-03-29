@@ -2450,6 +2450,10 @@
                                     removePlayer(username);
                                 } else {
                                     playerState.update(deltaTime);
+                                    
+                                    // Frustum culling for other players
+                                    const playerSphere = new THREE.Sphere(playerState.mesh.position, playerRadius * 1.5); // Slightly larger radius for safety
+                                    playerState.mesh.visible = frustum.containsSphere(playerSphere);
                                 }
                             }
                         });
@@ -3640,6 +3644,10 @@
                 
                 // Rotate orb
                 orb.rotation.y += 0.01;
+                
+                // Frustum culling for orbs
+                const orbSphere = new THREE.Sphere(orb.position, orb.userData.originalScale * 1.5); // Slightly larger radius for safety
+                orb.visible = frustum.containsSphere(orbSphere);
                 
                 // Check for collection
                 if (gameStarted && !isDead) {
