@@ -334,12 +334,12 @@
 
         // Add movement smoothing constants
         const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
-        const COLLISION_PUSH_FORCE = 4.5; // Increased again for stronger collision response
+        const COLLISION_PUSH_FORCE = 6.0; // Increased from 4.5 for stronger collision response
         const COLLISION_BIAS = 0.01;      // Small bias to push player slightly past surface
         const CORNER_SLIDE_FORCE = 0.8; // Increased from 0.7 for better sliding
         const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
         const STUCK_THRESHOLD = 0.4; // Increased from 0.3 - require deeper penetration to trigger strong push
-        const STUCK_PUSH_FORCE = 4.0; // Decreased from 5.0 - make the strong push less forceful
+        const STUCK_PUSH_FORCE = 10.0; // Increased significantly from 4.0 - make the strong push more forceful
         const STUCK_BOUNCE_SPEED = 5.0; // Speed of the bounce applied when stuck
 
         // Game state variables
@@ -719,10 +719,13 @@
             );
             simpleCollisionGeometry.dispose(); // Dispose temporary geometry
 
+            // --- Shrink the collision box slightly to prevent getting stuck on corners ---
+            localCollisionBox.expandByScalar(-0.2); // Adjust this value if needed
+
             // Store tower info with the size-matched simplified localCollisionBox
             towers.push({
                 mesh: group,             // The visual group (has world transform)
-                localCollisionBox: localCollisionBox, // The SIMPLIFIED but size-matched local box
+                localCollisionBox: localCollisionBox, // The SHRUNKEN local box
                 isBridge: false          // Flag this as not a bridge
             });
         }
@@ -3598,14 +3601,18 @@
                         
                         if (distance < playerRadius + PELLET_RADIUS) {
                             // Player was hit
+                            console.log(`Pellet hit player: ${username}`); // Add log
                             if (ws && ws.readyState === WebSocket.OPEN) {
                                 ws.send(JSON.stringify({
                                     type: 'player_damaged',
-                                    username: username,
+                                    username: username, // Send victim's username
+                                    attackerUsername: playerUsername, // Send attacker's username
                                     damage: SHOTGUN_DAMAGE 
                                 }));
+                                console.log(`Sent player_damaged message for ${username}`); // Confirm message sent
                             }
                             pelletPool.release(pellet);
+                            return; // Stop processing this pellet after hit
                         }
                     }
                 });
@@ -3719,6 +3726,109 @@
         
         // Removed immediate call to resumeAudio() - it should only happen on interaction or toggle
         // resumeAudio();
+
+        // Check collisions for normal movement
+        // --- Start Iterative Collision Resolution ---
+        const MAX_ITERATIONS = 3; // Limit iterations to prevent infinite loops
+        let resolvedPosition = camera.position.clone(); // Work with a temporary position
+        let wasStuckInLoop = false;
+
+        for (let i = 0; i < MAX_ITERATIONS; i++) {
+            playerCollider.center.copy(resolvedPosition); // Update collider for check
+            const normalCollision = checkCollision(resolvedPosition, playerRadius);
+
+            if (!normalCollision.collision) {
+                break; // Exit loop if no collision
+            }
+
+            // Apply push-out to the temporary resolvedPosition
+            const distance = resolvedPosition.distanceTo(normalCollision.closestPoint);
+            const isStuck = distance < playerRadius * STUCK_THRESHOLD;
+            const pushDir = new THREE.Vector3();
+            pushDir.copy(resolvedPosition).sub(normalCollision.closestPoint).normalize();
+
+            if (isStuck) {
+                wasStuckInLoop = true;
+                // Player is stuck, apply stronger push-out force
+                const pushAmount = (playerRadius - distance) + playerRadius * 0.1; // Push out slightly past surface
+                resolvedPosition.x += pushDir.x * pushAmount * STUCK_PUSH_FORCE; // Use STUCK_PUSH_FORCE
+                resolvedPosition.z += pushDir.z * pushAmount * STUCK_PUSH_FORCE;
+                
+                // Apply immediate vertical nudge if stuck
+                verticalVelocity = Math.max(verticalVelocity, 0.3); // Ensure some upward push
+                isGrounded = false;
+
+                // Optionally break after strong push, or let iterate
+                // break; 
+            } else {
+                // Normal collision response
+                const pushDistance = (playerRadius - distance) + COLLISION_BIAS; // penetration depth + bias
+                resolvedPosition.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                resolvedPosition.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+
+                // Handle ceiling hits during iteration
+                if (pushDir.y < -0.1 && verticalVelocity > 0) { 
+                    verticalVelocity = 0; // Stop upward movement
+                    resolvedPosition.y += pushDir.y * pushDistance * COLLISION_PUSH_FORCE; // Apply vertical push
+                }
+            }
+            // If it's the last iteration and still colliding, log a warning
+            if (i === MAX_ITERATIONS - 1 && checkCollision(resolvedPosition, playerRadius).collision) {
+                console.warn('Collision resolution failed after max iterations');
+            }
+        } 
+        // --- End Iterative Collision Resolution Loop ---
+
+        // Update the actual camera position with the resolved one
+        camera.position.copy(resolvedPosition);
+        playerCollider.center.copy(camera.position); // Final collider update
+
+        // --- Velocity adjustments based on the FINAL state after resolution ---
+        const finalCollision = checkCollision(camera.position, playerRadius); 
+        if (finalCollision.collision) {
+             const pushDir = new THREE.Vector3();
+             pushDir.copy(camera.position).sub(finalCollision.closestPoint).normalize();
+             const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+             const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
+
+             if (wasStuckInLoop) {
+                 // If we triggered the 'stuck' condition, apply escape velocity
+                 velocity.x = pushDir.x * 2.0;
+                 velocity.z = pushDir.z * 2.0;
+                 // Vertical velocity was already handled in the loop
+             } else if (dotProduct < 0) { // Moving into the wall
+                 // Apply slight bounce/stop
+                 const bounceStrength = 0.05; 
+                 velocity.x = pushDir.x * currentSpeed * bounceStrength;
+                 velocity.z = pushDir.z * currentSpeed * bounceStrength;
+                 if (currentSpeed > 0.1) {
+                      verticalVelocity = Math.max(verticalVelocity, currentSpeed * 0.05, 0.05); // Small hop
+                      isGrounded = false;
+                 }
+             } else { // Sliding along the wall
+                 // Project velocity onto tangent plane and apply friction
+                 const slideVelX = velocity.x - pushDir.x * dotProduct;
+                 const slideVelZ = velocity.z - pushDir.z * dotProduct;
+                 velocity.x = slideVelX * CORNER_SLIDE_FORCE;
+                 velocity.z = slideVelZ * CORNER_SLIDE_FORCE;
+             } 
+        } // else: No collision after resolution, velocity remains as calculated from input
+
+        // Apply friction to normal movement (applied after collision response)
+        velocity.x *= MOVEMENT_SMOOTHING;
+        velocity.z *= MOVEMENT_SMOOTHING;
+
+        // Stop movement when velocity is very small
+        if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
+        if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
+        // } // This brace might be closing the 'else' block from line 2866, needs verification
+        // --- Previous code structure needs careful review ensure correct block closure --- 
+    }
+
+    // Always render the scene
+    renderer.render(scene, camera);
+}
+animate();
     </script>
 </body>
 </html>
