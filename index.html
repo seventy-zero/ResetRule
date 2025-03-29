@@ -279,10 +279,10 @@
         const SHOTGUN_COOLDOWN = 800; // milliseconds cooldown
         const PELLET_COUNT = 10;       // Number of pellets per shot
         const PELLET_SPREAD = 0.15;    // Cone spread factor (radians)
-        const PELLET_SPEED = 350;      // Units per second - MUCH faster
-        const PELLET_LIFETIME = 600;  // Milliseconds - shorter lifespan
+        const PELLET_SPEED = 200;      // Units per second - Slower
+        const PELLET_LIFETIME = 400;  // Milliseconds - shorter lifespan
         const PELLET_GRAVITY = 0.0;     // Gravity effect on pellets (0 for straight line)
-        const PELLET_RADIUS = 0.15;    // Pellet collision radius
+        const PELLET_RADIUS = 0.4;     // Pellet collision radius - Larger
         const SHOTGUN_DAMAGE = 10;     // Damage per pellet hit
         const PELLET_FRICTION = 0.99;  // Damping factor for pellets (0=stop, 1=no friction)
         const PELLET_BOUNCE = 0.5;     // How much velocity is kept after bouncing (0-1)
@@ -3345,7 +3345,7 @@
             // Add shotgun firing to mouse controls
             document.addEventListener('mousedown', (event) => {
                 if (event.button === 2) { // Right mouse button (changed from 1 to 2)
-                    console.log('Firing shotgun (right mouse button)');
+                    console.log('DESKTOP Right Mouse Down -> Firing shotgun'); // <-- ADD LOG
                     fireShotgun();
                 }
             });
