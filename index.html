@@ -285,6 +285,8 @@
         const PELLET_RADIUS = 0.15;    // Pellet collision radius
         const SHOTGUN_DAMAGE = 10;     // Damage per pellet hit
         const PELLET_FRICTION = 0.99;  // Damping factor for pellets (0=stop, 1=no friction)
+        const PELLET_BOUNCE = 0.5;     // How much velocity is kept after bouncing (0-1)
+        const PELLET_MAX_BOUNCES = 0;  // How many times a pellet can bounce before disappearing
         let lastShotTime = 0;
         let playerHealth = 100;
         let isDead = false;
@@ -1137,8 +1139,8 @@
                                 if (pellet) {
                                     const direction = new THREE.Vector3().fromArray(directionArray);
                                     pellet.position.copy(shooterPos); // Start at shooter's reported position
-                                    pellet.velocity.copy(direction).multiplyScalar(PELLET_SPEED); // Set velocity
-                                    pellet.spawnTime = now; // Set spawn time
+                                    pellet.velocity.copy(direction).multiplyScalar(PELLET_SPEED);
+                                    pellet.spawnTime = now;
                                     pellet.bounces = 0; // Reset bounces (though we won't use them)
                                     pellet.visible = true; // Make it visible
                                     // Note: pellet is already added to the scene during pool initialization
@@ -1305,7 +1307,7 @@
                             if (pellet) {
                                 pellet.visible = false;
                                 pellet.position.set(0, -10000, 0);
-                                // scene.add(pellet); // <-- This line was duplicated, removing first instance
+                                scene.add(pellet); // <-- Re-enable this line
                                 this.pool.push(pellet);
                             }
                         }
@@ -3212,6 +3214,7 @@
                 // Set pellet velocity
                 pellet.userData.velocity.copy(spreadDirection).multiplyScalar(PELLET_SPEED);
                 pellet.userData.spawnTime = now;
+                pellet.userData.bounces = 0; // <-- Add this line to reset bounces
 
                 // Store direction for network
                 pelletDirections.push(spreadDirection.toArray());
