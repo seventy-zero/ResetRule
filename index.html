@@ -280,7 +280,7 @@
         const PELLET_COUNT = 10;       // Number of pellets per shot
         const PELLET_SPREAD = 0.15;    // Cone spread factor (radians)
         const PELLET_SPEED = 200;      // Units per second - Slower
-        const PELLET_LIFETIME = 400;  // Milliseconds - shorter lifespan
+        const PELLET_LIFETIME = 250;  // Milliseconds - much shorter lifespan
         const PELLET_GRAVITY = 0.0;     // Gravity effect on pellets (0 for straight line)
         const PELLET_RADIUS = 0.4;     // Pellet collision radius - Larger
         const SHOTGUN_DAMAGE = 10;     // Damage per pellet hit
@@ -3580,30 +3580,8 @@
             }
         }
 
-        // Set up event listeners after camera is initialized
-        function setupEventListeners() {
-            if (!camera) {
-                console.log('Waiting for camera initialization...');
-                setTimeout(setupEventListeners, 100);
-                return;
-            }
-            
-            // Remove any existing listeners to prevent duplicates
-            document.removeEventListener('mousedown', handleShotgunFire);
-            
-            // Add new listener
-            document.addEventListener('mousedown', handleShotgunFire);
-        }
-
-        // Define the shotgun firing handler
-        function handleShotgunFire(event) {
-            if (event.button === 0) { // Left mouse button
-                fireShotgun();
-            }
-        }
-
         // Initialize event listeners
-        setupEventListeners();
+        // setupEventListeners(); // <-- Remove this call
 
        
         // Handle player health updates
