@@ -3351,7 +3351,6 @@
             const muzzleOffset = -1.5; // How far in front of camera view
             const muzzlePosition = cameraPosition.clone().addScaledVector(cameraDirection, muzzleOffset);
 
-
             // Array to store pellet directions for network message
             const pelletDirections = [];
 
@@ -3386,147 +3385,41 @@
                 pelletDirections.push(spreadDirection.toArray());
             }
 
-            // Muzzle flash effect (optional, keep existing if desired)
-            // ... (muzzle flash code can remain here) ...
-             // Animate muzzle flash (reuse existing flash animation if available)
-            const flashDuration = 100;
-            const flashStartTime = Date.now();
-            // Assuming muzzleFlash mesh exists and is added to scene
-             if (muzzleFlash && outerFlash) { // Check if flashes exist
-                 muzzleFlash.position.copy(muzzlePosition);
-                 outerFlash.position.copy(muzzlePosition);
-                 muzzleFlash.visible = true;
-                 outerFlash.visible = true;
-
-                 const animateFlash = () => {
-                    const elapsed = Date.now() - flashStartTime;
-                    const progress = elapsed / flashDuration;
-                    if (progress < 1) {
-                        const scale = 1 + progress * 5; // Flash expands
-                        const opacity = 1.0 * (1 - progress); // Flash fades
-                        muzzleFlash.scale.setScalar(scale * 0.8);
-                        muzzleFlash.material.opacity = opacity * 0.8;
-                        outerFlash.scale.setScalar(scale);
-                        outerFlash.material.opacity = opacity * 0.6;
-                        requestAnimationFrame(animateFlash);
-                    } else {
-                        muzzleFlash.visible = false;
-                        outerFlash.visible = false;
-                    }
-                };
-                animateFlash();
-            }
-
-
-            // Play shotgun sound
-            playShotgunSound();
-
-            // Send shot data to server
+            // Send network message for other players
             if (ws && ws.readyState === WebSocket.OPEN) {
-                const shotData = {
-                    username: playerUsername, // Include who fired
-                    position: muzzlePosition.toArray(), // Use muzzle position
-                    directions: pelletDirections
-                };
                 ws.send(JSON.stringify({
                     type: 'shotgun_shot',
-                    ...shotData
+                    position: cameraPosition.toArray(),
+                    directions: pelletDirections
                 }));
             }
+
+            // Play sound effect
+            playShotgunSound();
         }
 
-        // Update pellet physics and collisions - Rewritten
-        function updatePellets(deltaTime) {
-            // GUARD CLAUSE: Ensure pool is initialized and has active pellets
-            if (!pelletPool.isInitialized || pelletPool.active.size === 0) {
-                return; 
-            }
-
-            const currentTime = performance.now();
-            // Get potential collision objects (visible towers and bridges)
-            const collisionObjects = towers.filter(t => t.mesh.visible).map(t => t.mesh)
-                                    .concat(bridges.filter(b => b.mesh.visible).map(b => b.mesh));
-
-            // Reusable Raycaster for efficiency
-            const pelletRaycaster = new THREE.Raycaster();
-            pelletRaycaster.far = PELLET_SPEED * deltaTime + PELLET_RADIUS; // Set max distance based on frame movement
-
-            pelletPool.active.forEach(pellet => {
-                // 1. Check Lifetime
-                if (currentTime - pellet.userData.spawnTime > PELLET_LIFETIME) {
-                    pelletPool.release(pellet);
-                    return; // Go to next pellet
-                }
-
-                // 2. Calculate Movement for this Frame
-                const velocity = pellet.userData.velocity;
-                // Apply gravity (optional, PELLET_GRAVITY is likely 0)
-                if (PELLET_GRAVITY > 0) {
-                     velocity.y -= PELLET_GRAVITY * deltaTime;
-                }
-                // Calculate position change based on velocity and time
-                const deltaPosition = velocity.clone().multiplyScalar(deltaTime);
-                const currentPosition = pellet.position.clone();
-                const nextPosition = currentPosition.clone().add(deltaPosition);
-
-                let collided = false;
-
-                // 3. Check Environment Collision (Raycast)
-                if (deltaPosition.lengthSq() > 0.0001 && collisionObjects.length > 0) { // Only cast if moving
-                    pelletRaycaster.set(currentPosition, deltaPosition.normalize());
-                    pelletRaycaster.far = deltaPosition.length() + PELLET_RADIUS; // Update ray length precisely
-
-                    const intersects = pelletRaycaster.intersectObjects(collisionObjects, false); // Don't check children
-
-                    if (intersects.length > 0 && intersects[0].distance < deltaPosition.length() + PELLET_RADIUS) {
-                        // Collision detected with environment
-                        // console.log('Pellet hit environment');
-                        // Optional: Spawn impact effect at intersects[0].point
-                        pelletPool.release(pellet);
-                        collided = true;
-                    }
-                }
-
-                // 4. Check Player Collision (if not already collided)
-                if (!collided) {
-                    playerStates.forEach((playerState, username) => {
-                        // Skip self, check if already collided, or if player mesh invalid
-                         if (collided || username === playerUsername || !playerState.mesh || !playerState.mesh.visible) return;
-
-                        const distanceSq = nextPosition.distanceToSquared(playerState.mesh.position);
-                        const collisionRadius = playerRadius + PELLET_RADIUS; // Use defined player/pellet radii
-                        const collisionRadiusSq = collisionRadius * collisionRadius;
-
-                        if (distanceSq < collisionRadiusSq) {
-                            // Player hit
-                            // console.log(`Pellet hit player: ${username}`);
-                            if (ws && ws.readyState === WebSocket.OPEN) {
-                                // Send damage message WITH attacker info
-                                ws.send(JSON.stringify({
-                                    type: 'player_damaged',
-                                    victimUsername: username,
-                                    attackerUsername: playerUsername, // Identify who shot
-                                    damage: SHOTGUN_DAMAGE
-                                }));
-                                // console.log(`Sent player_damaged message for ${username} from ${playerUsername}`);
-                            }
-                            pelletPool.release(pellet);
-                            collided = true;
-                        }
-                    });
-                }
-
-                 // 5. Update Position if no collision occurred
-                 if (!collided) {
-                    pellet.position.copy(nextPosition);
-
-                    // 6. Check Out-of-Bounds (if still active)
-                    if (pellet.position.y < -500) { // Simplified OOB check
-                       // console.log('Pellet out of bounds');
-                       pelletPool.release(pellet);
-                    }
-                 }
-            }); // End forEach active pellet
+        // Sound effects
+        function playShotgunSound() {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            // Configure oscillator
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(200, audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + 0.1);
+            
+            // Configure gain
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+            
+            // Connect nodes
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // Play sound
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + 0.1);
         }
 
         // Add these new functions
