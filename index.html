@@ -832,33 +832,46 @@
                             };
                         }
                     }
-                } else if (!isBridge && tower.collisionBoxes && tower.collisionBoxes.length > 0) {
-                    // --- AABB Check for Towers (existing logic) ---
-                    const collisionBox = tower.collisionBoxes[0]; // Assume first box is the main one
+                } else if (!isBridge && tower.localCollisionBox && tower.mesh) { // <-- Check for localCollisionBox and mesh for towers too
+                    // --- OBB Check for Towers (mirroring bridge logic) ---
+                    const towerMesh = tower.mesh;
+                    const localBox = tower.localCollisionBox;
                     
-                    // Get the closest point on the world AABB to the player
-                    worldClosestPoint.copy(position); // Use worldClosestPoint vector
-                    collisionBox.clampPoint(worldClosestPoint, worldClosestPoint);
+                    // Ensure world matrix is up-to-date
+                    towerMesh.updateMatrixWorld(true);
                     
-                    // Calculate distance to closest point
-                    const distance = position.distanceTo(worldClosestPoint);
+                    // Get matrix to transform world -> local
+                    worldToLocalMatrix.copy(towerMesh.matrixWorld).invert();
                     
-                    // Check if sphere intersects AABB
+                    // Transform player position to tower's local space
+                    localPosition.copy(position).applyMatrix4(worldToLocalMatrix);
+                    
+                    // Find closest point on the local AABB
+                    localBox.clampPoint(localPosition, localClosestPoint);
+                    
+                    // Calculate distance in local space
+                    const distance = localPosition.distanceTo(localClosestPoint);
+                    
+                    // Check if the player sphere intersects the box
                     if (distance < radius) {
+                        // Transform the local closest point back to world space for response
+                        worldClosestPoint.copy(localClosestPoint).applyMatrix4(towerMesh.matrixWorld);
+                        
                         // Check if this is the closest collision so far
-                        if (distance < minDistance) {
-                            minDistance = distance;
+                        const worldDistance = position.distanceTo(worldClosestPoint); // Use world distance for comparison
+                        if (worldDistance < minDistance) {
+                            minDistance = worldDistance;
                             closestCollision = {
                                 collision: true,
-                                tower: tower,
-                                collisionBox: collisionBox, // Store world AABB
-                                distance: distance,
+                                tower: tower, // Keep reference to the tower object
+                                collisionBox: localBox, // Store local box
+                                distance: worldDistance,      // Store world distance
                                 closestPoint: worldClosestPoint.clone(), // Store world point
-                                isBridge: false
+                                isBridge: false // Still identify as not a bridge
                             };
                         }
                     }
-                }
+                } // Removed the old AABB logic entirely
             }
             
             // Return the closest valid collision found
