@@ -653,38 +653,24 @@
             
             switch(towerData.type) {
                 case 0: // Cylindrical tower
+                case 3: // Hexagonal tower
+                case 6: // Octagonal tower
+                case 10: // Thin spire
                     geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
                     break;
                 case 1: // Tapered tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 6 });
-                    break;
-                case 2: // Square tower
-                    geometry = getGeometryFromCache('box', { width: 36, height, depth: 36 });
-                    break;
-                case 3: // Hexagonal tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 20, height, segments: 6 });
-                    break;
                 case 4: // Twisted tower
+                case 8: // Inverse pyramid
+                case 9: // Star tower
+                    // Treat these complex/tapered shapes as cylindrical for LOD base
                     geometry = getGeometryFromCache('cylinder', { radius: 15, height, segments: 8 });
                     break;
-                case 5: // Pyramid tower
-                    geometry = getGeometryFromCache('cone', { radius: 24, height, segments: 4 });
-                    break;
-                case 6: // Octagonal tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 19, height, segments: 8 });
-                    break;
+                case 2: // Square tower
+                case 5: // Pyramid tower (base is square)
                 case 7: // Double width tower
-                    geometry = getGeometryFromCache('box', { width: 42, height, depth: 42 });
+                    geometry = getGeometryFromCache('box', { width: 36, height, depth: 36 });
                     break;
-                case 8: // Inverse pyramid
-                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 4 });
-                    break;
-                case 9: // Star tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 24, height, segments: 5 });
-                    break;
-                case 10: // Thin spire
-                    geometry = getGeometryFromCache('cylinder', { radius: 8, height, segments: 6 });
-                    break;
+                // Default case or handle potential errors if necessary
             }
 
             // Create the main mesh with solid faces using shared material
@@ -701,29 +687,25 @@
             group.add(mesh);
             group.add(edges);
             group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
-            scene.add(group);
+            // scene.add(group); // Don't add directly to scene here, will be handled by LOD setup
 
             // --- Create a simplified local box based on the actual mesh bounds ---
-            // 1. Get the bounding box of the actual visual mesh geometry
             const actualMeshBBox = new THREE.Box3().setFromObject(mesh);
             const actualSize = new THREE.Vector3();
             actualMeshBBox.getSize(actualSize);
             
-            // 2. Create a simple BoxGeometry using these dimensions
-            //    (Use BufferGeometry directly for Box3 calculation)
             const simpleCollisionGeometry = new THREE.BoxGeometry(actualSize.x, actualSize.y, actualSize.z);
-
-            // 3. Create the localCollisionBox from this size-matched simple geometry
             const localCollisionBox = new THREE.Box3().setFromBufferAttribute(
                 simpleCollisionGeometry.attributes.position
             );
-            simpleCollisionGeometry.dispose(); // Dispose temporary geometry
+            simpleCollisionGeometry.dispose();
 
-            // Store tower info with the size-matched simplified localCollisionBox
+            // Store tower info including the original type for LOD decisions
             towers.push({
-                mesh: group,             // The visual group (has world transform)
-                localCollisionBox: localCollisionBox, // The SIMPLIFIED but size-matched local box
-                isBridge: false          // Flag this as not a bridge
+                mesh: group,             // The visual group (high detail)
+                localCollisionBox: localCollisionBox, 
+                isBridge: false,
+                type: towerData.type // <-- Store the original type
             });
         }
 
@@ -1024,6 +1006,10 @@
                         console.log(`Setting up LOD for ${towers.length} objects...`);
                         const lodDistanceThreshold = 1000; // Distance for switching to low detail
                         const tempSize = new THREE.Vector3(); // Reuse vector for performance
+                        const lowDetailSegmentCount = 6; // Segments for low-detail cylinders
+
+                        // Clear previous LOD objects if any (important for subsequent world_data messages)
+                        scene.children = scene.children.filter(child => !(child instanceof THREE.LOD));
 
                         towers.forEach((towerInfo, index) => {
                             const originalMeshGroup = towerInfo.mesh; // This is the THREE.Group
@@ -1037,7 +1023,6 @@
                             const lod = new THREE.LOD();
                             lod.position.copy(originalMeshGroup.position);
                             lod.rotation.copy(originalMeshGroup.rotation);
-                            // Make sure LOD updates are checked automatically
                             lod.matrixAutoUpdate = true; 
                             lod.visible = originalMeshGroup.visible; // Inherit visibility
 
@@ -1048,21 +1033,59 @@
                                     console.warn(`Skipping LOD setup for tower/bridge index ${index}: Invalid size from collision box`, tempSize);
                                     return;
                                 }
-                                const simpleGeometry = new THREE.BoxGeometry(tempSize.x, tempSize.y, tempSize.z);
-                                // Use the shared black material for low detail
-                                const simpleMesh = new THREE.Mesh(simpleGeometry, sharedMaterials.tower);
-                                simpleMesh.visible = true; // Ensure the simple mesh is visible when active
+                                
+                                let simpleGeometry;
+                                if (towerInfo.isBridge) {
+                                    // Bridges always use BoxGeometry for low detail
+                                    simpleGeometry = new THREE.BoxGeometry(tempSize.x, tempSize.y, tempSize.z);
+                                } else {
+                                    // Towers: Decide shape based on original type
+                                    switch(towerInfo.type) {
+                                        case 0: // Cylindrical
+                                        case 1: // Tapered
+                                        case 3: // Hexagonal
+                                        case 4: // Twisted
+                                        case 6: // Octagonal
+                                        case 8: // Inverse pyramid 
+                                        case 9: // Star 
+                                        case 10: // Thin spire
+                                            // Use low-segment Cylinder for cylinder-like towers
+                                            // Use average of x/z for radius, keep original height
+                                            const radius = (tempSize.x + tempSize.z) / 4; // Average radius from box
+                                            simpleGeometry = new THREE.CylinderGeometry(radius, radius, tempSize.y, lowDetailSegmentCount);
+                                            break;
+                                        case 2: // Square 
+                                        case 5: // Pyramid 
+                                        case 7: // Double width 
+                                        default:
+                                            // Use Box for square/boxy towers
+                                            simpleGeometry = new THREE.BoxGeometry(tempSize.x, tempSize.y, tempSize.z);
+                                            break;
+                                    }
+                                }
+
+                                // Use the shared *wireframe* material for low detail
+                                const simpleMesh = new THREE.LineSegments(
+                                    new THREE.EdgesGeometry(simpleGeometry),
+                                    sharedMaterials.towerEdges // Use the white wireframe material
+                                );
+                                simpleMesh.visible = true; 
+                                simpleMesh.matrixAutoUpdate = false; // Optimize low-detail mesh updates
+                                simpleMesh.updateMatrix();
 
                                 // 3. Add levels to LOD
                                 // Level 0: Original detailed mesh group (distance 0)
+                                // Ensure the original group is not parented elsewhere before adding
+                                if (originalMeshGroup.parent) {
+                                    originalMeshGroup.parent.remove(originalMeshGroup);
+                                }
                                 lod.addLevel(originalMeshGroup, 0);
 
-                                // Level 1: Simplified box mesh (distance threshold)
+                                // Level 1: Simplified wireframe mesh (distance threshold)
                                 lod.addLevel(simpleMesh, lodDistanceThreshold);
 
-                                // 4. Replace original mesh group with LOD in the scene
-                                // scene.remove(originalMeshGroup); // Original mesh group is now a child of LOD, removing it from the scene happens implicitly when adding it to LOD.
-                                scene.add(lod); // Add LOD to scene
+                                // 4. Add LOD to the scene (replacing original group)
+                                scene.add(lod); 
 
                                 // 5. Collision logic continues to use towerInfo.mesh (the original group) reference.
 
@@ -1070,7 +1093,7 @@
                                 console.error(`Error setting up LOD for tower/bridge index ${index}:`, error, towerInfo);
                             }
                         });
-                        console.log("LOD setup finished.");
+                        console.log("LOD setup finished with improved visuals.");
                         // --- NEW LOD IMPLEMENTATION END ---
 
                         // Debug logging for orbs
