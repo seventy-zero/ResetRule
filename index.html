@@ -904,7 +904,8 @@
 
         // Add after the checkCollision function
         function checkOrbCollision(position, radius) {
-            const playerCollider = new THREE.Sphere(position, radius * 10); // Increased from 5x to 10x
+            // Increased player collider multiplier from 10 to 50 for 5x pickup radius
+            const playerCollider = new THREE.Sphere(position, radius * 50); 
             let closestOrb = null;
             let minDistance = Infinity;
             
@@ -915,15 +916,16 @@
                 // --- DEBUG LOGGING START ---
                 if (isMobile) {
                     // Log distance only for nearby orbs to avoid spamming the console
-                    if (distance < (radius * 10) + orb.userData.originalScale + 50) { // Log if within potential collision range + buffer
-                         console.log(`[Mobile Debug] Orb ${orbId} distance: ${distance.toFixed(2)} | Check: < ${(radius * 10 + orb.userData.originalScale).toFixed(2)}`);
+                    // Adjusted logging check distance
+                    if (distance < (radius * 50) + orb.userData.originalScale + 50) { 
+                         console.log(`[Mobile Debug] Orb ${orbId} distance: ${distance.toFixed(2)} | Check: < ${(radius * 50 + orb.userData.originalScale).toFixed(2)}`);
                     }
                 }
                 // --- DEBUG LOGGING END ---
 
                 // Collision condition: distance < combined radii
-                // Player effective radius = radius * 10
-                if (distance < (radius * 10) + orb.userData.originalScale) {
+                // Player effective radius = radius * 50 (Increased from 10)
+                if (distance < (radius * 50) + orb.userData.originalScale) {
                     if (distance < minDistance) {
                         minDistance = distance;
                         closestOrb = { orb, orbId };
@@ -3095,7 +3097,9 @@
                 return existingOrb;
             }
             
-            const geometry = new THREE.SphereGeometry(3, 16, 16); // Use consistent size
+            // Doubled the orb radius from 3 to 6
+            const orbRadius = 6;
+            const geometry = new THREE.SphereGeometry(orbRadius, 16, 16); 
             
             // Define the allowed neon colors
             const neonColors = [
@@ -3116,7 +3120,8 @@
             const orb = new THREE.Mesh(geometry, material);
             // Set position using nested properties
             orb.position.set(orbData.position.x, orbData.position.y, orbData.position.z);
-            orb.userData = { id: orbId, originalScale: 3 }; // Store ID and original scale
+            // Updated originalScale to match new orbRadius
+            orb.userData = { id: orbId, originalScale: orbRadius }; 
             
             // Add glow effect
             const glowMaterial = new THREE.MeshBasicMaterial({
