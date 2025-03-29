@@ -339,6 +339,7 @@
         let showLine = false;
         let lineCollisionPoint = null;
         let verticalVelocity = 0;
+        let pelletPool = null; // <-- Declare pelletPool here
 
         // Movement state variables
         let moveForward = false;
@@ -1288,7 +1289,7 @@
             console.log('Scene created');
 
             // Create shotgun pellets with object pooling
-            const pelletPool = {
+            pelletPool = { // <-- Assign to existing variable
                 pool: [],           // Array for available pellet objects
                 active: new Set(),  // Set for active pellet objects (efficient add/delete)
                 maxSize: PELLET_COUNT * 10, // Max pellets to pool (adjust as needed)
