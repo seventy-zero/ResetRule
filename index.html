@@ -329,6 +329,7 @@
         // Add movement smoothing constants
         const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
         const COLLISION_PUSH_FORCE = 4.5; // Increased again for stronger collision response
+        const COLLISION_BIAS = 0.01;      // Small bias to push player slightly past surface
         const CORNER_SLIDE_FORCE = 0.8; // Increased from 0.7 for better sliding
         const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
         const STUCK_THRESHOLD = 0.3; // New constant for detecting when player is stuck
@@ -2896,10 +2897,10 @@
                             // Normal collision response
                             const pushDir = new THREE.Vector3();
                             pushDir.copy(camera.position).sub(normalCollision.closestPoint).normalize();
-                            const pushDistance = playerRadius - distance; // penetration depth
+                            const pushDistance = (playerRadius - distance) + COLLISION_BIAS; // penetration depth + bias
                             
                             // Store vertical velocity *before* gravity might affect it later in the loop
-                            const verticalVelocityBeforeCheck = verticalVelocity; 
+                            const verticalVelocityBeforeCheck = verticalVelocity;
 
                             // Check if hitting an underside while moving up (using pre-check velocity)
                             if (pushDir.y < -0.1 && verticalVelocityBeforeCheck > 0) { 
