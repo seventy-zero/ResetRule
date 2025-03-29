@@ -3778,10 +3778,51 @@
             }
             // If it's the last iteration and still colliding, log a warning
             if (i === MAX_ITERATIONS - 1 && checkCollision(resolvedPosition, playerRadius).collision) {
-                console.warn('Collision resolution failed after max iterations');
+                console.warn("Player might still be colliding after max iterations.");
+                // Potentially still stuck here!
             }
-        } 
-        // --- End Iterative Collision Resolution Loop ---
+        } // End of the for loop (MAX_ITERATIONS)
+
+        // *** Final safety check and forced separation ***
+        playerCollider.center.copy(resolvedPosition); // Update collider position for final check
+        const finalCheckCollision = checkCollision(resolvedPosition, playerRadius);
+
+        if (finalCheckCollision.collision) {
+            console.warn("Applying final forced separation!");
+            const finalDistance = resolvedPosition.distanceTo(finalCheckCollision.closestPoint);
+            const finalPushDir = new THREE.Vector3();
+            finalPushDir.copy(resolvedPosition).sub(finalCheckCollision.closestPoint).normalize();
+
+            // Calculate how much to push out - ensure it's fully clear + bias
+            // Using a slightly larger bias here for safety
+            const finalPushAmount = (playerRadius - finalDistance) + COLLISION_BIAS * 2.0; 
+
+            resolvedPosition.x += finalPushDir.x * finalPushAmount;
+            resolvedPosition.z += finalPushDir.z * finalPushAmount;
+
+            // Also handle potential vertical push if stuck vertically (e.g., under geometry)
+            // Only apply vertical push if the normal is significantly vertical
+            if (Math.abs(finalPushDir.y) > 0.5) { 
+                 resolvedPosition.y += finalPushDir.y * finalPushAmount;
+                 // If pushed up from below, ensure grounded status is correct
+                 if (finalPushDir.y > 0.7) { // Pushed strongly upwards
+                     //isGrounded = true; // Re-evaluating ground check later might be safer
+                     verticalVelocity = Math.max(0, verticalVelocity); // Stop downward velocity if any
+                 }
+                 // If pushed down from ceiling
+                 else if (finalPushDir.y < -0.7 && verticalVelocity > 0) {
+                     verticalVelocity = 0; // Stop upward movement
+                 }
+            }
+
+            // Re-update collider center after forced push for subsequent logic
+            playerCollider.center.copy(resolvedPosition);
+            wasStuckInLoop = true; // Mark as potentially stuck if we needed this final push
+        }
+        // *** End of final safety check ***
+
+        // Apply final resolved position (this line likely already exists after the loop)
+        player.position.copy(resolvedPosition);
 
         // Update the actual camera position with the resolved one
         camera.position.copy(resolvedPosition);
