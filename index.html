@@ -2196,21 +2196,22 @@
                 },
 
                 _createPelletMesh() {
-                    const pelletGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+                    const pelletGeometry = new THREE.SphereGeometry(PELLET_RADIUS, 6, 6); // Simpler geometry
                     const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
                     const pelletMesh = new THREE.Mesh(pelletGeometry, pelletMaterial);
-                    
-                    // Create trail
-                    const trailGeometry = new THREE.BufferGeometry();
-                    const trailMaterial = new THREE.LineBasicMaterial({ color: 0xffff00 });
-                    const trail = new THREE.Line(trailGeometry, trailMaterial);
-                    pelletMesh.add(trail);
-                    
-                    pelletMesh.trailPoints = [];
-                    pelletMesh.trailGeometry = trailGeometry;
-                    pelletMesh.velocity = new THREE.Vector3();
-                    pelletMesh.spawnTime = 0;
-                    
+
+                    // Add properties needed for simulation directly to the mesh object
+                    pelletMesh.userData = {
+                        velocity: new THREE.Vector3(),
+                        spawnTime: 0,
+                    };
+                    // Create trail (Example - needs refinement if trails are desired)
+                    // const trailGeometry = new THREE.BufferGeometry();
+                    // const trailMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.5 });
+                    // const trail = new THREE.Line(trailGeometry, trailMaterial);
+                    // pelletMesh.add(trail);
+                    // pelletMesh.userData.trail = trail;
+                    // pelletMesh.userData.trailPoints = [];
                     return pelletMesh;
                 },
 
@@ -2220,16 +2221,16 @@
                     if (this.pool.length > 0) {
                         pellet = this.pool.pop(); // Get from available pool
                     } else {
-                        // Optional: Create a new one if pool is empty (can help prevent errors)
-                        // pellet = this._createPelletMesh();
-                        // scene.add(pellet); // Add to scene if newly created
                          console.warn("Pellet pool empty! Consider increasing maxSize.");
-                         return null; // Or return null if creation on-demand is not desired
+                         return null;
                     }
 
                     if (pellet) {
                         this.active.add(pellet); // Add to the active set
                         pellet.visible = true;   // Make it visible
+                        // Reset trail if using
+                        // if (pellet.userData.trailPoints) pellet.userData.trailPoints = [];
+                        // if (pellet.userData.trail) pellet.userData.trail.geometry.setFromPoints([]);
                     }
                     return pellet;
                 },
@@ -2238,7 +2239,11 @@
                 release(pellet) {
                     if (this.active.delete(pellet)) { // Remove from active set (returns true if successful)
                         pellet.visible = false;         // Make invisible
-                        pellet.userData.velocity.set(0, 0, 0); // Reset velocity
+                        if (pellet.userData && pellet.userData.velocity) {
+                             pellet.userData.velocity.set(0, 0, 0); // Reset velocity if userData exists
+                        } else {
+                             console.warn("Pellet released without userData or velocity", pellet);
+                        }
                         pellet.position.set(0, -10000, 0); // Move it far away
                         this.pool.push(pellet);        // Add back to the available pool
                     }
@@ -3204,6 +3209,13 @@
                     velocity: new THREE.Vector3(),
                     spawnTime: 0,
                 };
+                // Create trail (Example - needs refinement if trails are desired)
+                // const trailGeometry = new THREE.BufferGeometry();
+                // const trailMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.5 });
+                // const trail = new THREE.Line(trailGeometry, trailMaterial);
+                // pelletMesh.add(trail);
+                // pelletMesh.userData.trail = trail;
+                // pelletMesh.userData.trailPoints = [];
                 return pelletMesh;
             },
 
@@ -3213,11 +3225,8 @@
                 if (this.pool.length > 0) {
                     pellet = this.pool.pop(); // Get from available pool
                 } else {
-                    // Optional: Create a new one if pool is empty (can help prevent errors)
-                    // pellet = this._createPelletMesh();
-                    // scene.add(pellet); // Add to scene if newly created
                      console.warn("Pellet pool empty! Consider increasing maxSize.");
-                     return null; // Or return null if creation on-demand is not desired
+                     return null; 
                 }
 
                 if (pellet) {
@@ -3231,7 +3240,11 @@
             release(pellet) {
                 if (this.active.delete(pellet)) { // Remove from active set (returns true if successful)
                     pellet.visible = false;         // Make invisible
-                    pellet.userData.velocity.set(0, 0, 0); // Reset velocity
+                    if (pellet.userData && pellet.userData.velocity) {
+                         pellet.userData.velocity.set(0, 0, 0); // Reset velocity if userData exists
+                    } else {
+                         console.warn("Pellet released without userData or velocity", pellet);
+                    }
                     pellet.position.set(0, -10000, 0); // Move it far away
                     this.pool.push(pellet);        // Add back to the available pool
                 }
