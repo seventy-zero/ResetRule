@@ -2287,23 +2287,24 @@
                     pellet.lastPosition.copy(pellet.position);
 
                     // Apply gravity (framerate independent)
-                    // Ensure velocity exists
-                    if (!pellet.velocity) {
-                        pellet.velocity = new THREE.Vector3(); // Initialize if missing
+                    // Ensure velocity exists in userData
+                    if (!pellet.userData.velocity) {
+                        pellet.userData.velocity = new THREE.Vector3(); // Initialize if missing
                     }
-                    pellet.velocity.y -= PELLET_GRAVITY * deltaTime;
+                    // Apply gravity to userData velocity
+                    pellet.userData.velocity.y -= PELLET_GRAVITY * deltaTime;
 
-                    // Apply friction (framerate independent)
+                    // Apply friction (framerate independent) to userData velocity
                     const effectivePelletFriction = Math.pow(PELLET_FRICTION, deltaTime * 60);
-                    pellet.velocity.multiplyScalar(effectivePelletFriction);
+                    pellet.userData.velocity.multiplyScalar(effectivePelletFriction);
 
-                    // Calculate potential next position
-                    const deltaPosition = pellet.velocity.clone().multiplyScalar(deltaTime);
+                    // Calculate potential next position using userData velocity
+                    const deltaPosition = pellet.userData.velocity.clone().multiplyScalar(deltaTime);
                     const nextPosition = pellet.position.clone().add(deltaPosition);
 
 
                     // --- Simple Raycast Collision Check ---
-                    const rayDirection = deltaPosition.clone().normalize();
+                    const rayDirection = deltaPosition.clone().normalize(); // Based on userData velocity
                     const rayLength = deltaPosition.length();
                     
                     // Only cast if moving significantly
@@ -2320,21 +2321,21 @@
                             if (intersect.distance <= rayLength + PELLET_RADIUS) {
                                  hit = true;
                                 // Collision Response
-                                if (pellet.bounces >= pellet.maxBounces) {
+                                if (pellet.userData.bounces >= PELLET_MAX_BOUNCES) { // Use userData bounces
                                     pelletPool.release(pellet);
                                     return; // Stop processing this pellet
                                 } else {
                                     // Move pellet to collision point (approximately)
                                     pellet.position.copy(intersect.point).addScaledVector(intersect.face.normal, PELLET_RADIUS * 0.1); // Move slightly off surface
 
-                                    // Reflect velocity
+                                    // Reflect velocity in userData
                                     const normal = intersect.face.normal;
-                                    pellet.velocity.reflect(normal);
+                                    pellet.userData.velocity.reflect(normal);
 
-                                    // Apply bounce and friction to reflected velocity
-                                    pellet.velocity.multiplyScalar(PELLET_BOUNCE * PELLET_FRICTION);
+                                    // Apply bounce and friction to reflected velocity in userData
+                                    pellet.userData.velocity.multiplyScalar(PELLET_BOUNCE * PELLET_FRICTION);
 
-                                    pellet.bounces++;
+                                    pellet.userData.bounces++; // Increment userData bounces
                                 }
                             }
                         }
@@ -3461,6 +3462,10 @@
                 pellet.lastPosition.copy(pellet.position);
                 
                 // Apply gravity (framerate independent)
+                // Ensure velocity exists
+                if (!pellet.userData.velocity) {
+                    pellet.userData.velocity = new THREE.Vector3(); // Initialize if missing
+                }
                 pellet.velocity.y -= PELLET_GRAVITY * deltaTime;
                 
                 // Apply friction (framerate independent)
