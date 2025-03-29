@@ -360,6 +360,7 @@
 
         // Scene-related variables
         let scene, camera, renderer, controls;
+        let blocker, instructions; // Declare globally
 
         // Collections
         const towers = [];
@@ -1397,6 +1398,10 @@
             camera.position.set(0, playerHeight, 0);
             scene.add(camera);
             console.log('Camera initialized at height:', playerHeight);
+
+            // Get references to blocker and instructions elements
+            blocker = document.getElementById('blocker');
+            instructions = document.getElementById('instructions');
 
             // Renderer setup
             renderer = new THREE.WebGLRenderer({ 
