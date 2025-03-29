@@ -3635,50 +3635,6 @@
         // Removed immediate call to resumeAudio() - it should only happen on interaction or toggle
         // resumeAudio();
 
-        // Add orb creation function
-        function createOrb(orbData) {
-            // Create orb geometry
-            const geometry = new THREE.SphereGeometry(orbData.size, 16, 16);
-            
-            // Create orb material with glow effect
-            const material = new THREE.MeshBasicMaterial({
-                color: orbData.color,
-                transparent: true,
-                opacity: 0.8
-            });
-            
-            // Create the orb mesh
-            const orb = new THREE.Mesh(geometry, material);
-            
-            // Set position
-            orb.position.set(orbData.position.x, orbData.position.y, orbData.position.z);
-            
-            // Add glow effect
-            const glowGeometry = new THREE.SphereGeometry(orbData.size * 1.2, 16, 16);
-            const glowMaterial = new THREE.MeshBasicMaterial({
-                color: orbData.color,
-                transparent: true,
-                opacity: 0.3
-            });
-            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-            orb.add(glow);
-            
-            // Add pulsing animation
-            orb.userData = {
-                originalScale: orbData.size,
-                pulseSpeed: 0.5 + Math.random() * 0.5,
-                pulseOffset: Math.random() * Math.PI * 2
-            };
-            
-            // Store orb data for collection
-            orb.userData.orbId = orbData.id;
-            
-            // Add to orbs collection
-            orbs.set(orbData.id, orb);
-            
-            return orb;
-        }
-
         // Add orb animation update to the animation loop
         function updateOrbs() {
             const time = Date.now() * 0.001; // Convert to seconds
