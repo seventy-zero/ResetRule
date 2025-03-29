@@ -1015,63 +1015,9 @@
                         // Create bridges from server data
                         if (data.bridges) {
                             data.bridges.forEach(bridgeData => {
-                                // createBridgeFromData adds the group to the scene and pushes {mesh: group, ...} to towers array
                                 createBridgeFromData(bridgeData);
                             });
                         }
-
-                        // --- NEW LOD IMPLEMENTATION START ---
-                        console.log(`Setting up LOD for ${towers.length} objects...`);
-                        const lodDistanceThreshold = 1000; // Distance for switching to low detail
-                        const tempSize = new THREE.Vector3(); // Reuse vector for performance
-
-                        towers.forEach((towerInfo, index) => {
-                            const originalMeshGroup = towerInfo.mesh; // This is the THREE.Group
-
-                            if (!originalMeshGroup || !towerInfo.localCollisionBox) {
-                                console.warn(`Skipping LOD setup for tower/bridge index ${index}: Missing mesh or collision box.`);
-                                return; // Skip if data is incomplete
-                            }
-
-                            // 1. Create LOD object
-                            const lod = new THREE.LOD();
-                            lod.position.copy(originalMeshGroup.position);
-                            lod.rotation.copy(originalMeshGroup.rotation);
-                            // Make sure LOD updates are checked automatically
-                            lod.matrixAutoUpdate = true; 
-                            lod.visible = originalMeshGroup.visible; // Inherit visibility
-
-                            // 2. Create simplified geometry (Low Detail Mesh)
-                            try {
-                                towerInfo.localCollisionBox.getSize(tempSize);
-                                if (tempSize.x <= 0 || tempSize.y <= 0 || tempSize.z <= 0) {
-                                    console.warn(`Skipping LOD setup for tower/bridge index ${index}: Invalid size from collision box`, tempSize);
-                                    return;
-                                }
-                                const simpleGeometry = new THREE.BoxGeometry(tempSize.x, tempSize.y, tempSize.z);
-                                // Use the shared black material for low detail
-                                const simpleMesh = new THREE.Mesh(simpleGeometry, sharedMaterials.tower);
-                                simpleMesh.visible = true; // Ensure the simple mesh is visible when active
-
-                                // 3. Add levels to LOD
-                                // Level 0: Original detailed mesh group (distance 0)
-                                lod.addLevel(originalMeshGroup, 0);
-
-                                // Level 1: Simplified box mesh (distance threshold)
-                                lod.addLevel(simpleMesh, lodDistanceThreshold);
-
-                                // 4. Replace original mesh group with LOD in the scene
-                                // scene.remove(originalMeshGroup); // Original mesh group is now a child of LOD, removing it from the scene happens implicitly when adding it to LOD.
-                                scene.add(lod); // Add LOD to scene
-
-                                // 5. Collision logic continues to use towerInfo.mesh (the original group) reference.
-
-                            } catch (error) {
-                                console.error(`Error setting up LOD for tower/bridge index ${index}:`, error, towerInfo);
-                            }
-                        });
-                        console.log("LOD setup finished.");
-                        // --- NEW LOD IMPLEMENTATION END ---
 
                         // Debug logging for orbs
                         console.log('Processing orbs data:', data.orbs);
