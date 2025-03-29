@@ -467,7 +467,7 @@
             sprite.position.y = 6;
             playerMesh.add(sprite);
             
-            // Add to scene
+            // Add to the scene
             scene.add(playerMesh);
             console.log('Added player mesh to scene:', {
                 username: username,
@@ -2380,10 +2380,18 @@
                 const deltaTime = clock.getDelta();
                 const currentTime = performance.now();
 
+                // Update health display
+                updateHealthDisplay();
+                
                 // Update pellets
-                updatePellets(deltaTime); // Pass deltaTime
+                updatePellets(deltaTime);
+                animatePellets();
+                
+                // Update orbs
+                updateOrbs();
 
                 if (gameStarted) {
+                    // Rest of the original animation code...
                     // Update frustum for culling
                     projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
                     frustum.setFromProjectionMatrix(projScreenMatrix);
@@ -3583,20 +3591,9 @@
             if (audioContext.state === 'suspended') {
                 audioContext.resume().then(() => {
                     console.log("AudioContext Resumed");
-                    // If music checkbox is checked, start playing
-                    const musicCheckbox = document.getElementById('musicToggle');
-                    if (musicCheckbox && musicCheckbox.checked) {
-                        backgroundMusic.play().catch(error => console.log('Error playing background music:', error));
-                        console.log("Music started after context resume");
-                    }
-                }).catch(e => console.error("Error resuming AudioContext:", e));
+                });
             }
-        };
-
-        // Try to resume context on any user interaction (needed for browsers)
-        document.addEventListener('click', resumeAudio, { once: true });
-        document.addEventListener('touchstart', resumeAudio, { once: true });
-        document.addEventListener('keydown', resumeAudio, { once: true });
+        }
 
         // Add listener for the music toggle checkbox
         const musicCheckbox = document.getElementById('musicToggle');
@@ -3672,16 +3669,6 @@
                     }
                 }
             });
-        }
-
-        // Add orb update to animation loop
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            // Update orbs
-            updateOrbs();
-            
-            // ... rest of animation code ...
         }
     </script>
 </body>
