@@ -2372,7 +2372,52 @@
                     }
                 });
             }
+// Add health display
+        const healthDisplay = document.createElement('div');
+        healthDisplay.id = 'healthDisplay';
+        healthDisplay.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            gap: 5px;
+            z-index: 1000;
+        `;
 
+        // Create 5 health segments
+        for (let i = 0; i < 5; i++) {
+            const segment = document.createElement('div');
+            segment.style.cssText = `
+                width: 20px;
+                height: 30px;
+                background-color: #00ff00;
+                border: 2px solid rgba(255, 255, 255, 0.5);
+                transition: background-color 0.2s ease;
+                box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+            `;
+            healthDisplay.appendChild(segment);
+        }
+
+        document.body.appendChild(healthDisplay);
+
+        // Update health display
+        function updateHealthDisplay() {
+            const segments = healthDisplay.children;
+            const healthPerSegment = 20; // 100 health / 5 segments
+            
+            for (let i = 0; i < segments.length; i++) {
+                const segmentHealth = Math.max(0, playerHealth - (i * healthPerSegment));
+                const segmentPercentage = Math.min(100, (segmentHealth / healthPerSegment) * 100);
+                
+                if (segmentPercentage <= 0) {
+                    segments[i].style.backgroundColor = '#ff0000'; // Brighter red when empty
+                    segments[i].style.boxShadow = '0 0 10px rgba(255, 0, 0, 0.5)';
+                } else {
+                    segments[i].style.backgroundColor = '#00ff00'; // Brighter green when full
+                    segments[i].style.boxShadow = '0 0 10px rgba(0, 255, 0, 0.5)';
+                }
+            }
+        }
             // Animation loop with collision detection, star rotation, and nebula animation
             function animate() {
                 requestAnimationFrame(animate);
@@ -3347,52 +3392,7 @@
             }, { passive: false });
         }
 
-        // Add health display
-        const healthDisplay = document.createElement('div');
-        healthDisplay.id = 'healthDisplay';
-        healthDisplay.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            display: flex;
-            gap: 5px;
-            z-index: 1000;
-        `;
-
-        // Create 5 health segments
-        for (let i = 0; i < 5; i++) {
-            const segment = document.createElement('div');
-            segment.style.cssText = `
-                width: 20px;
-                height: 30px;
-                background-color: #00ff00;
-                border: 2px solid rgba(255, 255, 255, 0.5);
-                transition: background-color 0.2s ease;
-                box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
-            `;
-            healthDisplay.appendChild(segment);
-        }
-
-        document.body.appendChild(healthDisplay);
-
-        // Update health display
-        function updateHealthDisplay() {
-            const segments = healthDisplay.children;
-            const healthPerSegment = 20; // 100 health / 5 segments
-            
-            for (let i = 0; i < segments.length; i++) {
-                const segmentHealth = Math.max(0, playerHealth - (i * healthPerSegment));
-                const segmentPercentage = Math.min(100, (segmentHealth / healthPerSegment) * 100);
-                
-                if (segmentPercentage <= 0) {
-                    segments[i].style.backgroundColor = '#ff0000'; // Brighter red when empty
-                    segments[i].style.boxShadow = '0 0 10px rgba(255, 0, 0, 0.5)';
-                } else {
-                    segments[i].style.backgroundColor = '#00ff00'; // Brighter green when full
-                    segments[i].style.boxShadow = '0 0 10px rgba(0, 255, 0, 0.5)';
-                }
-            }
-        }
+        
 
         // Add health display update to animation loop
         function animate() {
