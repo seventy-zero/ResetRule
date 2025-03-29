@@ -263,7 +263,7 @@
 
         // Global variables and constants
         const playerHeight = 10;
-        const playerRadius = 2;
+        const playerRadius = 1.5;
         const moveSpeed = 22.0; // Units per second
         const gravity = 0.015; // Reduced from 0.015 for longer air time
         const flingStrength = 3.0; // Increased from 2.75
@@ -328,7 +328,7 @@
 
         // Add movement smoothing constants
         const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
-        const COLLISION_PUSH_FORCE = 3.5; // Increased from 2.5 for stronger collision response
+        const COLLISION_PUSH_FORCE = 4.5; // Increased again for stronger collision response
         const CORNER_SLIDE_FORCE = 0.8; // Increased from 0.7 for better sliding
         const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
         const STUCK_THRESHOLD = 0.3; // New constant for detecting when player is stuck
@@ -341,7 +341,7 @@
         let isFlinging = false;
         let showLine = false;
         let lineCollisionPoint = null;
-        let verticalVelocity = 0;
+        let verticalVelocity = 0.0;
         let pelletPool = null; // <-- Declare pelletPool here
 
         // Movement state variables
@@ -2275,7 +2275,7 @@
                     }
 
                     // Check if pellet has expired
-                    if (currentTime - pellet.spawnTime > PELLET_LIFETIME) {
+                    if (currentTime - pellet.userData.spawnTime > PELLET_LIFETIME) { // <-- Corrected variable
                         pelletPool.release(pellet);
                         return; // Stop processing this pellet
                     }
