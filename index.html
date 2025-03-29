@@ -3733,6 +3733,10 @@
         let resolvedPosition = camera.position.clone(); // Work with a temporary position
         let wasStuckInLoop = false;
 
+        // *** ADDED: Ensure a playerCollider is defined for this scope ***
+        // Assuming playerRadius is available here. Using resolvedPosition initially.
+        const playerCollider = new THREE.Sphere(resolvedPosition, playerRadius);
+
         for (let i = 0; i < MAX_ITERATIONS; i++) {
             playerCollider.center.copy(resolvedPosition); // Update collider for check
             const normalCollision = checkCollision(resolvedPosition, playerRadius);
@@ -3781,6 +3785,7 @@
 
         // Update the actual camera position with the resolved one
         camera.position.copy(resolvedPosition);
+        // Update the collider's center to the final position
         playerCollider.center.copy(camera.position); // Final collider update
 
         // --- Velocity adjustments based on the FINAL state after resolution ---
