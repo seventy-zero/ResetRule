@@ -304,6 +304,7 @@
                         if (pellet) {
                             pellet.visible = false;
                             pellet.position.set(0, -10000, 0);
+                            scene.add(pellet); // <-- Add this line
                             this.pool.push(pellet);
                         }
                     }
@@ -1368,6 +1369,7 @@
                             if (pellet) {
                                 pellet.visible = false;
                                 pellet.position.set(0, -10000, 0);
+                                scene.add(pellet); // <-- Add this line
                                 this.pool.push(pellet);
                             }
                         }
