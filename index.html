@@ -2425,10 +2425,11 @@
                 requestAnimationFrame(animate);
 
                 const deltaTime = clock.getDelta();
+                const clampedDeltaTime = Math.min(deltaTime, 1 / 30); // Cap delta time at ~30fps
                 const currentTime = performance.now();
 
                 // Update pellets
-                updatePellets(deltaTime); // Pass deltaTime
+                updatePellets(clampedDeltaTime); // Use clampedDeltaTime
 
                 if (gameStarted) {
                     // Update frustum for culling
@@ -2443,7 +2444,7 @@
                                 if (timeSinceUpdate > 5000) {
                                     removePlayer(username);
                                 } else {
-                                    playerState.update(deltaTime);
+                                    playerState.update(clampedDeltaTime); // Use clampedDeltaTime
                                 }
                             }
                         });
@@ -2458,10 +2459,10 @@
                             // Scale rotation and position changes by deltaTime
                             const nebulaRotSpeed = 0.01; // Adjust speed as needed
                             const nebulaDriftSpeed = 0.5; // Adjust speed as needed
-                            nebula.rotation.y += nebulaRotSpeed * deltaTime;
-                            nebula.rotation.x += (nebulaRotSpeed * 0.5) * deltaTime;
-                            nebula.position.y += Math.sin(time * 0.1 + index) * nebulaDriftSpeed * deltaTime;
-                            nebula.position.x += Math.cos(time * 0.15 + index) * nebulaDriftSpeed * deltaTime;
+                            nebula.rotation.y += nebulaRotSpeed * clampedDeltaTime; // Use clampedDeltaTime
+                            nebula.rotation.x += (nebulaRotSpeed * 0.5) * clampedDeltaTime; // Use clampedDeltaTime
+                            nebula.position.y += Math.sin(time * 0.1 + index) * nebulaDriftSpeed * clampedDeltaTime; // Use clampedDeltaTime
+                            nebula.position.x += Math.cos(time * 0.15 + index) * nebulaDriftSpeed * clampedDeltaTime; // Use clampedDeltaTime
                         }
                     });
 
@@ -2471,10 +2472,10 @@
                     const largeStarFieldSpeed = 0.003;
                     
                     if (starField) {
-                        starField.rotation.y += starFieldSpeed * deltaTime; // Use deltaTime
+                        starField.rotation.y += starFieldSpeed * clampedDeltaTime; // Use clampedDeltaTime
                     }
                     if (largeStarField) {
-                        largeStarField.rotation.y += largeStarFieldSpeed * deltaTime; // Use deltaTime
+                        largeStarField.rotation.y += largeStarFieldSpeed * clampedDeltaTime; // Use clampedDeltaTime
                     }
 
                     // Update nebula opacity (example - add your nebula logic here if needed)
@@ -2500,8 +2501,8 @@
 
                         // --- Calculate Movement Distance for this Frame ---
                         // Treat moveSpeed as units per second
-                        const moveDistanceZ = inputDirection.z * moveSpeed * deltaTime;
-                        const moveDistanceX = inputDirection.x * moveSpeed * deltaTime;
+                        const moveDistanceZ = inputDirection.z * moveSpeed * clampedDeltaTime; // Use clampedDeltaTime
+                        const moveDistanceX = inputDirection.x * moveSpeed * clampedDeltaTime; // Use clampedDeltaTime
 
                         // --- Apply Movement using PointerLockControls ---
                         // This handles movement relative to camera orientation
@@ -2608,13 +2609,13 @@
                         if (!isGrounded) {
                             // Apply gravity (framerate independent)
                             // ... (gravity logic - check if needs adjustment without velocity interaction in collision)
-                            verticalVelocity -= gravity * deltaTime;
+                            verticalVelocity -= gravity * clampedDeltaTime;
                         } else {
                             verticalVelocity = 0; 
                         }
                         // Apply vertical velocity (framerate independent)
                         // Fling velocity is handled separately
-                        let verticalMove = verticalVelocity * deltaTime;
+                        let verticalMove = verticalVelocity * clampedDeltaTime;
                         if(isFlinging) {
                              // Assuming flingVelocity includes Y component for initial jump
                              // Need to handle fling vertical movement
@@ -2624,8 +2625,8 @@
 
                         // --- Fling Horizontal Movement --- (Apply separately if needed)
                         if (isFlinging) {
-                           camera.position.x += flingVelocity.x * deltaTime;
-                           camera.position.z += flingVelocity.z * deltaTime;
+                           camera.position.x += flingVelocity.x * clampedDeltaTime; // Use clampedDeltaTime
+                           camera.position.z += flingVelocity.z * clampedDeltaTime; // Use clampedDeltaTime
                            // Damping applied later
                         }
 
@@ -2635,7 +2636,7 @@
                         // --- Damping / Friction --- 
                         // Apply damping ONLY to fling velocity 
                         if (isFlinging) {
-                            const effectiveFlingDamping = Math.pow(flingDamping, deltaTime * 60);
+                            const effectiveFlingDamping = Math.pow(flingDamping, clampedDeltaTime * 60); // Use clampedDeltaTime
                             flingVelocity.x *= effectiveFlingDamping;
                             flingVelocity.z *= effectiveFlingDamping;
                             if (flingVelocity.lengthSq() < 0.001) {
@@ -2727,10 +2728,10 @@
                         // Move in world space
                         camera.position.x += flingVelocity.x;
                         camera.position.z += flingVelocity.z;
-                        camera.position.y += verticalVelocity;
+                        camera.position.y += verticalVelocity * clampedDeltaTime; // Use clampedDeltaTime
 
                         // Apply gravity
-                        verticalVelocity -= gravity;
+                        verticalVelocity -= gravity * clampedDeltaTime; // Apply gravity correctly
 
                         // Update player collider position
                         playerCollider.center.copy(camera.position);
@@ -2792,8 +2793,8 @@
 
                     // Apply gravity and handle ground collision
                     if (!isGrounded) {
-                        verticalVelocity -= gravity;
-                        camera.position.y += verticalVelocity;
+                        verticalVelocity -= gravity * clampedDeltaTime; // Apply gravity correctly
+                        camera.position.y += verticalVelocity * clampedDeltaTime; // Use clampedDeltaTime
 
                         // Update player collider position
                         playerCollider.center.copy(camera.position);
