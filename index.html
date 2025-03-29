@@ -2425,11 +2425,10 @@
                 requestAnimationFrame(animate);
 
                 const deltaTime = clock.getDelta();
-                const clampedDeltaTime = Math.min(deltaTime, 1 / 30); // Cap delta time at ~30fps
                 const currentTime = performance.now();
 
                 // Update pellets
-                updatePellets(clampedDeltaTime); // Use clampedDeltaTime
+                updatePellets(deltaTime); // Pass deltaTime
 
                 if (gameStarted) {
                     // Update frustum for culling
@@ -2444,7 +2443,7 @@
                                 if (timeSinceUpdate > 5000) {
                                     removePlayer(username);
                                 } else {
-                                    playerState.update(clampedDeltaTime); // Use clampedDeltaTime
+                                    playerState.update(deltaTime);
                                 }
                             }
                         });
@@ -2459,10 +2458,10 @@
                             // Scale rotation and position changes by deltaTime
                             const nebulaRotSpeed = 0.01; // Adjust speed as needed
                             const nebulaDriftSpeed = 0.5; // Adjust speed as needed
-                            nebula.rotation.y += nebulaRotSpeed * clampedDeltaTime; // Use clampedDeltaTime
-                            nebula.rotation.x += (nebulaRotSpeed * 0.5) * clampedDeltaTime; // Use clampedDeltaTime
-                            nebula.position.y += Math.sin(time * 0.1 + index) * nebulaDriftSpeed * clampedDeltaTime; // Use clampedDeltaTime
-                            nebula.position.x += Math.cos(time * 0.15 + index) * nebulaDriftSpeed * clampedDeltaTime; // Use clampedDeltaTime
+                            nebula.rotation.y += nebulaRotSpeed * deltaTime;
+                            nebula.rotation.x += (nebulaRotSpeed * 0.5) * deltaTime;
+                            nebula.position.y += Math.sin(time * 0.1 + index) * nebulaDriftSpeed * deltaTime;
+                            nebula.position.x += Math.cos(time * 0.15 + index) * nebulaDriftSpeed * deltaTime;
                         }
                     });
 
@@ -2472,10 +2471,10 @@
                     const largeStarFieldSpeed = 0.003;
                     
                     if (starField) {
-                        starField.rotation.y += starFieldSpeed * clampedDeltaTime; // Use clampedDeltaTime
+                        starField.rotation.y += starFieldSpeed * deltaTime; // Use deltaTime
                     }
                     if (largeStarField) {
-                        largeStarField.rotation.y += largeStarFieldSpeed * clampedDeltaTime; // Use clampedDeltaTime
+                        largeStarField.rotation.y += largeStarFieldSpeed * deltaTime; // Use deltaTime
                     }
 
                     // Update nebula opacity (example - add your nebula logic here if needed)
@@ -2501,8 +2500,8 @@
 
                         // --- Calculate Movement Distance for this Frame ---
                         // Treat moveSpeed as units per second
-                        const moveDistanceZ = inputDirection.z * moveSpeed * clampedDeltaTime; // Use clampedDeltaTime
-                        const moveDistanceX = inputDirection.x * moveSpeed * clampedDeltaTime; // Use clampedDeltaTime
+                        const moveDistanceZ = inputDirection.z * moveSpeed * deltaTime;
+                        const moveDistanceX = inputDirection.x * moveSpeed * deltaTime;
 
                         // --- Apply Movement using PointerLockControls ---
                         // This handles movement relative to camera orientation
@@ -2609,13 +2608,13 @@
                         if (!isGrounded) {
                             // Apply gravity (framerate independent)
                             // ... (gravity logic - check if needs adjustment without velocity interaction in collision)
-                            verticalVelocity -= gravity * clampedDeltaTime;
+                            verticalVelocity -= gravity * deltaTime;
                         } else {
                             verticalVelocity = 0; 
                         }
                         // Apply vertical velocity (framerate independent)
                         // Fling velocity is handled separately
-                        let verticalMove = verticalVelocity * clampedDeltaTime;
+                        let verticalMove = verticalVelocity * deltaTime;
                         if(isFlinging) {
                              // Assuming flingVelocity includes Y component for initial jump
                              // Need to handle fling vertical movement
@@ -2625,8 +2624,8 @@
 
                         // --- Fling Horizontal Movement --- (Apply separately if needed)
                         if (isFlinging) {
-                           camera.position.x += flingVelocity.x * clampedDeltaTime; // Use clampedDeltaTime
-                           camera.position.z += flingVelocity.z * clampedDeltaTime; // Use clampedDeltaTime
+                           camera.position.x += flingVelocity.x * deltaTime;
+                           camera.position.z += flingVelocity.z * deltaTime;
                            // Damping applied later
                         }
 
@@ -2636,7 +2635,7 @@
                         // --- Damping / Friction --- 
                         // Apply damping ONLY to fling velocity 
                         if (isFlinging) {
-                            const effectiveFlingDamping = Math.pow(flingDamping, clampedDeltaTime * 60); // Use clampedDeltaTime
+                            const effectiveFlingDamping = Math.pow(flingDamping, deltaTime * 60);
                             flingVelocity.x *= effectiveFlingDamping;
                             flingVelocity.z *= effectiveFlingDamping;
                             if (flingVelocity.lengthSq() < 0.001) {
@@ -2725,15 +2724,15 @@
 
                     // Apply fling velocity if active
                     if (isFlinging) {
-                        // Move HORIZONTAL position in world space based on fling
-                        camera.position.x += flingVelocity.x * clampedDeltaTime; // Use clampedDeltaTime
-                        camera.position.z += flingVelocity.z * clampedDeltaTime; // Use clampedDeltaTime
-                        // camera.position.y += verticalVelocity * clampedDeltaTime; // REMOVED - Handled later
+                        // Move in world space
+                        camera.position.x += flingVelocity.x;
+                        camera.position.z += flingVelocity.z;
+                        camera.position.y += verticalVelocity;
 
                         // Apply gravity
-                        // verticalVelocity -= gravity * clampedDeltaTime; // REMOVED - Handled later
+                        verticalVelocity -= gravity;
 
-                        // Update player collider position (reflects horizontal fling movement)
+                        // Update player collider position
                         playerCollider.center.copy(camera.position);
 
                         // Check collisions with all towers
@@ -2767,7 +2766,7 @@
                                 }
                                 
                                 // Add upward velocity for bounce
-                                verticalVelocity *= 0.8; // Dampen vertical velocity on collision
+                                verticalVelocity = Math.abs(verticalVelocity) * 0.8;
                             }
                         }
 
@@ -2793,68 +2792,83 @@
 
                     // Apply gravity and handle ground collision
                     if (!isGrounded) {
-                        verticalVelocity -= gravity * clampedDeltaTime; // Apply gravity correctly (ONCE per frame)
-                        // camera.position.y += verticalVelocity * clampedDeltaTime; // MOVED - Apply vertical move AFTER collision checks
-                    }
-                    else {
-                         verticalVelocity = 0; // Ensure vertical velocity is zeroed when grounded
-                    }
+                        verticalVelocity -= gravity;
+                        camera.position.y += verticalVelocity;
 
-                    // --- APPLY VERTICAL MOVEMENT --- 
-                    // Apply accumulated vertical velocity AFTER gravity/ground checks but BEFORE collision resolution for this movement
-                    camera.position.y += verticalVelocity * clampedDeltaTime; 
+                        // Update player collider position
+                        playerCollider.center.copy(camera.position);
 
-                    // Update player collider position AFTER vertical movement
-                    playerCollider.center.copy(camera.position);
-
-                    // Check collisions AFTER vertical movement
-                    const verticalCollision = checkCollision(camera.position, playerRadius);
-                    if (verticalCollision.collision) {
-                        // --- [ Existing Vertical Collision Handling ] ---
-                        // Move player out of collision based on vertical check
-                        const pushDir = new THREE.Vector3();
-                        pushDir.copy(camera.position).sub(verticalCollision.closestPoint).normalize();
-                        const pushDistance = (playerRadius - verticalCollision.distance) + COLLISION_BIAS; // Use normal bias
-
-                        // Apply push-out HORIZONTALLY AND VERTICALLY based on normal
-                        camera.position.x += pushDir.x * pushDistance;
-                        camera.position.y += pushDir.y * pushDistance; // Apply vertical push out
-                        camera.position.z += pushDir.z * pushDistance;
-
-                        // Adjust velocities based on the collision surface normal
-                        if (pushDir.y > 0.7 && verticalVelocity < 0) { // Hit ground
-                           camera.position.y = verticalCollision.closestPoint.y + playerHeight; // Snap exactly to ground + height
-                           isGrounded = true;
-                           verticalVelocity = 0;
-                           if (isFlinging) { // Stop fling on ground impact
-                               isFlinging = false;
-                               flingVelocity.set(0,0,0);
-                           }
-                        } else if (pushDir.y < -0.7 && verticalVelocity > 0) { // Hit ceiling
-                           verticalVelocity = 0; // Stop upward movement
-                           // Optionally add small downward nudge: verticalVelocity = -0.1;
-                        } else { // Hit a wall/slope vertically
-                            // Dampen vertical velocity when hitting walls/slopes vertically
-                            if (Math.abs(pushDir.y) < 0.7) { // Check it's not primarily floor/ceiling normal
-                                 verticalVelocity *= 0.8; 
+                        // Check collisions after vertical movement
+                        const verticalCollision = checkCollision(camera.position, playerRadius);
+                        if (verticalCollision.collision) {
+                            if (isFlinging) {
+                                // During fling, push out strongly and redirect velocity
+                                const pushDir = new THREE.Vector3();
+                                pushDir.copy(camera.position).sub(verticalCollision.closestPoint).normalize();
+                                
+                                // Push out with a stronger force
+                                const pushDistance = playerRadius - verticalCollision.distance;
+                                camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                                camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                                
+                                // Normal collision response for all objects
+                                const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                
+                                // Add corner sliding effect
+                                const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
+                                if (dotProduct < 0) {
+                                    // We're moving towards the collision, apply stronger bounce
+                                    flingVelocity.x = pushDir.x * speed * 0.8;
+                                    flingVelocity.z = pushDir.z * speed * 0.8;
+                                } else {
+                                    // We're moving along the surface, apply sliding
+                                    flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
+                                    flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
+                                }
+                                
+                                // Add upward velocity for bounce
+                                verticalVelocity = Math.abs(verticalVelocity) * 0.8;
+                            } else {
+                                // During normal movement, push out smoothly
+                                const pushDir = new THREE.Vector3();
+                                pushDir.copy(camera.position).sub(verticalCollision.closestPoint).normalize();
+                                
+                                // Push out with a smoother force
+                                const pushDistance = playerRadius - verticalCollision.distance;
+                                camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                                camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                                
+                                // Add corner sliding for normal movement
+                                const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
+                                if (dotProduct < 0) {
+                                    // We're moving towards the collision, stop movement
+                                    velocity.x = 0;
+                                    velocity.z = 0;
+                                } else {
+                                    // We're moving along the surface, apply sliding
+                                    velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
+                                    velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
+                                }
+                                
+                                // Remove special bridge handling - treat all collisions the same
+                                const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+                                if (currentSpeed > 0.1) { // Only apply bounce if we have significant speed
+                                    const bounceStrength = 0.8; // Consistent bounce for all objects
+                                    velocity.x = pushDir.x * currentSpeed * bounceStrength;
+                                    velocity.z = pushDir.z * currentSpeed * bounceStrength;
+                                    // Further reduced bounce factors
+                                    verticalVelocity = Math.max(currentSpeed * 0.15, 0.1); // Was 0.25, 0.2
+                                    isGrounded = false;
+                                }
                             }
                         }
-                        
-                        // Update collider again after vertical push
-                        playerCollider.center.copy(camera.position);
-                        // --- [ End Vertical Collision Handling ] ---
-                    }
 
-                    // Re-Check for ground collision AFTER potential push-outs
-                    // This prevents sticking slightly below ground after a vertical push
-                    if (camera.position.y <= playerHeight) {
-                        camera.position.y = playerHeight;
-                        verticalVelocity = 0;
-                        isGrounded = true;
-                         if (isFlinging) { // Ensure fling stops if forced to ground height
-                             isFlinging = false;
-                             flingVelocity.set(0,0,0);
-                         }
+                        // Check for ground collision
+                        if (camera.position.y <= playerHeight) {
+                            camera.position.y = playerHeight;
+                            verticalVelocity = 0;
+                            isGrounded = true;
+                        }
                     }
 
                     // Update player collider position for final position
@@ -3764,51 +3778,10 @@
             }
             // If it's the last iteration and still colliding, log a warning
             if (i === MAX_ITERATIONS - 1 && checkCollision(resolvedPosition, playerRadius).collision) {
-                console.warn("Player might still be colliding after max iterations.");
-                // Potentially still stuck here!
+                console.warn('Collision resolution failed after max iterations');
             }
-        } // End of the for loop (MAX_ITERATIONS)
-
-        // *** Final safety check and forced separation ***
-        playerCollider.center.copy(resolvedPosition); // Update collider position for final check
-        const finalCheckCollision = checkCollision(resolvedPosition, playerRadius);
-
-        if (finalCheckCollision.collision) {
-            console.warn("Applying final forced separation!");
-            const finalDistance = resolvedPosition.distanceTo(finalCheckCollision.closestPoint);
-            const finalPushDir = new THREE.Vector3();
-            finalPushDir.copy(resolvedPosition).sub(finalCheckCollision.closestPoint).normalize();
-
-            // Calculate how much to push out - ensure it's fully clear + bias
-            // Using a slightly larger bias here for safety
-            const finalPushAmount = (playerRadius - finalDistance) + COLLISION_BIAS * 2.5; 
-
-            resolvedPosition.x += finalPushDir.x * finalPushAmount;
-            resolvedPosition.z += finalPushDir.z * finalPushAmount;
-
-            // Also handle potential vertical push if stuck vertically (e.g., under geometry)
-            // Only apply vertical push if the normal is significantly vertical
-            if (Math.abs(finalPushDir.y) > 0.5) { 
-                 resolvedPosition.y += finalPushDir.y * finalPushAmount;
-                 // If pushed up from below, ensure grounded status is correct
-                 if (finalPushDir.y > 0.7) { // Pushed strongly upwards
-                     //isGrounded = true; // Re-evaluating ground check later might be safer
-                     verticalVelocity = Math.max(0, verticalVelocity); // Stop downward velocity if any
-                 }
-                 // If pushed down from ceiling
-                 else if (finalPushDir.y < -0.7 && verticalVelocity > 0) {
-                     verticalVelocity = 0; // Stop upward movement
-                 }
-            }
-
-            // Re-update collider center after forced push for subsequent logic
-            playerCollider.center.copy(resolvedPosition);
-            wasStuckInLoop = true; // Mark as potentially stuck if we needed this final push
-        }
-        // *** End of final safety check ***
-
-        // Apply final resolved position (this line likely already exists after the loop)
-        player.position.copy(resolvedPosition);
+        } 
+        // --- End Iterative Collision Resolution Loop ---
 
         // Update the actual camera position with the resolved one
         camera.position.copy(resolvedPosition);
