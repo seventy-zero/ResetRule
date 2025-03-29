@@ -217,7 +217,9 @@
             Desktop Controls:<br>
             WASD = Move<br>
             Mouse = Look around<br>
+            Z = Show Player List<br>
             ESC = Exit<br>
+            Right Click = Fire Shotgun<br>
             Left Click = Aim & Release to Fling
         </p>
         <p id="mobileInstructions" style="display: none; margin-top: 20px;">
@@ -225,6 +227,10 @@
             Right Stick = Look around<br>
             Fling Button = Aim & Release to Fling
         </p>
+        <div style="margin-top: 20px;">
+            <input type="checkbox" id="musicToggle" name="musicToggle">
+            <label for="musicToggle" style="color: white; font-size: 18px;">Play Music</label>
+        </div>
     </div>
     
     <div id="playerList"></div>
@@ -332,8 +338,9 @@
         const COLLISION_BIAS = 0.01;      // Small bias to push player slightly past surface
         const CORNER_SLIDE_FORCE = 0.8; // Increased from 0.7 for better sliding
         const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
-        const STUCK_THRESHOLD = 0.3; // New constant for detecting when player is stuck
-        const STUCK_PUSH_FORCE = 5.0; // New constant for extra push force when stuck
+        const STUCK_THRESHOLD = 0.4; // Increased from 0.3 - require deeper penetration to trigger strong push
+        const STUCK_PUSH_FORCE = 4.0; // Decreased from 5.0 - make the strong push less forceful
+        const STUCK_BOUNCE_SPEED = 5.0; // Speed of the bounce applied when stuck
 
         // Game state variables
         let gameStarted = false;
@@ -1933,7 +1940,7 @@
                     tubeMesh.geometry = newTubeGeometry;
 
                     // Check for line collision with towers
-                    raycaster.set(startPoint, cameraDirection);
+                    raycaster.set(camera.position, cameraDirection);
                     const intersects = [];
                     towers.forEach(tower => {
                         const towerIntersects = raycaster.intersectObject(tower.mesh);
@@ -2511,22 +2518,29 @@
                             const isStuck = distance < playerRadius * STUCK_THRESHOLD;
                             
                             if (isStuck) {
-                                // Player is stuck, apply stronger push-out force (immediate correction, no delta)
-                                // pushDir is already calculated
-                                camera.position.x += pushDir.x * (playerRadius * STUCK_PUSH_FORCE); // Apply specific stuck force
-                                camera.position.z += pushDir.z * (playerRadius * STUCK_PUSH_FORCE);
+                                // Player is stuck, apply push-out based on penetration depth and initiate a bounce
+                                // pushDir and pushDistance are already calculated
+                                
+                                // 1. Apply position correction based on penetration depth
+                                camera.position.x += pushDir.x * pushDistance * STUCK_PUSH_FORCE;
+                                camera.position.z += pushDir.z * pushDistance * STUCK_PUSH_FORCE;
 
-                                // Add upward velocity impulse to help escape
-                                verticalVelocity = 0.3; // Reduced from 1.0
+                                // 2. Add upward velocity impulse to help escape
+                                verticalVelocity = 0.3; // Small vertical pop
                                 isGrounded = false;
 
-                                // Modify horizontal velocity for escape
-                                if (isFlinging) {
-                                    const flingSpeed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                    flingVelocity.x = pushDir.x * flingSpeed * 2.0;
-                                    flingVelocity.z = pushDir.z * flingSpeed * 2.0;
-                                } 
-                                // No else needed for velocity here, as WASD velocity isn't used
+                                // 3. Set fling velocity to bounce directly away
+                                flingVelocity.x = pushDir.x * STUCK_BOUNCE_SPEED;
+                                flingVelocity.z = pushDir.z * STUCK_BOUNCE_SPEED;
+                                isFlinging = true; // Activate fling physics for this bounce
+
+                                // Logging the bounce event
+                                console.log('Player stuck, initiating bounce:', {
+                                    pushDir: pushDir.clone(),
+                                    pushDistance: pushDistance,
+                                    bounceVelocity: flingVelocity.clone()
+                                });
+
                             } else {
                                 // Normal collision response (not stuck)
                                 // pushDir and pushDistance are already calculated
@@ -2551,7 +2565,7 @@
                                         flingVelocity.x *= 0.5;
                                         flingVelocity.z *= 0.5;
                                     } 
-                                    // No else needed for velocity here
+                                    // No else needed for velocity here, as WASD velocity isn't used
                                 } else {
                                     // Standard collision response (horizontal push/sliding)
                                     // Log standard collision
@@ -2658,7 +2672,7 @@
                         tubeMesh.geometry = newTubeGeometry;
 
                         // Check for line collision with towers
-                        raycaster.set(startPoint, cameraDirection);
+                        raycaster.set(camera.position, cameraDirection);
                         const intersects = [];
                         towers.forEach(tower => {
                             const towerIntersects = raycaster.intersectObject(tower.mesh);
@@ -3631,23 +3645,47 @@
         
         // Play background music on startup
         const backgroundMusic = new Audio('leader-ultra-essence-lossy-64.mp3');
-        backgroundMusic.loop = true;
+        backgroundMusic.loop = true; // Will be set again in listener, but safe default
         backgroundMusic.volume = 0.5; // Set to 50% volume by default
-        
+
         // Handle audio context suspension (needed for some browsers)
         const resumeAudio = () => {
-            audioContext.resume().then(() => {
-                backgroundMusic.play().catch(error => console.log('Error playing background music:', error));
-            });
+            // Check state before resuming to avoid errors if already running
+            if (audioContext.state === 'suspended') {
+                audioContext.resume().then(() => {
+                    console.log("AudioContext Resumed");
+                    // Don't automatically play music here anymore
+                }).catch(e => console.error("Error resuming AudioContext:", e));
+            }
         };
-        
-        // Try to play on any user interaction
+
+        // Try to resume context on any user interaction (needed for browsers)
         document.addEventListener('click', resumeAudio, { once: true });
         document.addEventListener('touchstart', resumeAudio, { once: true });
         document.addEventListener('keydown', resumeAudio, { once: true });
-        
-        // Also try to play immediately
-        resumeAudio();
+
+        // Add listener for the music toggle checkbox
+        const musicCheckbox = document.getElementById('musicToggle');
+        if (musicCheckbox) {
+            musicCheckbox.addEventListener('change', () => {
+                resumeAudio(); // Make sure context is active before playing/pausing
+                if (musicCheckbox.checked) {
+                    backgroundMusic.loop = true;
+                    // Use a timeout to ensure context is resumed before playing
+                    setTimeout(() => {
+                         backgroundMusic.play().catch(error => console.log('Error playing background music:', error));
+                         console.log("Music started via toggle");
+                    }, 100); // Small delay
+                } else {
+                    backgroundMusic.pause();
+                    backgroundMusic.currentTime = 0; // Reset to start
+                    console.log("Music stopped via toggle");
+                }
+            });
+        }
+
+        // Removed immediate call to resumeAudio() - it should only happen on interaction or toggle
+        // resumeAudio();
     </script>
 </body>
 </html>
