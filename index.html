@@ -1747,54 +1747,28 @@
 
             // Controls lock/unlock handlers
             controls.addEventListener('lock', function() {
-                instructions.classList.add('hidden');
+                instructions.style.display = 'none';
+                blocker.style.display = 'none';
             });
 
             controls.addEventListener('unlock', function() {
-                if (!isMobile) {
-                    instructions.classList.remove('hidden');
-                }
-                
-                // Notify server that player is leaving
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        type: 'player_left',
-                        username: playerUsername
-                    }));
-                }
-                
-                // Remove our own player model if it exists
-                removePlayer(playerUsername);
-                
-                // Clear all other player models
-                playerStates.forEach((playerState, username) => {
-                    removePlayer(username);
-                });
-                
-                // Reset game state
-                gameStarted = false;
-                playerUsername = '';
-                
-                // Reset position
-                camera.position.set(0, playerHeight, 0);
-                camera.rotation.set(0, 0, 0);
-                velocity.set(0, 0, 0);
-                flingVelocity.set(0, 0, 0);
-                verticalVelocity = 0;
-                isFlinging = false;
-                isGrounded = true;
-                
-                // Show instructions again
-                instructions.classList.remove('hidden');
-                usernameInput.value = '';
-                startButton.disabled = true;
-                
-                // Clear any mobile controls if they exist
-                if (isMobile) {
-                    document.querySelector('.mobile-controls').style.display = 'none';
-                    document.getElementById('flingButton').style.display = 'none';
+                // Check if unlock was triggered by Escape key
+                if (escapeKeyPressed) {
+                    // Standard Esc behavior: Show instructions, reset game state
+                    blocker.style.display = 'block';
+                    instructions.style.display = '';
+                    gameStarted = false; // Reset game state
+                    escapeKeyPressed = false; // Reset the flag
+                    console.log("Controls unlocked via Escape key, showing instructions.");
+                } else {
+                    // Non-Esc unlock (e.g., Alt+Tab, blur): Just unlock, don't show instructions or reset game state
+                    console.log("Controls unlocked (likely focus loss), keeping game state.");
+                    // Do NOT reset gameStarted here
+                    // Do NOT show blocker/instructions here
                 }
             });
+
+            scene.add(controls.getObject());
 
             // Mobile controls initialization function
             function initializeMobileControls() {
@@ -2579,14 +2553,22 @@
                                     // Adjust velocities based on collision (Sliding / Reflection)
                                     const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
                                     if (isFlinging) {
-                                        // Fling reflection/dampening - OK
-                                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+                                        // Calculate reflection for bounce effect
                                         const dot = flingVelocity.x * horizontalPushNormal.x + flingVelocity.z * horizontalPushNormal.z;
-                                        if (dot < 0) { 
-                                          flingVelocity.x -= 2 * dot * horizontalPushNormal.x * 0.8; 
-                                          flingVelocity.z -= 2 * dot * horizontalPushNormal.z * 0.8;
+                                        
+                                        if (dot < 0) { // Moving into the wall
+                                            const bounceFactor = 0.8; // How much energy is retained (0.0 - 1.0)
+                                            // Calculate reflection vector components
+                                            const reflectX = flingVelocity.x - 2 * dot * horizontalPushNormal.x;
+                                            const reflectZ = flingVelocity.z - 2 * dot * horizontalPushNormal.z;
+                                            // Apply bounce factor
+                                            flingVelocity.x = reflectX * bounceFactor;
+                                            flingVelocity.z = reflectZ * bounceFactor;
+                                        } else {
+                                            // Optional: If moving parallel or away, maybe apply slight friction?
+                                            // flingVelocity.multiplyScalar(0.98); // Example: tiny friction if scraping
                                         }
-                                        flingVelocity.multiplyScalar(0.8); 
+                                        // Damping is handled later in the main loop based on isFlinging flag
                                     } 
                                     // No else for normal velocity sliding needed anymore
                                 }
@@ -3683,6 +3665,26 @@
                 }
             });
         }
+
+        // --- Escape Key Handling ---
+        let escapeKeyPressed = false; // Flag to differentiate Esc from Blur unlock
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                if (gameStarted && controls.isLocked) {
+                    escapeKeyPressed = true; // Set flag before unlocking
+                    
+                    // Notify server to disconnect and drop orbs
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'disconnect_drop_orbs' }));
+                        console.log("Sent disconnect_drop_orbs message");
+                    }
+                    
+                    controls.unlock(); // Trigger the unlock event
+                }
+            }
+        });
+        // --- End Escape Key Handling ---
 
         // Removed immediate call to resumeAudio() - it should only happen on interaction or toggle
         // resumeAudio();

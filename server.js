@@ -35,6 +35,17 @@ const nouns = [
     'Orbit', 'Path', 'Stream', 'Channel', 'Link'
 ];
 
+const NEON_COLORS = [
+    0x39FF14, // Neon Green
+    0xBC13FE, // Neon Purple
+    0xFF10F0, // Neon Pink
+    0x1F51FF  // Neon Blue
+];
+
+function getRandomNeonColor() {
+    return NEON_COLORS[Math.floor(Math.random() * NEON_COLORS.length)];
+}
+
 // Function to generate a random room name
 function generateRoomName() {
     const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
@@ -224,11 +235,11 @@ function generateWorld() {
             
             if (!insideTower) {
                 validPosition = true;
-                const color = Math.floor(Math.random() * 0xFFFFFF); // Random color
+                const color = getRandomNeonColor(); // Use neon color
                 const size = Math.random() * 0.5 + 0.5; // Size between 0.5 and 1
 
                 const orb = {
-                    id: i,
+                    id: orbs.length, // Use orbs.length for unique ID
                     position: { x, y, z },
                     color,
                     size
@@ -237,7 +248,7 @@ function generateWorld() {
                 orbs.push(orb);
                 successfulOrbs++;
                 
-                if (i % 5 === 0) { // Log more frequently
+                if (successfulOrbs % 5 === 0) { // Log more frequently
                     console.log(`Generated orb ${successfulOrbs}/${NUM_ORBS}:`, orb);
                 }
             }
@@ -251,11 +262,11 @@ function generateWorld() {
             const x = (Math.random() - 0.5) * MAX_RADIUS * 2;
             const z = (Math.random() - 0.5) * MAX_RADIUS * 2;
             const y = Math.random() * 1000 + 30;
-            const color = Math.floor(Math.random() * 0xFFFFFF);
+            const color = getRandomNeonColor(); // Use neon color
             const size = Math.random() * 0.5 + 0.5;
 
             const orb = {
-                id: i,
+                id: orbs.length, // Use orbs.length for unique ID
                 position: { x, y, z },
                 color,
                 size
@@ -697,16 +708,16 @@ socket.on('shotgunShot', (data) => {
                             const z = player.position.z + Math.sin(angle) * spread;
                             const y = Math.random() * 100 + 50; // Random height between 50 and 150
 
-                            const color = Math.floor(Math.random() * 0xFFFFFF);
+                            const color = getRandomNeonColor(); // Use neon color
                             const size = Math.random() * 0.5 + 0.5;
 
                             const orb = {
-                                id: orbs.length,
+                                id: worldData.orbs.length, // Ensure unique ID globally
                                 position: { x, y, z },
                                 color,
                                 size
                             };
-                            orbs.push(orb);
+                            worldData.orbs.push(orb);
                         }
                         player.orbs = 0; // Set to 0 since all orbs were dropped
                     }
