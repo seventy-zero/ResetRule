@@ -334,13 +334,13 @@
 
         // Add movement smoothing constants
         const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
-        const COLLISION_PUSH_FORCE = 4.5; // Increased again for stronger collision response
-        const COLLISION_BIAS = 0.01;      // Small bias to push player slightly past surface
-        const CORNER_SLIDE_FORCE = 0.8; // Increased from 0.7 for better sliding
+        const COLLISION_PUSH_FORCE = 5.0; // Increased for stronger collision response
+        const COLLISION_BIAS = 0.02;      // Increased bias to push player further past surface
+        const CORNER_SLIDE_FORCE = 0.85; // Increased for better sliding
         const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
-        const STUCK_THRESHOLD = 0.4; // Increased from 0.3 - require deeper penetration to trigger strong push
-        const STUCK_PUSH_FORCE = 4.0; // Decreased from 5.0 - make the strong push less forceful
-        const STUCK_BOUNCE_SPEED = 5.0; // Speed of the bounce applied when stuck
+        const STUCK_THRESHOLD = 0.3; // Reduced to detect stuck state earlier
+        const STUCK_PUSH_FORCE = 5.0; // Increased for stronger push when stuck
+        const STUCK_BOUNCE_SPEED = 6.0; // Increased bounce speed when stuck
 
         // Game state variables
         let gameStarted = false;
@@ -808,20 +808,18 @@
             const worldClosestPoint = new THREE.Vector3();
             
             for (const tower of towers) {
-                const isBridge = tower.isBridge;
-                
-                if (isBridge && tower.localCollisionBox && tower.mesh) {
-                    // --- OBB Check for Bridges ---
-                    const bridgeMesh = tower.mesh;
+                if (tower.localCollisionBox && tower.mesh) {
+                    // Use OBB Check for both towers and bridges
+                    const mesh = tower.mesh;
                     const localBox = tower.localCollisionBox;
                     
                     // Ensure world matrix is up-to-date
-                    bridgeMesh.updateMatrixWorld(true);
+                    mesh.updateMatrixWorld(true);
                     
                     // Get matrix to transform world -> local
-                    worldToLocalMatrix.copy(bridgeMesh.matrixWorld).invert();
+                    worldToLocalMatrix.copy(mesh.matrixWorld).invert();
                     
-                    // Transform player position to bridge's local space
+                    // Transform player position to local space
                     localPosition.copy(position).applyMatrix4(worldToLocalMatrix);
                     
                     // Find closest point on the local AABB
@@ -833,65 +831,25 @@
                     // Check if the player sphere intersects the box
                     if (distance < radius) {
                         // Transform the local closest point back to world space for response
-                        worldClosestPoint.copy(localClosestPoint).applyMatrix4(bridgeMesh.matrixWorld);
+                        worldClosestPoint.copy(localClosestPoint).applyMatrix4(mesh.matrixWorld);
                         
                         // Check if this is the closest collision so far
-                        const worldDistance = position.distanceTo(worldClosestPoint); // Use world distance for comparison
+                        const worldDistance = position.distanceTo(worldClosestPoint);
                         if (worldDistance < minDistance) {
                             minDistance = worldDistance;
                             closestCollision = {
                                 collision: true,
                                 tower: tower,
-                                collisionBox: localBox, // Store local box for potential debug?
-                                distance: worldDistance,      // Store world distance
-                                closestPoint: worldClosestPoint.clone(), // Store world point
-                                isBridge: true
+                                collisionBox: localBox,
+                                distance: worldDistance,
+                                closestPoint: worldClosestPoint.clone(),
+                                isBridge: tower.isBridge || false
                             };
                         }
                     }
-                } else if (!isBridge && tower.localCollisionBox && tower.mesh) { // <-- Check for localCollisionBox and mesh for towers too
-                    // --- OBB Check for Towers (mirroring bridge logic) ---
-                    const towerMesh = tower.mesh;
-                    const localBox = tower.localCollisionBox;
-                    
-                    // Ensure world matrix is up-to-date
-                    towerMesh.updateMatrixWorld(true);
-                    
-                    // Get matrix to transform world -> local
-                    worldToLocalMatrix.copy(towerMesh.matrixWorld).invert();
-                    
-                    // Transform player position to tower's local space
-                    localPosition.copy(position).applyMatrix4(worldToLocalMatrix);
-                    
-                    // Find closest point on the local AABB
-                    localBox.clampPoint(localPosition, localClosestPoint);
-                    
-                    // Calculate distance in local space
-                    const distance = localPosition.distanceTo(localClosestPoint);
-                    
-                    // Check if the player sphere intersects the box
-                    if (distance < radius) {
-                        // Transform the local closest point back to world space for response
-                        worldClosestPoint.copy(localClosestPoint).applyMatrix4(towerMesh.matrixWorld);
-                        
-                        // Check if this is the closest collision so far
-                        const worldDistance = position.distanceTo(worldClosestPoint); // Use world distance for comparison
-                        if (worldDistance < minDistance) {
-                            minDistance = worldDistance;
-                            closestCollision = {
-                                collision: true,
-                                tower: tower, // Keep reference to the tower object
-                                collisionBox: localBox, // Store local box
-                                distance: worldDistance,      // Store world distance
-                                closestPoint: worldClosestPoint.clone(), // Store world point
-                                isBridge: false // Still identify as not a bridge
-                            };
-                        }
-                    }
-                } // Removed the old AABB logic entirely
+                }
             }
             
-            // Return the closest valid collision found
             return closestCollision || {
                 collision: false,
                 tower: null,
@@ -2518,77 +2476,35 @@
                             const isStuck = distance < playerRadius * STUCK_THRESHOLD;
                             
                             if (isStuck) {
-                                // Player is stuck, apply push-out based on penetration depth and initiate a bounce
-                                // pushDir and pushDistance are already calculated
-                                
-                                // 1. Apply position correction based on penetration depth
+                                // Enhanced stuck recovery
+                                // 1. Apply stronger position correction
                                 camera.position.x += pushDir.x * pushDistance * STUCK_PUSH_FORCE;
                                 camera.position.z += pushDir.z * pushDistance * STUCK_PUSH_FORCE;
 
-                                // 2. Add upward velocity impulse to help escape
-                                verticalVelocity = 0.3; // Small vertical pop
+                                // 2. Add upward velocity impulse
+                                verticalVelocity = 0.4; // Increased vertical pop
                                 isGrounded = false;
 
-                                // 3. Set fling velocity to bounce directly away
+                                // 3. Set fling velocity to bounce away with more force
                                 flingVelocity.x = pushDir.x * STUCK_BOUNCE_SPEED;
                                 flingVelocity.z = pushDir.z * STUCK_BOUNCE_SPEED;
-                                isFlinging = true; // Activate fling physics for this bounce
+                                isFlinging = true;
 
-                                // Logging the bounce event
-                                console.log('Player stuck, initiating bounce:', {
-                                    pushDir: pushDir.clone(),
-                                    pushDistance: pushDistance,
-                                    bounceVelocity: flingVelocity.clone()
-                                });
-
+                                console.log("Stuck recovery activated", { distance, pushDistance });
                             } else {
-                                // Normal collision response (not stuck)
-                                // pushDir and pushDistance are already calculated
+                                // Normal collision response
+                                camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                                camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
                                 
-                                // Store vertical velocity *before* potential gravity application
-                                const verticalVelocityBeforeCheck = verticalVelocity;
-
-                                // Check if hitting an underside while moving up
-                                if (pushDir.y < -0.1 && verticalVelocityBeforeCheck > 0) {
-                                    // Log hitting underside
-                                    console.log('Collision: Hitting underside', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck });
-
-                                    // Stop upward movement immediately
-                                    verticalVelocity = 0;
-                                    isGrounded = false;
-
-                                    // Apply full 3D push-out using pre-calculated pushDistance
-                                    camera.position.addScaledVector(pushDir, pushDistance * COLLISION_PUSH_FORCE);
-
-                                    // Dampen horizontal velocity after hitting ceiling
-                                    if (isFlinging) {
-                                        flingVelocity.x *= 0.5;
-                                        flingVelocity.z *= 0.5;
-                                    } 
-                                    // No else needed for velocity here, as WASD velocity isn't used
-                                } else {
-                                    // Standard collision response (horizontal push/sliding)
-                                    // Log standard collision
-                                    console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
-
-                                    // Apply horizontal push-out using pre-calculated pushDistance
-                                    const horizontalPushForce = isFlinging ? COLLISION_PUSH_FORCE * 1.5 : COLLISION_PUSH_FORCE;
-                                    camera.position.x += pushDir.x * pushDistance * horizontalPushForce;
-                                    camera.position.z += pushDir.z * pushDistance * horizontalPushForce;
-
-                                    // Adjust velocities based on collision (Sliding / Reflection)
-                                    const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
-                                    if (isFlinging) {
-                                        // Fling reflection/dampening - OK
-                                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                        const dot = flingVelocity.x * horizontalPushNormal.x + flingVelocity.z * horizontalPushNormal.z;
-                                        if (dot < 0) { 
-                                          flingVelocity.x -= 2 * dot * horizontalPushNormal.x * 0.8; 
-                                          flingVelocity.z -= 2 * dot * horizontalPushNormal.z * 0.8;
-                                        }
-                                        flingVelocity.multiplyScalar(0.8); 
-                                    } 
-                                    // No else for normal velocity sliding needed anymore
+                                // Add corner sliding for normal movement
+                                const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
+                                const dotProduct = horizontalPushNormal.x * velocity.x + horizontalPushNormal.z * velocity.z;
+                                if (dotProduct < 0) {
+                                    // Project velocity onto the collision plane (slide)
+                                    const slideVelX = velocity.x - dotProduct * horizontalPushNormal.x;
+                                    const slideVelZ = velocity.z - dotProduct * horizontalPushNormal.z;
+                                    velocity.x = slideVelX * CORNER_SLIDE_FORCE;
+                                    velocity.z = slideVelZ * CORNER_SLIDE_FORCE;
                                 }
                             }
                         } // End of movementCollision response block
@@ -3639,20 +3555,40 @@
         });
 
         // Initialize game audio
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // Play background music on startup
-        const backgroundMusic = new Audio('leader-ultra-essence-lossy-64.mp3');
-        backgroundMusic.loop = true; // Will be set again in listener, but safe default
-        backgroundMusic.volume = 0.5; // Set to 50% volume by default
+        let audioContext = null;
+        let backgroundMusic = null;
+
+        // Initialize audio system
+        function initializeAudio() {
+            // Create audio context only when needed
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            // Create and setup background music if not already done
+            if (!backgroundMusic) {
+                backgroundMusic = new Audio('leader-ultra-essence-lossy-64.mp3');
+                backgroundMusic.loop = true;
+                backgroundMusic.volume = 0.5;
+            }
+        }
 
         // Handle audio context suspension (needed for some browsers)
         const resumeAudio = () => {
+            if (!audioContext) {
+                initializeAudio();
+            }
+
             // Check state before resuming to avoid errors if already running
             if (audioContext.state === 'suspended') {
                 audioContext.resume().then(() => {
                     console.log("AudioContext Resumed");
-                    // Don't automatically play music here anymore
+                    // If music checkbox is checked, start playing
+                    const musicCheckbox = document.getElementById('musicToggle');
+                    if (musicCheckbox && musicCheckbox.checked) {
+                        backgroundMusic.play().catch(error => console.log('Error playing background music:', error));
+                        console.log("Music started after context resume");
+                    }
                 }).catch(e => console.error("Error resuming AudioContext:", e));
             }
         };
@@ -3666,13 +3602,21 @@
         const musicCheckbox = document.getElementById('musicToggle');
         if (musicCheckbox) {
             musicCheckbox.addEventListener('change', () => {
+                if (!audioContext || !backgroundMusic) {
+                    initializeAudio();
+                }
+
                 resumeAudio(); // Make sure context is active before playing/pausing
                 if (musicCheckbox.checked) {
                     backgroundMusic.loop = true;
                     // Use a timeout to ensure context is resumed before playing
                     setTimeout(() => {
-                         backgroundMusic.play().catch(error => console.log('Error playing background music:', error));
-                         console.log("Music started via toggle");
+                        backgroundMusic.play().catch(error => {
+                            console.log('Error playing background music:', error);
+                            // Try to resume context again if playback fails
+                            resumeAudio();
+                        });
+                        console.log("Music started via toggle");
                     }, 100); // Small delay
                 } else {
                     backgroundMusic.pause();
@@ -3680,10 +3624,109 @@
                     console.log("Music stopped via toggle");
                 }
             });
+
+            // If checkbox is checked by default, try to start music
+            if (musicCheckbox.checked) {
+                initializeAudio();
+                resumeAudio();
+            }
         }
 
         // Removed immediate call to resumeAudio() - it should only happen on interaction or toggle
         // resumeAudio();
+
+        // Add orb creation function
+        function createOrb(orbData) {
+            // Create orb geometry
+            const geometry = new THREE.SphereGeometry(orbData.size, 16, 16);
+            
+            // Create orb material with glow effect
+            const material = new THREE.MeshBasicMaterial({
+                color: orbData.color,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            // Create the orb mesh
+            const orb = new THREE.Mesh(geometry, material);
+            
+            // Set position
+            orb.position.set(orbData.position.x, orbData.position.y, orbData.position.z);
+            
+            // Add glow effect
+            const glowGeometry = new THREE.SphereGeometry(orbData.size * 1.2, 16, 16);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: orbData.color,
+                transparent: true,
+                opacity: 0.3
+            });
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            orb.add(glow);
+            
+            // Add pulsing animation
+            orb.userData = {
+                originalScale: orbData.size,
+                pulseSpeed: 0.5 + Math.random() * 0.5,
+                pulseOffset: Math.random() * Math.PI * 2
+            };
+            
+            // Store orb data for collection
+            orb.userData.orbId = orbData.id;
+            
+            // Add to orbs collection
+            orbs.set(orbData.id, orb);
+            
+            return orb;
+        }
+
+        // Add orb animation update to the animation loop
+        function updateOrbs() {
+            const time = Date.now() * 0.001; // Convert to seconds
+            
+            orbs.forEach(orb => {
+                // Update pulse animation
+                const scale = orb.userData.originalScale * (1 + Math.sin(time * orb.userData.pulseSpeed + orb.userData.pulseOffset) * 0.1);
+                orb.scale.set(scale, scale, scale);
+                
+                // Rotate orb
+                orb.rotation.y += 0.01;
+                
+                // Check for collection
+                if (gameStarted && !isDead) {
+                    const distance = camera.position.distanceTo(orb.position);
+                    if (distance < playerRadius + orb.userData.originalScale) {
+                        // Collect orb
+                        ws.send(JSON.stringify({
+                            type: 'collect_orb',
+                            orbId: orb.userData.orbId
+                        }));
+                        
+                        // Remove orb from scene
+                        scene.remove(orb);
+                        orbs.delete(orb.userData.orbId);
+                        
+                        // Update orb count
+                        const currentOrbs = parseInt(document.getElementById('orbCount').textContent.split(': ')[1]) || 0;
+                        document.getElementById('orbCount').textContent = `Orbs: ${currentOrbs + 1}`;
+                        
+                        // Check for 30 orbs milestone
+                        if (currentOrbs + 1 === 30) {
+                            showOrbPopup();
+                        }
+                    }
+                }
+            });
+        }
+
+        // Add orb update to animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update orbs
+            updateOrbs();
+            
+            // ... rest of animation code ...
+        }
     </script>
 </body>
 </html>
