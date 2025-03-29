@@ -696,17 +696,14 @@
             group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
             scene.add(group);
 
-            // Create a single box collider for the tower
-            const collisionBox = new THREE.Box3();
-            const collisionMesh = new THREE.Mesh(
-                getGeometryFromCache('box', { width: 36, height, depth: 36 })
-            );
-            collisionMesh.position.copy(group.position);
-            collisionBox.setFromObject(collisionMesh);
-            
+            // Calculate local collision box from the main tower mesh (like bridges)
+            const localCollisionBox = new THREE.Box3().setFromObject(mesh); // Use the actual tower mesh
+
+            // Store tower info with localCollisionBox
             towers.push({
-                mesh: group,
-                collisionBoxes: [collisionBox]
+                mesh: group,             // The group containing mesh and edges (has world transform)
+                localCollisionBox: localCollisionBox, // The local box relative to the mesh's geometry
+                isBridge: false          // Flag this as not a bridge
             });
         }
 
