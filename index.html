@@ -493,7 +493,12 @@
             playerState.position.set(0, playerHeight, 0);
             playerState.rotation.set(0, 0, 0);
             playerStates.set(username, playerState);
-            
+            // --- Initialize local orb count for self --- 
+            if (username === playerUsername) {
+                playerOrbs.set(username, 0);
+                updateOrbCount(); // Update display on initial join
+            }
+            // -----------------------------------------
             console.log('Player model created successfully for:', username);
             return playerMesh;
         }
@@ -1890,32 +1895,39 @@
                     instructions.classList.remove('hidden');
                 }
                 
-                // Notify server that player is leaving
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    console.log('[Unlock Debug] Sending player_left message.'); // Log message send
+                // Notify server that player is leaving (using the username BEFORE it's cleared)
+                const leavingUsername = playerUsername; // Store before clearing
+                if (ws && ws.readyState === WebSocket.OPEN && leavingUsername) { 
+                    console.log('[Unlock Debug] Sending player_left message for:', leavingUsername);
                     ws.send(JSON.stringify({
                         type: 'player_left',
-                        username: playerUsername
+                        username: leavingUsername
                     }));
                 }
                 
                 // Remove our own player model if it exists
-                console.log(`[Unlock Debug] Attempting to remove self: ${playerUsername}`); // Log self removal attempt
-                removePlayer(playerUsername);
+                console.log(`[Unlock Debug] Attempting to remove self: ${leavingUsername}`);
+                removePlayer(leavingUsername); 
                 
                 // Clear all other player models
-                console.log('[Unlock Debug] Iterating playerStates to remove others.'); // Log loop start
+                console.log('[Unlock Debug] Iterating playerStates to remove others.');
                 playerStates.forEach((playerState, username) => {
-                    console.log(`[Unlock Debug] Attempting to remove other player: ${username}`); // Log removal attempt in loop
+                    console.log(`[Unlock Debug] Attempting to remove other player: ${username}`);
                     removePlayer(username);
                 });
-                console.log('[Unlock Debug] Clearing playerStates map.'); // Log map clear
-                playerStates.clear(); // Explicitly clear the map after removing individuals
+                console.log('[Unlock Debug] Clearing playerStates map.');
+                playerStates.clear();
 
                 // Reset game state
-                console.log('[Unlock Debug] Resetting game state variables.'); // Log state reset
+                console.log('[Unlock Debug] Resetting game state variables.');
                 gameStarted = false;
-                playerUsername = ''; // Reset username *after* sending player_left
+                playerUsername = ''; // Clear username AFTER sending player_left
+
+                // --- Reset Orb Count --- 
+                console.log('[Unlock Debug] Clearing local playerOrbs map and updating display.');
+                playerOrbs.clear(); // Clear the entire map 
+                updateOrbCount(); // Update display immediately after clearing
+                // ---------------------
                 
                 // Reset position and physics
                 camera.position.set(0, playerHeight, 0);
@@ -1925,7 +1937,7 @@
                 verticalVelocity = 0;
                 isFlinging = false;
                 isGrounded = true;
-                isDead = false; // Reset death state
+                isDead = false; 
                 
                 // Show instructions again
                 instructions.classList.remove('hidden');
@@ -1933,19 +1945,8 @@
                 startButton.disabled = true;
                 
                 // Clear any mobile controls if they exist
-                if (isMobile) {
-                    // Assuming these elements exist if isMobile is true
-                    const mobileControls = document.querySelector('.mobile-controls');
-                    const flingButton = document.getElementById('flingButton');
-                    if (mobileControls) mobileControls.style.display = 'none';
-                    if (flingButton) flingButton.style.display = 'none';
-                     // Also attempt removal of left joystick if it was added dynamically
-                    const leftControls = document.querySelector('.mobile-controls.left');
-                    if (leftControls && leftControls.parentElement) {
-                        leftControls.parentElement.removeChild(leftControls);
-                    }
-                }
-                 console.log('[Unlock Debug] Unlock handler finished.'); // Log end
+                // ... (mobile controls reset code) ...
+                 console.log('[Unlock Debug] Unlock handler finished.');
             });
 
             // Mobile controls initialization function
@@ -3357,58 +3358,16 @@
         // Add after the playerOrbs Map declaration
         function updateOrbCount() {
             const orbCountElement = document.getElementById('orbCount');
-            const currentOrbs = playerOrbs.get(playerUsername) || 0;
-            orbCountElement.textContent = `Orbs: ${currentOrbs}`;
+            // --- Get count specifically for the CURRENT playerUsername, OR default to 0 if username is empty --- 
+            const countToShow = playerUsername ? (playerOrbs.get(playerUsername) || 0) : 0;
+            orbCountElement.textContent = `Orbs: ${countToShow}`;
+            // ---------------------------------------------------------------------------------------------
             
             // Show popup when reaching 30 orbs
-            if (currentOrbs >= 30) {
+            if (countToShow >= 30) { // Use countToShow here
                 const popup = document.getElementById('orbPopup');
                 popup.style.display = 'block';
-                
-                // Function to handle reset
-                const handleReset = () => {
-                    playerOrbs.set(playerUsername, 0);
-                    updateOrbCount();
-                    popup.style.display = 'none';
-                };
-                
-                // Function to handle rule
-                const handleRule = () => {
-                    console.log('Rule button clicked');
-                    popup.style.display = 'none';
-                };
-                
-                // Add button event listeners
-                document.getElementById('resetButton').onclick = handleReset;
-                document.getElementById('ruleButton').onclick = handleRule;
-                
-                // Add keyboard event listeners
-                const handleKeyPress = (event) => {
-                    if (event.key.toLowerCase() === 'c') {
-                        handleReset();
-                    } else if (event.key.toLowerCase() === 'v') {
-                        handleRule();
-                    }
-                };
-                
-                // Add keyboard listener when popup is shown
-                document.addEventListener('keydown', handleKeyPress);
-                
-                // Remove keyboard listener when popup is closed
-                const removeKeyListener = () => {
-                    document.removeEventListener('keydown', handleKeyPress);
-                };
-                
-                // Update button click handlers to also remove keyboard listener
-                document.getElementById('resetButton').onclick = () => {
-                    handleReset();
-                    removeKeyListener();
-                };
-                
-                document.getElementById('ruleButton').onclick = () => {
-                    handleRule();
-                    removeKeyListener();
-                };
+                updateOrbPopupHandlers(); // Ensure handlers are attached
             }
         }
 
