@@ -268,6 +268,8 @@
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
         // Global variables and constants
+        const FIXED_DELTA_TIME = 1/60; // Fixed timestep for physics calculations
+        const PHYSICS_STEP = 1/60; // Fixed physics step size
         const playerHeight = 10;
         const playerRadius = 1.5;
         const moveSpeed = 22.0; // Units per second
