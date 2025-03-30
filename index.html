@@ -1285,14 +1285,31 @@
                         break;
 
                     case 'orbs_dropped': // <-- ADD THIS CASE
-                         console.log(`[Orb Drop Debug] Received ${data.orbs.length} dropped orbs.`);
+                         // --- Client Debug Log ---
+                         console.log(`[Orb Drop Client Debug] Received 'orbs_dropped' message. Data:`, data);
+                         // ------------------------
+                         console.log(`[Orb Drop Debug] Received ${data.orbs.length} dropped orbs.`); // Existing log
                          data.orbs.forEach(orbData => {
-                             // Check if orb already exists locally before creating
+                             // --- Client Debug Log ---
+                             console.log(`[Orb Drop Client Debug] Processing orbData:`, orbData);
+                             // ------------------------
                              if (!orbs.has(orbData.id)) {
-                                 console.log(`[Orb Drop Debug] Creating dropped orb ${orbData.id}`);
-                                 createOrb(orbData); // Use existing function to create orb mesh
+                                 console.log(`[Orb Drop Debug] Creating dropped orb ${orbData.id}`); // Existing log
+                                 // --- Wrap createOrb in try-catch ---
+                                 try {
+                                     const createdOrb = createOrb(orbData); // Call createOrb
+                                     if (createdOrb) {
+                                         console.log(`[Orb Drop Client Debug] Successfully created orb ${orbData.id} from dropped data.`); // Log success
+                                     } else {
+                                          console.error(`[Orb Drop Client Debug] createOrb returned null/undefined for dropped orb ${orbData.id}.`); // Log failure
+                                     }
+                                 } catch (error) {
+                                      console.error(`[Orb Drop Client Debug] Error calling createOrb for ${orbData.id}:`, error); // Log error
+                                 }
+                                 // -----------------------------------
                              } else {
-                                 console.log(`[Orb Drop Debug] Dropped orb ${orbData.id} already exists locally. Ignoring.`);
+                                 console.log(`[Orb Drop Debug] Dropped orb ${orbData.id} already exists locally. Ignoring.`); // Existing log
+                                 console.warn(`[Orb Drop Client Debug] Orb ${orbData.id} already exists, skipping creation.`); // Added warning
                              }
                          });
                          break;

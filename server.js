@@ -330,18 +330,26 @@ class GameRoom {
     dropPlayerOrbs(ws, deathPosition = null) {
         const player = this.players.get(ws);
         if (!player) {
-            console.warn("Attempted to drop orbs for a player no longer in the room.");
+            console.warn("[DropOrbs Debug] Attempted to drop orbs for a player no longer in the room or not found."); // Added detail
             return;
         }
 
         const orbCount = this.playerOrbs.get(ws) || 0;
-        console.log(`Player ${player.username} leaving/died with ${orbCount} orbs.`);
+        console.log(`[DropOrbs Debug] Called for user: ${player.username}. Orb count: ${orbCount}. Death Pos: ${deathPosition}`); // Added log
 
-        if (orbCount > 0) {
+        // --- Add early exit and log if no orbs ---
+        if (orbCount <= 0) {
+            console.log(`[DropOrbs Debug] Player ${player.username} had 0 orbs. Nothing to drop.`);
+            return; // Exit early if no orbs
+        }
+        // -----------------------------------------
+
+        if (orbCount > 0) { // This check is slightly redundant now but safe
             const droppedOrbsData = [];
             // Use provided death position or player's last known position
             const position = deathPosition ? deathPosition : [player.position.x, player.position.y, player.position.z];
             const dropRadius = 5;
+            console.log(`[DropOrbs Debug] Using position ${position} for ${player.username}`); // Log position used
 
             for (let i = 0; i < orbCount; i++) {
                 this.lastOrbId++;
@@ -365,13 +373,17 @@ class GameRoom {
 
                 this.world.orbs.push(newOrbData);
                 droppedOrbsData.push(newOrbData);
+                console.log(`[DropOrbs Debug] Generated orb ${this.lastOrbId}:`, newOrbData); // Added log
             }
 
             // Reset player's orb count (important!)
             this.playerOrbs.set(ws, 0);
+            console.log(`[DropOrbs Debug] Reset orb count for ${player.username} to 0.`); // Added log
 
             if (droppedOrbsData.length > 0) {
-                console.log(`Broadcasting ${droppedOrbsData.length} dropped orbs from ${player.username}.`);
+                // --- Log before broadcast ---
+                console.log(`[DropOrbs Debug] Broadcasting ${droppedOrbsData.length} orbs. Data:`, JSON.stringify(droppedOrbsData));
+                // --------------------------
                 this.broadcast(JSON.stringify({
                     type: 'orbs_dropped',
                     orbs: droppedOrbsData
