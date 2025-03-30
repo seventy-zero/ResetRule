@@ -369,11 +369,11 @@
         const orbs = new Map(); // Add orbs collection
         const playerOrbs = new Map(); // Track orbs collected by each player
         const collisionBoxes = []; // Add collision boxes collection
+        const playerHandles = new Map(); // Map username -> Rapier Body Handle for remote players
 
         // Vectors and other THREE.js objects
-        const velocity = new THREE.Vector3();
-        const flingVelocity = new THREE.Vector3();
-        const direction = new THREE.Vector3();
+        // const velocity = new THREE.Vector3(); // <-- REMOVE/REPLACE with Rapier velocity
+        // const flingVelocity = new THREE.Vector3(); // <-- REMOVE/REPLACE with Rapier impulse/velocity
 
         // Mobile detection
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -385,14 +385,15 @@
         class PlayerState {
             constructor(username, mesh) {
                 this.username = username;
-                this.mesh = mesh;
-                this.position = new THREE.Vector3();
-                this.rotation = new THREE.Euler();
+                this.mesh = mesh; // Visual mesh
+                this.position = new THREE.Vector3(); // Target visual position
+                this.rotation = new THREE.Euler();   // Target visual rotation
                 this.speed = 0;
                 this.heading = 0;
                 this.verticalSpeed = 0;
                 this.lastUpdateTime = Date.now();
                 this.isVisible = true;
+                this.rapierBodyHandle = null; // Rapier body handle for hit detection
             }
 
             update(deltaTime) {
@@ -426,19 +427,59 @@
                 this.mesh.rotation.z += (targetRotation.z - this.mesh.rotation.z) * lerpFactor;
 
                 objectPool.releaseVector(targetRotation); // Release vector back to pool
+
+                // --- Update Kinematic Rapier Body ---
+                if (this.rapierBodyHandle !== null && rapierWorld) {
+                    const body = rapierWorld.getRigidBody(this.rapierBodyHandle);
+                    if (body) {
+                        // Set next kinematic position slightly ahead based on interpolated visual position
+                        // This helps Rapier predict movement for CCD if needed, though maybe just setting position is fine.
+                        // body.setNextKinematicTranslation(this.mesh.position.x, this.mesh.position.y, this.mesh.position.z, true);
+
+                        // Simpler: Just set the kinematic position directly to the interpolated visual position
+                        body.setTranslation({ x: this.mesh.position.x, y: this.mesh.position.y, z: this.mesh.position.z }, true);
+
+                        // Optionally update rotation if needed (e.g., if capsule needs to orient)
+                         const targetQuaternion = new THREE.Quaternion().setFromEuler(this.mesh.rotation);
+                         body.setRotation({ x: targetQuaternion.x, y: targetQuaternion.y, z: targetQuaternion.z, w: targetQuaternion.w }, true);
+                    }
+                }
+                // --- End Rapier Update ---
             }
+
+             // --- Add method to remove Rapier body ---
+             removeRapierBody() {
+                 if (this.rapierBodyHandle !== null && rapierWorld) {
+                     const body = rapierWorld.getRigidBody(this.rapierBodyHandle);
+                     if (body) {
+                         rapierWorld.removeRigidBody(body);
+                         console.log(`Removed Rapier body for remote player: ${this.username}, Handle: ${this.rapierBodyHandle}`);
+                     } else {
+                         console.warn(`Could not find Rapier body to remove for player: ${this.username}, Handle: ${this.rapierBodyHandle}`);
+                     }
+                     this.rapierBodyHandle = null;
+                     playerHandles.delete(this.username); // Remove from username mapping
+                 }
+             }
+             // --- End remove method ---
         }
 
         // Function to create player model
         function createPlayerModel(username) {
             console.log('Creating player model for:', username);
-            
+
             // Check if player model already exists
             if (playerStates.has(username)) {
                 console.log('Player model already exists for:', username);
+                 // Ensure Rapier body also exists if visual model exists
+                 const existingState = playerStates.get(username);
+                 if (existingState.rapierBodyHandle === null && rapierWorld) {
+                     console.log(`Recreating missing Rapier body for existing player: ${username}`);
+                     createRemotePlayerRapierBody(existingState);
+                 }
                 return;
             }
-
+            
             const geometry = new THREE.CapsuleGeometry(2, 6, 2, 8);
             const material = new THREE.MeshBasicMaterial({ 
                 color: 0x00ff00, 
@@ -478,13 +519,42 @@
             
             // Create and store player state
             const playerState = new PlayerState(username, playerMesh);
-            playerState.position.set(0, playerHeight, 0);
+            playerState.position.set(0, playerHeight, 0); // Initial visual position guess
             playerState.rotation.set(0, 0, 0);
             playerStates.set(username, playerState);
-            
+
+             // --- Create Rapier Body for Remote Player ---
+             if (rapierWorld) {
+                 createRemotePlayerRapierBody(playerState);
+             } else {
+                 console.warn("Rapier world not ready when creating player model for:", username);
+             }
+             // --- End Rapier Body Creation ---
+
             console.log('Player model created successfully for:', username);
             return playerMesh;
         }
+
+         // --- Function to create Rapier body for a remote player ---
+         function createRemotePlayerRapierBody(playerState) {
+             if (!rapierWorld || playerState.rapierBodyHandle !== null) return; // Already exists or world not ready
+
+             // Use Kinematic position-based body - it doesn't react to forces, just moves where we tell it
+             const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
+                 .setTranslation(playerState.position.x, playerState.position.y, playerState.position.z); // Set initial position
+             const body = rapierWorld.createRigidBody(bodyDesc);
+
+             // Use same collider shape as local player for consistency
+             const colliderDesc = RAPIER.ColliderDesc.capsuleY(playerHeight / 2, playerRadius)
+                 .setSensor(false); // Make it solid so pellets hit it
+
+             rapierWorld.createCollider(colliderDesc, body);
+             playerState.rapierBodyHandle = body.handle;
+             playerHandles.set(username, body.handle); // Map username to handle
+             meshToBodyMap.set(playerState.mesh.uuid, body.handle); // Map mesh UUID too if needed
+             console.log(`Created kinematic Rapier body for remote player: ${playerState.username}, Handle: ${playerState.rapierBodyHandle}`);
+         }
+         // --- End function ---
 
         // Function to update player position
         function updatePlayerPosition(username, position, rotation) {
@@ -529,8 +599,12 @@
             console.log('Removing player:', username);
             const playerState = playerStates.get(username);
             if (playerState) {
-                scene.remove(playerState.mesh);
-                playerStates.delete(username);
+                 // --- Remove Rapier body first ---
+                 playerState.removeRapierBody();
+                 // --- End removal ---
+
+                scene.remove(playerState.mesh); // Remove visual mesh
+                playerStates.delete(username); // Remove from state map
                 console.log('Player removed successfully:', username);
             }
         }
@@ -1236,26 +1310,29 @@
 
                     case 'player_left':
                         console.log('Player left:', data.username);
-                        handlePlayerLeft(data.username);
+                        handlePlayerLeft(data.username); // This now also handles Rapier body removal
                         break;
 
                     case 'shotgun_shot':
                         // Ensure this message is not from the current player and game has started
                         if (data.username !== playerUsername && gameStarted) {
-                            const shooterPos = new THREE.Vector3().fromArray(data.position);
-                            const now = performance.now(); // Use consistent timing
+                            const shooterPos = new THREE.Vector3().fromArray(data.position); // Use the provided muzzle position
+                            const now = performance.now();
 
                             // Create visual representation of pellets fired by other players using the pool
                             data.directions.forEach(directionArray => {
                                 const pellet = pelletPool.get(); // Get a pellet from the pool
                                 if (pellet) {
                                     const direction = new THREE.Vector3().fromArray(directionArray);
-                                    pellet.position.copy(shooterPos); // Start at shooter's reported position
-                                    pellet.velocity.copy(direction).multiplyScalar(PELLET_SPEED);
-                                    pellet.spawnTime = now;
-                                    pellet.bounces = 0; // Reset bounces (though we won't use them)
+                                    pellet.position.copy(shooterPos); // Start at shooter's reported muzzle position
+                                    // --- Set userData for remote pellets ---
+                                    // pellet.velocity.copy(direction).multiplyScalar(PELLET_SPEED); // REMOVED
+                                    pellet.userData.direction.copy(direction);
+                                    pellet.userData.speed = PELLET_SPEED;
+                                    pellet.userData.spawnTime = now;
+                                    pellet.userData.bounces = 0; // Reset bounces
                                     pellet.visible = true; // Make it visible
-                                    // Note: pellet is already added to the scene during pool initialization
+                                    // --- End setting userData ---
                                 } else {
                                     console.warn("Pellet pool exhausted during network update for shotgun_shot");
                                 }
@@ -1803,28 +1880,48 @@
             // Modified start button handler
             startButton.addEventListener('click', function(event) {
                 event.preventDefault();
-                if (usernameInput.value.trim() && rapierWorld) { // Ensure Rapier world is ready
+
+                // --- Add check for RAPIER library loaded ---
+                if (typeof RAPIER === 'undefined' || RAPIER === null) {
+                    console.error("Rapier library not loaded yet.");
+                    alert("Game is still loading physics, please wait a moment and try again.");
+                    return;
+                }
+                // --- End check ---
+
+                // Ensure Rapier world is ready AND username is provided
+                if (usernameInput.value.trim() && rapierWorld !== null) {
+                    console.log("Start button clicked, Rapier world exists."); // Add log
                     playerUsername = usernameInput.value.trim();
                     gameStarted = true;
                     instructions.classList.add('hidden');
 
                     // --- Create Player Rapier Body ---
-                    const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
-                        .setTranslation(0, playerHeight + playerRadius + 1, 0) // Start slightly above ground
-                        .setLinvel(0, 0, 0)
-                        .setCcdEnabled(true) // Enable Continuous Collision Detection
-                        .setGravityScale(1.0) // Use world gravity
-                        .setLinearDamping(0.5) // Adjust damping as needed
-                        .setAngularDamping(1.0); // Prevent spinning
-                    const playerBody = rapierWorld.createRigidBody(bodyDesc);
+                    try { // Add try-catch for safety
+                        const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
+                            .setTranslation(0, playerHeight + playerRadius + 1, 0) // Start slightly above ground
+                            .setLinvel(0, 0, 0)
+                            .setCcdEnabled(true) // Enable Continuous Collision Detection
+                            .setGravityScale(1.0) // Use world gravity
+                            .setLinearDamping(0.5) // Adjust damping as needed
+                            .setAngularDamping(1.0); // Prevent spinning
+                        const playerBody = rapierWorld.createRigidBody(bodyDesc);
 
-                    const colliderDesc = RAPIER.ColliderDesc.capsuleY(playerHeight / 2, playerRadius) // Capsule along Y axis
-                        .setDensity(1.0)
-                        .setFriction(0.7)
-                        .setRestitution(0.0); // No bounce initially
-                    rapierWorld.createCollider(colliderDesc, playerBody);
-                    playerBodyHandle = playerBody.handle; // Store the handle
-                    console.log(`Created player Rapier body handle: ${playerBodyHandle}`);
+                        const colliderDesc = RAPIER.ColliderDesc.capsuleY(playerHeight / 2, playerRadius) // Capsule along Y axis
+                            .setDensity(1.0)
+                            .setFriction(0.7)
+                            .setRestitution(0.0); // No bounce initially
+                        rapierWorld.createCollider(colliderDesc, playerBody);
+                        playerBodyHandle = playerBody.handle; // Store the handle
+                        console.log(`Created player Rapier body handle: ${playerBodyHandle}`);
+                    } catch (e) {
+                         console.error("Error creating Rapier player body:", e);
+                         // Handle error - maybe unlock controls, show message?
+                         gameStarted = false; // Prevent game from starting incorrectly
+                         controls.unlock();
+                         alert("Error setting up player physics. Please refresh.");
+                         return;
+                    }
                     // --- End Player Rapier Body ---
 
                     // Send join message to server
@@ -1841,9 +1938,12 @@
                         initializeMobileControls();
                     }
                     controls.lock(); // Lock pointer lock controls AFTER creating player body
-                } else if (!rapierWorld) {
-                    console.error("Rapier world not initialized before starting game!");
-                    // Maybe show an error message to the user?
+                } else if (usernameInput.value.trim() && rapierWorld === null) { // Explicitly check if rapierWorld is null
+                    console.error("Start button clicked, but Rapier world is still null!");
+                    alert("Game physics engine is still initializing. Please wait a moment and try again.");
+                } else if (!usernameInput.value.trim()) {
+                     console.warn("Start button clicked, but no username provided.");
+                     // Maybe give feedback to the user to enter a username
                 }
             });
 
