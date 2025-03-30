@@ -3755,9 +3755,12 @@
             currentAudio = new Audio(trackName);
             currentAudio.volume = 0.5; // Set volume
             currentAudio.addEventListener('ended', playNextTrack); // Add listener to play next track when this one finishes
+            // Add a specific log when the 'ended' event listener is attached
+            console.log(`Attached 'ended' listener to ${trackName} to call playNextTrack`);
 
             // Play if music is supposed to be playing and context is ready
             if (musicShouldPlay && audioContext.state === 'running') {
+                console.log(`[playTrack] Attempting to play ${trackName}`); // Log before play()
                 currentAudio.play().then(() => {
                     console.log(`Playing: ${trackName}`);
                 }).catch(error => {
@@ -3776,7 +3779,9 @@
         // Function to play the next track in the sequence
         function playNextTrack() {
             if (!musicTracks || musicTracks.length === 0) return; // Safety check
+            console.log(`[playNextTrack] Current track ${musicTracks[currentTrackIndex]} ended.`); // Log when function is called
             const nextIndex = (currentTrackIndex + 1) % musicTracks.length;
+            console.log(`[playNextTrack] Calculated next track index: ${nextIndex} (${musicTracks[nextIndex]})`); // Log the calculated next index
             playTrack(nextIndex);
         }
 
