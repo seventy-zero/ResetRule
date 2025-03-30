@@ -372,6 +372,7 @@
         const playerOrbs = new Map(); // Track orbs collected by each player
         const collisionBoxes = []; // Add collision boxes collection
         let currentRuler = null; // Track who is the ruler
+        let rulerIndicatorMesh = null; // Visual marker for the ruler
 
         // Vectors and other THREE.js objects
         const velocity = new THREE.Vector3();
@@ -1289,7 +1290,20 @@
 
         function handlePlayerLeft(username) {
             console.log('Handling player left:', username);
-            removePlayer(username);
+            // If the player leaving is the current ruler, remove the indicator
+            if (username === currentRuler && rulerIndicatorMesh) {
+                if (rulerIndicatorMesh.parent) {
+                    rulerIndicatorMesh.parent.remove(rulerIndicatorMesh);
+                }
+                // Check if it's directly in the scene (shouldn't be if parented, but safety check)
+                if (scene.children.includes(rulerIndicatorMesh)) {
+                     scene.remove(rulerIndicatorMesh);
+                }
+                rulerIndicatorMesh = null;
+                currentRuler = null; // Reset ruler status as they left
+                console.log('Ruler left, removed indicator.');
+            }
+            removePlayer(username); // Removes player mesh (and indicator if it's a child)
             updatePlayerList();
         }
 
@@ -3744,7 +3758,7 @@
         function playTrack(index) {
             // Stop and remove listener from previous audio if it exists
             if (currentAudio) {
-                currentAudio.removeEventListener('ended', playNextTrack);
+                currentAudio.removeEventListener('ended', playNextRandomTrack); // Use new function name
                 currentAudio.pause();
             }
 
@@ -3754,9 +3768,9 @@
 
             currentAudio = new Audio(trackName);
             currentAudio.volume = 0.5; // Set volume
-            currentAudio.addEventListener('ended', playNextTrack); // Add listener to play next track when this one finishes
+            currentAudio.addEventListener('ended', playNextRandomTrack); // Use new function name
             // Add a specific log when the 'ended' event listener is attached
-            console.log(`Attached 'ended' listener to ${trackName} to call playNextTrack`);
+            console.log(`Attached 'ended' listener to ${trackName} to call playNextRandomTrack`);
 
             // Play if music is supposed to be playing and context is ready
             if (musicShouldPlay && audioContext.state === 'running') {
@@ -3768,7 +3782,7 @@
                     // Attempt to play next track if current one fails immediately
                     // Avoid infinite loop if all tracks fail
                     if (error.name !== 'NotAllowedError') { // Don't auto-retry on NotAllowedError
-                         setTimeout(playNextTrack, 100); // Delay slightly
+                         setTimeout(playNextRandomTrack, 100); // Delay slightly
                     }
                 });
             } else if (musicShouldPlay) {
@@ -3776,31 +3790,51 @@
             }
         }
 
-        // Function to play the next track in the sequence
-        function playNextTrack() {
+        // Function to play the next track in the sequence RANDOMLY
+        function playNextRandomTrack() {
             if (!musicTracks || musicTracks.length === 0) return; // Safety check
-            console.log(`[playNextTrack] Current track ${musicTracks[currentTrackIndex]} ended.`); // Log when function is called
-            const nextIndex = (currentTrackIndex + 1) % musicTracks.length;
-            console.log(`[playNextTrack] Calculated next track index: ${nextIndex} (${musicTracks[nextIndex]})`); // Log the calculated next index
+            console.log(`[playNextRandomTrack] Current track ${musicTracks[currentTrackIndex]} ended.`); // Log when function is called
+            
+            let nextIndex;
+            if (musicTracks.length <= 1) {
+                // If only one track, just replay it
+                nextIndex = 0;
+            } else {
+                // Choose a random index DIFFERENT from the current one
+                do {
+                    nextIndex = Math.floor(Math.random() * musicTracks.length);
+                } while (nextIndex === currentTrackIndex);
+            }
+            
+            console.log(`[playNextRandomTrack] Calculated next random track index: ${nextIndex} (${musicTracks[nextIndex]})`); // Log the calculated next index
             playTrack(nextIndex);
         }
 
         // Function to initialize and start music playback (chooses random first track)
         function initializeAndStartMusic() {
             if (!isMusicInitialized) {
+                // --- This block should only run ONCE for the very first track ---
+                isMusicInitialized = true; // Set flag immediately
                 const randomIndex = Math.floor(Math.random() * musicTracks.length);
-                console.log(`Initial random track index: ${randomIndex}`);
-                isMusicInitialized = true;
+                // Explicitly log that this is the INITIAL random choice
+                console.log(`INITIALIZING MUSIC: Chose random index ${randomIndex} (${musicTracks[randomIndex]})`);
                 playTrack(randomIndex); // Play the randomly selected track
-            } else if (currentAudio && currentAudio.paused) {
-                 // If music was initialized but paused, just resume
+                // --- End of initial block ---
+            } else if (currentAudio && currentAudio.paused && musicShouldPlay) {
+                 // Resuming a previously initialized and paused track
+                 console.log("RESUMING MUSIC: Resuming paused track " + musicTracks[currentTrackIndex]);
                  currentAudio.play().catch(error => console.error("Error resuming paused music:", error));
-                 console.log("Resuming paused music");
-            } else if (!currentAudio) {
-                 // If initialized but something went wrong (currentAudio is null), restart sequence
-                 console.warn("Music initialized but no current audio, restarting sequence.");
+            } else if (!currentAudio && musicShouldPlay) {
+                 // Fallback: Music was initialized, but something is wrong (no currentAudio). Restart sequence.
+                 console.warn("RESTARTING MUSIC: Music was initialized but no current audio object found. Restarting sequence with random track.");
                  const randomIndex = Math.floor(Math.random() * musicTracks.length);
                  playTrack(randomIndex);
+            } else if (currentAudio && !currentAudio.paused && musicShouldPlay) {
+                // Music is already initialized and playing.
+                console.log("CHECK MUSIC: Music already playing (" + musicTracks[currentTrackIndex] + ")");
+            } else {
+                // Music should not be playing according to the toggle.
+                console.log("CHECK MUSIC: Conditions not met for playing/resuming (musicShouldPlay=" + musicShouldPlay + ")");
             }
         }
         // --- End Music Playback Setup ---
@@ -4183,8 +4217,21 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
             // Reset local state
             playerOrbs.set(playerUsername, 0);
             updateOrbCount();
+
+            // Remove ruler indicator if it exists
+            if (rulerIndicatorMesh) {
+                if (rulerIndicatorMesh.parent) {
+                    rulerIndicatorMesh.parent.remove(rulerIndicatorMesh);
+                }
+                 // Check if it's directly in the scene (shouldn't be if parented, but safety check)
+                if (scene.children.includes(rulerIndicatorMesh)) {
+                     scene.remove(rulerIndicatorMesh);
+                }
+                rulerIndicatorMesh = null;
+                console.log('Game reset, removed ruler indicator.');
+            }
             currentRuler = null;
-            
+
             // Reset position to spawn
             camera.position.set(0, 10, 0);
             velocity.set(0, 0, 0);
@@ -4202,7 +4249,47 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
 
         // Function to handle becoming ruler
         function handleBecomeRuler(username) {
+            console.log(`${username} is the new ruler!`);
             currentRuler = username;
+
+            // Remove previous indicator if any (safety check)
+            if (rulerIndicatorMesh) {
+                if (rulerIndicatorMesh.parent) {
+                    rulerIndicatorMesh.parent.remove(rulerIndicatorMesh);
+                }
+                 if (scene.children.includes(rulerIndicatorMesh)) {
+                     scene.remove(rulerIndicatorMesh);
+                 }
+                rulerIndicatorMesh = null;
+            }
+
+            // Find the ruler's player model
+            const rulerState = playerStates.get(username);
+            if (rulerState && rulerState.mesh) {
+                console.log(`Found player mesh for ruler ${username}`);
+                // Create the indicator geometry and material
+                const indicatorGeometry = new THREE.ConeGeometry(2.5, 10, 8); // Radius, Height, Segments
+                const indicatorMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xFFFF00, // Bright yellow
+                    wireframe: false 
+                });
+                rulerIndicatorMesh = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
+
+                // Position the indicator above the player's head (adjust Y as needed)
+                // Capsule geometry height is 6, radius is 2. Total visual height ~10.
+                // Adding sprite height (6) puts top around Y=11 relative to player origin.
+                rulerIndicatorMesh.position.y = 15; // Place it clearly above the head+username
+                rulerIndicatorMesh.rotation.x = Math.PI; // Point the cone downwards
+
+                // Add the indicator as a child of the ruler's mesh
+                rulerState.mesh.add(rulerIndicatorMesh);
+                console.log('Added ruler indicator to player mesh.');
+
+            } else {
+                console.warn(`Could not find player mesh for ruler: ${username} to attach indicator.`);
+            }
+
+            // Existing ruler logic (health boost, message for local player)
             if (username === playerUsername) {
                 playerHealth = 500; // 5x health
                 updateHealthBar();
