@@ -259,21 +259,21 @@
     {
         "imports": {
             "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+            "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.12.0/+esm"
         }
     }
     </script>
     <script type="module">
         import * as THREE from 'three';
+        import RAPIER from '@dimforge/rapier3d-compat';
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
         // Global variables and constants
         const playerHeight = 10;
         const playerRadius = 1.5;
-        const moveSpeed = 22.0; // Units per second
-        const gravity = 0.015; // Reduced from 0.015 for longer air time
+        const moveSpeed = 22.0; // Will be used for force calculation
         const flingStrength = 3.0; // Increased from 2.75
-        const flingDamping = 0.999; // Controls how quickly the fling velocity decreases (closer to 1 means less damping)
         const clock = new THREE.Clock();
         const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
         const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
@@ -332,16 +332,6 @@
             }
         };
 
-        // Add movement smoothing constants
-        const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
-        const COLLISION_PUSH_FORCE = 6.0; // Increased from 4.5 for stronger collision response
-        const COLLISION_BIAS = 0.01;      // Small bias to push player slightly past surface
-        const CORNER_SLIDE_FORCE = 0.8; // Increased from 0.7 for better sliding
-        const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
-        const STUCK_THRESHOLD = 0.4; // Increased from 0.3 - require deeper penetration to trigger strong push
-        const STUCK_PUSH_FORCE = 10.0; // Increased significantly from 4.0 - make the strong push more forceful
-        const STUCK_BOUNCE_SPEED = 5.0; // Speed of the bounce applied when stuck
-
         // Game state variables
         let gameStarted = false;
         let playerUsername = '';
@@ -361,6 +351,10 @@
         // Scene-related variables
         let scene, camera, renderer, controls;
 
+        // Physics world
+        let world;
+        let physicsReady = false; // Flag to track Rapier initialization
+
         // Collections
         const towers = [];
         const nebulas = [];
@@ -368,6 +362,9 @@
         const playerStates = new Map();
         const orbs = new Map(); // Add orbs collection
         const playerOrbs = new Map(); // Track orbs collected by each player
+        const physicsObjects = new Map(); // Map Three.js objects to Rapier handles
+        const gameObjects = new Map(); // Map Rapier handles to Three.js objects
+
         const collisionBoxes = []; // Add collision boxes collection
 
         // Vectors and other THREE.js objects
