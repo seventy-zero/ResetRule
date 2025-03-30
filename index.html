@@ -3964,38 +3964,62 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
         // Push out slightly past the collision point
         const pushDistance = radius - movementCollision.distance + COLLISION_BIAS;
         
-        // When stuck, push out horizontally instead of vertically
-        if (pushDistance > radius * STUCK_THRESHOLD) {
-            // Strong horizontal push when stuck
-            const horizontalPushDir = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
-            newPos.x += horizontalPushDir.x * pushDistance * STUCK_PUSH_FORCE;
-            newPos.z += horizontalPushDir.z * pushDistance * STUCK_PUSH_FORCE;
+        // Always use strong horizontal push for any collision
+        const horizontalPushDir = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
+        
+        // Calculate the actual movement direction
+        const moveDir = new THREE.Vector3();
+        moveDir.subVectors(targetPos, startPos).normalize();
+        
+        // Determine if we're stuck by checking if we're moving into the wall
+        const dotProduct = horizontalPushDir.x * moveDir.x + horizontalPushDir.z * moveDir.z;
+        const isStuck = dotProduct < 0 || pushDistance > radius * 0.5;
+        
+        if (isStuck) {
+            // Strong push when stuck or moving into wall
+            const pushForce = STUCK_PUSH_FORCE * (1 + Math.abs(dotProduct));
+            newPos.x += horizontalPushDir.x * pushDistance * pushForce;
+            newPos.z += horizontalPushDir.z * pushDistance * pushForce;
             
             // Add a small upward boost to help escape
-            newPos.y += 0.1;
+            newPos.y += 0.2;
             
             // Apply strong horizontal velocity in the push direction
-            const escapeSpeed = STUCK_BOUNCE_SPEED;
+            const escapeSpeed = STUCK_BOUNCE_SPEED * (1 + Math.abs(dotProduct));
             velocity.x = horizontalPushDir.x * escapeSpeed;
             velocity.z = horizontalPushDir.z * escapeSpeed;
+            
+            // Add some randomness to help escape
+            velocity.x += (Math.random() - 0.5) * 0.5;
+            velocity.z += (Math.random() - 0.5) * 0.5;
         } else {
             // Normal collision response
-            newPos.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-            newPos.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+            newPos.x += horizontalPushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+            newPos.z += horizontalPushDir.z * pushDistance * COLLISION_PUSH_FORCE;
             
             // Handle velocity reflection
             const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-            const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
             
             if (dotProduct < 0) {
                 // We're moving towards the collision, apply bounce
-                velocity.x = pushDir.x * speed * 0.8;
-                velocity.z = pushDir.z * speed * 0.8;
+                velocity.x = horizontalPushDir.x * speed * 0.8;
+                velocity.z = horizontalPushDir.z * speed * 0.8;
             } else {
                 // We're moving along the surface, apply sliding
-                velocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
-                velocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
+                velocity.x = horizontalPushDir.x * speed * CORNER_SLIDE_FORCE;
+                velocity.z = horizontalPushDir.z * speed * CORNER_SLIDE_FORCE;
             }
+        }
+        
+        // Ensure we're not inside any objects
+        const finalCheck = checkCollision(newPos, radius);
+        if (finalCheck.collision) {
+            // If we're still colliding, push out more aggressively
+            const finalPushDir = new THREE.Vector3();
+            finalPushDir.copy(newPos).sub(finalCheck.closestPoint).normalize();
+            const finalPushDistance = radius - finalCheck.distance + COLLISION_BIAS;
+            newPos.x += finalPushDir.x * finalPushDistance * STUCK_PUSH_FORCE * 2;
+            newPos.z += finalPushDir.z * finalPushDistance * STUCK_PUSH_FORCE * 2;
         }
         
         return { position: newPos, velocity: velocity };
@@ -4003,71 +4027,6 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
         // No collision, move to target position
         return { position: targetPos, velocity: velocity };
     }
-}
-
-// Modify the movement code in the animation loop
-// Replace the fling movement code with:
-if (isFlinging) {
-    // Store previous position for continuous collision detection
-    const previousPosition = camera.position.clone();
-    
-    // Calculate target position using fixed delta time
-    const targetPosition = new THREE.Vector3(
-        camera.position.x + flingVelocity.x * FIXED_DELTA_TIME,
-        camera.position.y + verticalVelocity * FIXED_DELTA_TIME,
-        camera.position.z + flingVelocity.z * FIXED_DELTA_TIME
-    );
-    
-    // Use CCD for movement
-    const result = moveWithCCD(previousPosition, targetPosition, flingVelocity, playerRadius);
-    camera.position.copy(result.position);
-    flingVelocity.copy(result.velocity);
-    
-    // Apply gravity
-    verticalVelocity -= gravity * FIXED_DELTA_TIME;
-    
-    // Update player collider position
-    playerCollider.center.copy(camera.position);
-    
-    // Apply damping to horizontal movement
-    flingVelocity.x *= flingDamping;
-    flingVelocity.z *= flingDamping;
-    
-    // Check for ground collision
-    if (camera.position.y <= playerHeight) {
-        camera.position.y = playerHeight;
-        verticalVelocity = 0;
-        isGrounded = true;
-        isFlinging = false;
-        flingVelocity.set(0, 0, 0);
-    }
-    
-    // Stop flinging when velocity is very small
-    if (Math.abs(flingVelocity.x) < 0.001 && Math.abs(flingVelocity.z) < 0.001) {
-        isFlinging = false;
-        flingVelocity.set(0, 0, 0);
-    }
-}
-
-// Add CCD for normal movement (WASD)
-if (controls.isLocked) {
-    // Store previous position
-    const previousPosition = camera.position.clone();
-    
-    // Calculate target position from velocity
-    const targetPosition = new THREE.Vector3(
-        camera.position.x + velocity.x * FIXED_DELTA_TIME,
-        camera.position.y,
-        camera.position.z + velocity.z * FIXED_DELTA_TIME
-    );
-    
-    // Use CCD for movement
-    const result = moveWithCCD(previousPosition, targetPosition, velocity, playerRadius);
-    camera.position.copy(result.position);
-    velocity.copy(result.velocity);
-    
-    // Update player collider position
-    playerCollider.center.copy(camera.position);
 }
 
 // ... existing code ...
