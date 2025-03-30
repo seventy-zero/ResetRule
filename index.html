@@ -2708,7 +2708,12 @@
                     const playerBody = world.getRigidBody(playerBodyHandle);
                     if (!playerBody) return;
 
-                    const currentPosition = pos || playerBody.translation();
+                    // --- Ensure currentPosition is a THREE.Vector3 ---
+                    const rapierPos = pos || playerBody.translation();
+                    const currentPosition = objectPool.getVector(); // Use object pool for temp vector
+                    currentPosition.set(rapierPos.x, rapierPos.y, rapierPos.z);
+                    // --- End THREE.Vector3 conversion ---
+
                     // Rotation is locked, send a fixed rotation or derive from velocity if needed
                     const currentRotation = rot || { x: 0, y: camera.rotation.y, z: 0 }; // Send camera yaw
                     const linVel = playerBody.linvel();
@@ -2748,10 +2753,14 @@
                         }));
 
                         // Update last sent state using the actual *physics* position
-                         lastSentPosition.set(currentPosition.x, currentPosition.y, currentPosition.z);
+                         lastSentPosition.copy(currentPosition); // Use copy for Vector3
                          lastSentRotation.set(currentRotation.x, currentRotation.y, currentRotation.z);
                     }
                 }
+
+                // --- Release pooled vector ---
+                objectPool.releaseVector(currentPosition);
+                // --- End release ---
             }
 
             // Call the modified animate loop
