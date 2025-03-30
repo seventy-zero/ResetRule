@@ -291,7 +291,7 @@
         const PELLET_LIFETIME = 250;  // Milliseconds - much shorter lifespan
         const PELLET_GRAVITY = 0.0;     // Gravity effect on pellets (0 for straight line)
         const PELLET_RADIUS = 0.4;     // Pellet collision radius - Larger
-        const SHOTGUN_DAMAGE = 5;     // Damage per pellet hit - WAS 10
+        const SHOTGUN_DAMAGE = 3;     // Damage per pellet hit - WAS 10, then 5
         const PELLET_FRICTION = 0.99;  // Damping factor for pellets (0=stop, 1=no friction)
         const PELLET_BOUNCE = 0.5;     // How much velocity is kept after bouncing (0-1)
         const PELLET_MAX_BOUNCES = 0;  // How many times a pellet can bounce before disappearing
@@ -1247,10 +1247,14 @@
                         break;
 
                     case 'player_damaged':
+                        // Log regardless of who the victim is
+                        console.log(`[Damage Debug] Received ANY player_damaged message. Target Victim: ${data.victimUsername}, Local User: ${playerUsername}, Attacker: ${data.attackerUsername}, Damage: ${data.damage}`);
                         // Check if the damage message is intended for this player
                         if (data.victimUsername === playerUsername) {
-                             console.log(`[Damage Debug] Received player_damaged message. Victim: ${data.victimUsername}, Attacker: ${data.attackerUsername}, Damage: ${data.damage}`); // Log received damage
+                             console.log(`[Damage Debug] Message IS for me (${playerUsername}). Applying damage.`); // Log received damage
                             takeDamage(data.damage); // Apply damage locally
+                        } else {
+                             console.log(`[Damage Debug] Message is for someone else (${data.victimUsername}). Ignoring.`);
                         }
                         break;
 
@@ -3474,17 +3478,20 @@
         // Add these new functions
         function takeDamage(damage) {
             if (isDead) return;
-            
+
             console.log(`[Damage Debug] takeDamage called. Current Health: ${playerHealth}, Damage: ${damage}`); // Log before damage
             playerHealth -= damage;
             console.log(`[Damage Debug] Health after damage: ${playerHealth}`); // Log after damage
-            
+
             // Visual feedback for damage
             document.body.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
             setTimeout(() => {
                 document.body.style.backgroundColor = 'transparent';
             }, 200);
-            
+
+            // --- ADD THIS LINE ---
+            updateHealthDisplay(); // Update the visual health bar
+
             if (playerHealth <= 0) {
                 die();
             }
