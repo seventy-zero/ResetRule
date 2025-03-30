@@ -271,11 +271,11 @@
         const FIXED_DELTA_TIME = 1/60; // Fixed timestep for physics calculations
         const PHYSICS_STEP = 1/60; // Fixed physics step size
         const playerHeight = 10;
-        const playerRadius = 2.0; // WAS 1.5 - Match CapsuleGeometry radius
+        const playerRadius = 1.5;
         const moveSpeed = 22.0; // Units per second
-        const gravity = 0.011; // Reduced from 0.015, then 0.012
-        const flingStrength = 3.0; // Increased from 2.75, then 3.0
-        const flingDamping = 0.999; // Controls how quickly the fling velocity decreases (closer to 1 means less damping) - WAS 0.999
+        const gravity = 0.012; // Reduced from 0.015 for less gravity
+        const flingStrength = 3.0; // Increased from 2.75
+        const flingDamping = 0.999; // Controls how quickly the fling velocity decreases (closer to 1 means less damping)
         const clock = new THREE.Clock();
         const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
         const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
@@ -291,7 +291,7 @@
         const PELLET_LIFETIME = 250;  // Milliseconds - much shorter lifespan
         const PELLET_GRAVITY = 0.0;     // Gravity effect on pellets (0 for straight line)
         const PELLET_RADIUS = 0.4;     // Pellet collision radius - Larger
-        const SHOTGUN_DAMAGE = 5;     // Damage per pellet hit - WAS 10, then 5, then 3
+        const SHOTGUN_DAMAGE = 10;     // Damage per pellet hit
         const PELLET_FRICTION = 0.99;  // Damping factor for pellets (0=stop, 1=no friction)
         const PELLET_BOUNCE = 0.5;     // How much velocity is kept after bouncing (0-1)
         const PELLET_MAX_BOUNCES = 0;  // How many times a pellet can bounce before disappearing
@@ -336,13 +336,13 @@
 
         // Add movement smoothing constants
         const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
-        const COLLISION_PUSH_FORCE = 5.0; // Increased from 4.5 for stronger collision response - WAS 6.0
+        const COLLISION_PUSH_FORCE = 6.0; // Increased from 4.5 for stronger collision response
         const COLLISION_BIAS = 0.01;      // Small bias to push player slightly past surface
-        const CORNER_SLIDE_FORCE = 0.9; // Increased from 0.7 for better sliding - WAS 0.8
+        const CORNER_SLIDE_FORCE = 0.8; // Increased from 0.7 for better sliding
         const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
         const STUCK_THRESHOLD = 0.4; // Increased from 0.3 - require deeper penetration to trigger strong push
-        const STUCK_PUSH_FORCE = 8.0; // Increased significantly from 4.0 - make the strong push more forceful - WAS 10.0
-        const STUCK_BOUNCE_SPEED = 4.0; // Speed of the bounce applied when stuck - WAS 5.0
+        const STUCK_PUSH_FORCE = 10.0; // Increased significantly from 4.0 - make the strong push more forceful
+        const STUCK_BOUNCE_SPEED = 5.0; // Speed of the bounce applied when stuck
 
         // Game state variables
         let gameStarted = false;
@@ -411,7 +411,7 @@
 
                 // Use exponential smoothing for interpolation towards the authoritative position
                 // Reduced from -20 to -15 for smoother interpolation
-                const lerpFactor = 1 - Math.exp(-25 * deltaTime); // WAS -15
+                const lerpFactor = 1 - Math.exp(-15 * deltaTime); 
 
                 // Smoothly interpolate position towards the last known server position
                 this.mesh.position.lerp(this.position, lerpFactor);
@@ -435,20 +435,12 @@
 
         // Function to create player model
         function createPlayerModel(username) {
-            // More detailed log
-            console.log(`[CreateModel Debug] Attempting model creation. Target User: ${username}, Local User: ${playerUsername}, Game Started: ${gameStarted}, PlayerStates has target? ${playerStates.has(username)}`);
-
+            console.log('Creating player model for:', username);
+            
             // Check if player model already exists
             if (playerStates.has(username)) {
-                const existingState = playerStates.get(username);
-                // If a model somehow exists but the mesh is gone (e.g., disposal error), try recreating.
-                if (!existingState.mesh || !scene.children.includes(existingState.mesh)) {
-                    console.warn(`[CreateModel Debug] Player state existed for ${username}, but mesh was missing/removed. Recreating.`);
-                    playerStates.delete(username); // Remove bad state first
-                } else {
-                    console.log(`[CreateModel Debug] Player model already exists in map and scene for: ${username}. Skipping creation.`);
-                    return existingState.mesh; // Return existing mesh
-                }
+                console.log('Player model already exists for:', username);
+                return;
             }
 
             const geometry = new THREE.CapsuleGeometry(2, 6, 2, 8);
@@ -540,28 +532,10 @@
         function removePlayer(username) {
             console.log('Removing player:', username);
             const playerState = playerStates.get(username);
-            if (playerState && playerState.mesh) { // Added check for mesh existence
-                // Dispose geometry and materials
-                playerState.mesh.traverse(child => {
-                    if (child.geometry) child.geometry.dispose();
-                    if (child.material) {
-                        if (Array.isArray(child.material)) {
-                             child.material.forEach(mat => {
-                                 if (mat.map) mat.map.dispose(); // Dispose texture if it exists
-                                 mat.dispose();
-                             });
-                        } else {
-                            if (child.material.map) child.material.map.dispose(); // Dispose texture if it exists
-                            child.material.dispose();
-                        }
-                    }
-                });
-                // Remove mesh from scene
+            if (playerState) {
                 scene.remove(playerState.mesh);
                 playerStates.delete(username);
                 console.log('Player removed successfully:', username);
-            } else {
-                 console.log(`[removePlayer] Player or mesh not found for ${username}`);
             }
         }
 
@@ -683,37 +657,37 @@
             
             switch(towerData.type) {
                 case 0: // Cylindrical tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 22, height, segments: 8 });
-                    break;
-                case 1: // Tapered tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 15, height, segments: 6 });
-                    break;
-                case 2: // Square tower
-                    geometry = getGeometryFromCache('box', { width: 44, height, depth: 44 });
-                    break;
-                case 3: // Hexagonal tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 25, height, segments: 6 });
-                    break;
-                case 4: // Twisted tower
                     geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
                     break;
+                case 1: // Tapered tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 6 });
+                    break;
+                case 2: // Square tower
+                    geometry = getGeometryFromCache('box', { width: 36, height, depth: 36 });
+                    break;
+                case 3: // Hexagonal tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 20, height, segments: 6 });
+                    break;
+                case 4: // Twisted tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 15, height, segments: 8 });
+                    break;
                 case 5: // Pyramid tower
-                    geometry = getGeometryFromCache('cone', { radius: 30, height, segments: 4 });
+                    geometry = getGeometryFromCache('cone', { radius: 24, height, segments: 4 });
                     break;
                 case 6: // Octagonal tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 23, height, segments: 8 });
+                    geometry = getGeometryFromCache('cylinder', { radius: 19, height, segments: 8 });
                     break;
                 case 7: // Double width tower
-                    geometry = getGeometryFromCache('box', { width: 63, height, depth: 63 });
+                    geometry = getGeometryFromCache('box', { width: 42, height, depth: 42 });
                     break;
                 case 8: // Inverse pyramid
-                    geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 4 });
+                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 4 });
                     break;
                 case 9: // Star tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 36, height, segments: 5 });
+                    geometry = getGeometryFromCache('cylinder', { radius: 24, height, segments: 5 });
                     break;
                 case 10: // Thin spire
-                    geometry = getGeometryFromCache('cylinder', { radius: 12, height, segments: 6 });
+                    geometry = getGeometryFromCache('cylinder', { radius: 8, height, segments: 6 });
                     break;
             }
 
@@ -736,18 +710,18 @@
             // --- Create a simplified local BOX collider based on tower's WIDEST point --- 
             let collisionWidth;
             switch(towerData.type) {
-                case 0: collisionWidth = 27 * 2; break; // Cylindrical (Radius 27)
-                case 1: collisionWidth = 18 * 2; break; // Tapered (Radius 18)
-                case 2: collisionWidth = 54; break;     // Square (Width 54)
-                case 3: collisionWidth = 30 * 2; break; // Hexagonal (Radius 30)
-                case 4: collisionWidth = 22 * 2; break; // Twisted (Radius 22)
-                case 5: collisionWidth = 36 * 2; break; // Pyramid (Base Radius 36)
-                case 6: collisionWidth = 28 * 2; break; // Octagonal (Radius 28)
-                case 7: collisionWidth = 63; break;     // Double width box (Width 63)
-                case 8: collisionWidth = 18 * 2; break; // Inverse pyramid (Top Radius 18) - Assuming this is widest
-                case 9: collisionWidth = 36 * 2; break; // Star (Outer Radius 36)
-                case 10: collisionWidth = 12 * 2; break; // Thin spire (Radius 12)
-                default: collisionWidth = 54; // Fallback default width
+                case 0: collisionWidth = 18 * 2; break; // Cylindrical (Radius 18)
+                case 1: collisionWidth = 12 * 2; break; // Tapered (Radius 12)
+                case 2: collisionWidth = 36; break;     // Square (Width 36)
+                case 3: collisionWidth = 20 * 2; break; // Hexagonal (Radius 20)
+                case 4: collisionWidth = 15 * 2; break; // Twisted (Radius 15)
+                case 5: collisionWidth = 24 * 2; break; // Pyramid (Base Radius 24)
+                case 6: collisionWidth = 19 * 2; break; // Octagonal (Radius 19)
+                case 7: collisionWidth = 42; break;     // Double width box (Width 42)
+                case 8: collisionWidth = 12 * 2; break; // Inverse pyramid (Top Radius 12) - Assuming this is widest
+                case 9: collisionWidth = 24 * 2; break; // Star (Outer Radius 24)
+                case 10: collisionWidth = 8 * 2; break; // Thin spire (Radius 8)
+                default: collisionWidth = 36; // Fallback default width
             }
 
             // Create a simple BoxGeometry for collision using determined width and tower height
@@ -1036,14 +1010,13 @@
 
             ws.addEventListener('message', (event) => {
                 const data = JSON.parse(event.data);
-                console.log(`[WS Receive Debug] Received message type: ${data.type}, Victim: ${data.victimUsername || 'N/A'}, LocalUser: ${playerUsername}`); // Log ALL incoming message types
-                // console.log('Received WebSocket message:', { // Commenting this out to reduce console noise
-                //     type: data.type,
-                //     username: data.username,
-                //     position: data.position,
-                //     rotation: data.rotation,
-                //     timestamp: new Date().toISOString()
-                // });
+                console.log('Received WebSocket message:', {
+                    type: data.type,
+                    username: data.username,
+                    position: data.position,
+                    rotation: data.rotation,
+                    timestamp: new Date().toISOString()
+                });
                 
                 switch (data.type) {
                     case 'world_data':
@@ -1092,7 +1065,7 @@
                                     const orb = createOrb(orbData);
                                     console.log(`Successfully created orb ${index}:`, orb);
                                     // Ensure orb is added to scene
-                                    if (orb && !scene.children.includes(orb)) { // Add check for orb existence
+                                    if (!scene.children.includes(orb)) {
                                         scene.add(orb);
                                     }
                                 } catch (error) {
@@ -1102,11 +1075,6 @@
                         } else {
                             console.warn('No orbs data received from server');
                         }
-
-                        // --- SET gameStarted AFTER processing world data ---
-                        gameStarted = true;
-                        console.log('[World Data Debug] World data processed. Game Started set to true.');
-                        // ----------------------------------------------------
                         break;
 
                     case 'room_info':
@@ -1118,42 +1086,38 @@
                         break;
 
                     case 'player_joined':
-                        console.log('[PlayerJoined Debug] Received player_joined:', {
+                        console.log('Player joined:', {
                             username: data.username,
-                            localUsername: playerUsername,
+                            position: data.position,
+                            rotation: data.rotation,
                             gameStarted: gameStarted,
-                            shouldCreate: (data.username !== playerUsername && gameStarted)
+                            isCurrentPlayer: data.username === playerUsername
                         });
                         // Only create player model if it's not the current player and game has started
                         if (data.username !== playerUsername && gameStarted) {
-                            console.log(`[PlayerJoined Debug] Conditions met for creating model for ${data.username}. Checking map... PlayerStates has? ${playerStates.has(data.username)}`); // Log check before create
+                            console.log('Creating player model for:', data.username);
                             if (!playerStates.has(data.username)) {
                                 const playerMesh = createPlayerModel(data.username);
-                                // Conditional log based on playerMesh creation result
-                                if (playerMesh) {
-                                    console.log('[PlayerJoined Debug] Player model created via createPlayerModel:', {
-                                        username: data.username,
-                                        meshId: playerMesh.uuid.substring(0, 6), // Log part of mesh ID
-                                        inScene: scene.children.includes(playerMesh)
-                                    });
-                                } else {
-                                     console.warn(`[PlayerJoined Debug] createPlayerModel returned null/undefined for ${data.username}`);
-                                }
-                            } else {
-                                 console.log(`[PlayerJoined Debug] Skipping model creation for ${data.username} because playerStates already has them.`);
+                                console.log('Player model created:', {
+                                    username: data.username,
+                                    mesh: playerMesh,
+                                    position: playerMesh.position,
+                                    visible: playerMesh.visible,
+                                    inScene: scene.children.includes(playerMesh)
+                                });
                             }
-                            updatePlayerList(); // Keep this outside the if, might need update even if model exists
+                            updatePlayerList();
                         }
                         break;
 
                     case 'position':
                         if (data.username !== playerUsername && gameStarted) {
-                            // console.log('Received position update for:', { // Commenting out to reduce noise
-                            //     username: data.username,
-                            //     position: data.position,
-                            //     rotation: data.rotation,
-                            //     hasPlayerState: playerStates.has(data.username)
-                            // });
+                            console.log('Received position update for:', {
+                                username: data.username,
+                                position: data.position,
+                                rotation: data.rotation,
+                                hasPlayerState: playerStates.has(data.username)
+                            });
                             
                             // Only create player model if we have valid position data
                             if (data.position && data.position.length === 3) {
@@ -1172,13 +1136,13 @@
                                 // Update player state with new data
                                 const playerState = playerStates.get(data.username);
                                 if (playerState) {
-                                    // console.log('Updating player state for:', { // Commenting out to reduce noise
-                                    //     username: data.username,
-                                    //     oldPosition: playerState.position.clone(),
-                                    //     newPosition: data.position,
-                                    //     oldRotation: playerState.rotation.clone(),
-                                    //     newRotation: data.rotation
-                                    // });
+                                    console.log('Updating player state for:', {
+                                        username: data.username,
+                                        oldPosition: playerState.position.clone(),
+                                        newPosition: data.position,
+                                        oldRotation: playerState.rotation.clone(),
+                                        newRotation: data.rotation
+                                    });
                                     
                                     // Update position
                                     if (data.position) {
@@ -1205,12 +1169,12 @@
                                     
                                     // Verify mesh visibility
                                     if (playerState.mesh) {
-                                        // console.log('Player mesh state:', { // Commenting out to reduce noise
-                                        //     username: data.username,
-                                        //     position: playerState.mesh.position,
-                                        //     visible: playerState.mesh.visible,
-                                        //     inScene: scene.children.includes(playerState.mesh)
-                                        // });
+                                        console.log('Player mesh state:', {
+                                            username: data.username,
+                                            position: playerState.mesh.position,
+                                            visible: playerState.mesh.visible,
+                                            inScene: scene.children.includes(playerState.mesh)
+                                        });
                                     }
                                 } else {
                                     console.warn('No player state found for username:', data.username);
@@ -1252,14 +1216,10 @@
                         break;
 
                     case 'player_damaged':
-                        // Log regardless of who the victim is
-                        console.log(`[Damage Debug] Received ANY player_damaged message. Target Victim: ${data.victimUsername}, Local User: ${playerUsername}, Attacker: ${data.attackerUsername}, Damage: ${data.damage}`);
                         // Check if the damage message is intended for this player
                         if (data.victimUsername === playerUsername) {
-                             console.log(`[Damage Debug] Message IS for me (${playerUsername}). Applying damage.`); // Log received damage
+                             console.log(`Received damage: ${data.damage} from ${data.attackerUsername}`); // Log received damage
                             takeDamage(data.damage); // Apply damage locally
-                        } else {
-                             console.log(`[Damage Debug] Message is for someone else (${data.victimUsername}). Ignoring.`);
                         }
                         break;
 
@@ -1283,19 +1243,6 @@
                             }
                         }
                         break;
-
-                    case 'orbs_dropped': // <-- ADD THIS CASE
-                         console.log(`[Orb Drop Debug] Received ${data.orbs.length} dropped orbs.`);
-                         data.orbs.forEach(orbData => {
-                             // Check if orb already exists locally before creating
-                             if (!orbs.has(orbData.id)) {
-                                 console.log(`[Orb Drop Debug] Creating dropped orb ${orbData.id}`);
-                                 createOrb(orbData); // Use existing function to create orb mesh
-                             } else {
-                                 console.log(`[Orb Drop Debug] Dropped orb ${orbData.id} already exists locally. Ignoring.`);
-                             }
-                         });
-                         break;
 
                     case 'new_ruler':
                         handleBecomeRuler(data.username);
@@ -1832,27 +1779,17 @@
                 event.preventDefault();
                 if (usernameInput.value.trim()) {
                     playerUsername = usernameInput.value.trim();
-
-                    // --- FIX & LOGGING START ---
-                    console.log(`[Start Game Debug] Starting game as ${playerUsername}. PlayerStates size BEFORE join: ${playerStates.size}`); // Log map state
-                    playerHealth = 100; // Reset health
-                    updateHealthDisplay(); // Update display immediately
-                    // gameStarted = true; // <-- REMOVE THIS LINE - Will be set after world_data
-                    // --- FIX & LOGGING END ---
-
+                    gameStarted = true;
                     instructions.classList.add('hidden');
-
+                    
                     // Send join message to server
                     if (ws.readyState === WebSocket.OPEN) {
                         ws.send(JSON.stringify({
                             type: 'join',
                             username: playerUsername
                         }));
-                         console.log(`[Start Game Debug] Sent join message for ${playerUsername}.`); // Log message send
-                    } else {
-                         console.warn(`[Start Game Debug] WebSocket not open when trying to join.`);
                     }
-
+                    
                     if (isMobile) {
                         document.querySelector('.mobile-controls').style.display = 'block';
                         document.getElementById('flingButton').style.display = 'block';
@@ -1868,14 +1805,12 @@
             });
 
             controls.addEventListener('unlock', function() {
-                console.log('[Unlock Debug] Controls unlocked.'); // Log unlock start
                 if (!isMobile) {
                     instructions.classList.remove('hidden');
                 }
                 
                 // Notify server that player is leaving
                 if (ws && ws.readyState === WebSocket.OPEN) {
-                    console.log('[Unlock Debug] Sending player_left message.'); // Log message send
                     ws.send(JSON.stringify({
                         type: 'player_left',
                         username: playerUsername
@@ -1883,24 +1818,18 @@
                 }
                 
                 // Remove our own player model if it exists
-                console.log(`[Unlock Debug] Attempting to remove self: ${playerUsername}`); // Log self removal attempt
                 removePlayer(playerUsername);
                 
                 // Clear all other player models
-                console.log('[Unlock Debug] Iterating playerStates to remove others.'); // Log loop start
                 playerStates.forEach((playerState, username) => {
-                    console.log(`[Unlock Debug] Attempting to remove other player: ${username}`); // Log removal attempt in loop
                     removePlayer(username);
                 });
-                console.log('[Unlock Debug] Clearing playerStates map.'); // Log map clear
-                playerStates.clear(); // Explicitly clear the map after removing individuals
-
-                // Reset game state
-                console.log('[Unlock Debug] Resetting game state variables.'); // Log state reset
-                gameStarted = false;
-                playerUsername = ''; // Reset username *after* sending player_left
                 
-                // Reset position and physics
+                // Reset game state
+                gameStarted = false;
+                playerUsername = '';
+                
+                // Reset position
                 camera.position.set(0, playerHeight, 0);
                 camera.rotation.set(0, 0, 0);
                 velocity.set(0, 0, 0);
@@ -1908,7 +1837,6 @@
                 verticalVelocity = 0;
                 isFlinging = false;
                 isGrounded = true;
-                isDead = false; // Reset death state
                 
                 // Show instructions again
                 instructions.classList.remove('hidden');
@@ -1917,18 +1845,9 @@
                 
                 // Clear any mobile controls if they exist
                 if (isMobile) {
-                    // Assuming these elements exist if isMobile is true
-                    const mobileControls = document.querySelector('.mobile-controls');
-                    const flingButton = document.getElementById('flingButton');
-                    if (mobileControls) mobileControls.style.display = 'none';
-                    if (flingButton) flingButton.style.display = 'none';
-                     // Also attempt removal of left joystick if it was added dynamically
-                    const leftControls = document.querySelector('.mobile-controls.left');
-                    if (leftControls && leftControls.parentElement) {
-                        leftControls.parentElement.removeChild(leftControls);
-                    }
+                    document.querySelector('.mobile-controls').style.display = 'none';
+                    document.getElementById('flingButton').style.display = 'none';
                 }
-                 console.log('[Unlock Debug] Unlock handler finished.'); // Log end
             });
 
             // Mobile controls initialization function
@@ -2569,23 +2488,18 @@
                         if (username === playerUsername || !playerState.mesh) return; 
 
                         const distance = pellet.position.distanceTo(playerState.mesh.position);
-                        // --- DEBUG LOG START ---
-                        if (distance < (playerRadius + PELLET_RADIUS + 10)) { // Log nearby pellets
-                             console.log(`[Pellet Debug] Pellet ${pellet.uuid.substring(0,4)} near ${username}. Distance: ${distance.toFixed(2)}, Required: < ${(playerRadius + PELLET_RADIUS).toFixed(2)}`);
-                        }
-                        // --- DEBUG LOG END ---
 
                         if (distance < playerRadius + PELLET_RADIUS) {
                             // Player was hit
-                            console.log(`[Pellet Debug] HIT DETECTED! Pellet ${pellet.uuid.substring(0,4)} hit player: ${username}`); // Add log
+                            console.log(`Pellet hit player: ${username}`); // Add log
                             if (ws && ws.readyState === WebSocket.OPEN) {
-                                console.log(`[Pellet Debug] Sending player_damaged message for ${username}`); // Confirm message sent
                                 ws.send(JSON.stringify({
                                     type: 'player_damaged',
                                     victimUsername: username, // Send victim's username
                                     attackerUsername: playerUsername, // Send attacker's username
                                     damage: SHOTGUN_DAMAGE 
                                 }));
+                                console.log(`Sent player_damaged message for ${username}`); // Confirm message sent
                             }
                             pelletPool.release(pellet);
                             return; // Stop processing this pellet after hit
@@ -2726,11 +2640,11 @@
                                 isFlinging = true;
 
                                 // Log the bounce event with horizontal-only values
-                                // console.log('Player stuck, initiating horizontal bounce:', {
-                                //     pushDir: horizontalPushDir.clone(),
-                                //     pushDistance: pushDistance,
-                                //     bounceVelocity: new THREE.Vector3(flingVelocity.x, 0, flingVelocity.z)
-                                // });
+                                console.log('Player stuck, initiating horizontal bounce:', {
+                                    pushDir: horizontalPushDir.clone(),
+                                    pushDistance: pushDistance,
+                                    bounceVelocity: new THREE.Vector3(flingVelocity.x, 0, flingVelocity.z)
+                                });
                             } else {
                                 // Normal collision response (not stuck)
                                 // pushDir and pushDistance are already calculated
@@ -2759,7 +2673,7 @@
                                 } else {
                                     // Standard collision response (horizontal push/sliding)
                                     // Log standard collision
-                                    // console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
+                                    console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
 
                                     // Apply horizontal push-out using pre-calculated pushDistance
                                     const horizontalPushForce = isFlinging ? COLLISION_PUSH_FORCE * 1.5 : COLLISION_PUSH_FORCE;
@@ -3147,7 +3061,7 @@
                                 // Standard collision response (horizontal push, sliding, etc.)
                                 // If not hitting underside while moving up, apply horizontal push/slide
                                 // Log standard collision
-                                // console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
+                                console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
 
                                 if (isFlinging) {
                                     // Push out horizontally
@@ -3427,7 +3341,7 @@
             camera.getWorldDirection(cameraDirection);
 
             // Calculate muzzle position slightly in front of the camera
-            const muzzleOffset = 0; // How far in front of camera view - WAS -1.5
+            const muzzleOffset = -1.5; // How far in front of camera view
             const muzzlePosition = cameraPosition.clone().addScaledVector(cameraDirection, muzzleOffset);
 
             // Array to store pellet directions for network message
@@ -3506,20 +3420,16 @@
         // Add these new functions
         function takeDamage(damage) {
             if (isDead) return;
-
-            console.log(`[Damage Debug] takeDamage called. Current Health: ${playerHealth}, Damage: ${damage}`); // Log before damage
+            
             playerHealth -= damage;
-            console.log(`[Damage Debug] Health after damage: ${playerHealth}`); // Log after damage
-
+            console.log(`Took ${damage} damage. Health: ${playerHealth}`);
+            
             // Visual feedback for damage
             document.body.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
             setTimeout(() => {
                 document.body.style.backgroundColor = 'transparent';
             }, 200);
-
-            // --- ADD THIS LINE ---
-            updateHealthDisplay(); // Update the visual health bar
-
+            
             if (playerHealth <= 0) {
                 die();
             }
@@ -3532,52 +3442,28 @@
             // Visual feedback for death
             document.body.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
             
-            // --- SEND DEATH MESSAGE TO SERVER ---
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                console.log(`[Death Debug] Sending 'player_died' message for ${playerUsername} at position ${camera.position.toArray()}`);
-                ws.send(JSON.stringify({
-                    type: 'player_died',
-                    username: playerUsername,
-                    position: [ // Send final position rounded
-                       Math.round(camera.position.x * 100) / 100,
-                       Math.round(camera.position.y * 100) / 100,
-                       Math.round(camera.position.z * 100) / 100
-                    ]
-                }));
-            }
-            // -----------------------------------
-
-            // --- NEW BEHAVIOR: Return to "login" screen by unlocking controls ---
-            console.log('[Death Debug] Player died. Unlocking controls to return to login.');
-            controls.unlock(); 
-            // --- END NEW BEHAVIOR ---
-
-            // --- OLD BEHAVIOR: Show death message & wait for respawn ---
-            // // Show death message
-            // const deathMessage = document.createElement('div');
-            // deathMessage.style.position = 'fixed';
-            // deathMessage.style.top = '50%';
-            // deathMessage.style.left = '50%';
-            // deathMessage.style.transform = 'translate(-50%, -50%)';
-            // deathMessage.style.color = 'white';
-            // deathMessage.style.fontSize = '24px';
-            // deathMessage.style.textAlign = 'center';
-            // deathMessage.textContent = 'You died! Press SPACE to respawn';
-            // document.body.appendChild(deathMessage);
+            // Show death message
+            const deathMessage = document.createElement('div');
+            deathMessage.style.position = 'fixed';
+            deathMessage.style.top = '50%';
+            deathMessage.style.left = '50%';
+            deathMessage.style.transform = 'translate(-50%, -50%)';
+            deathMessage.style.color = 'white';
+            deathMessage.style.fontSize = '24px';
+            deathMessage.style.textAlign = 'center';
+            deathMessage.textContent = 'You died! Press SPACE to respawn';
+            document.body.appendChild(deathMessage);
             
-            // // Handle respawn
-            // const handleRespawn = (event) => {
-            //     if (event.code === 'Space') {
-            //         respawn();
-            //         document.removeEventListener('keydown', handleRespawn); // Clean up listener
-            //         deathMessage.remove(); // Remove message
-            //     }
-            // };
-            // document.addEventListener('keydown', handleRespawn);
+            // Handle respawn
+            const handleRespawn = (event) => {
+                if (event.code === 'Space') {
+                    respawn();
+                }
+            };
+            document.addEventListener('keydown', handleRespawn);
             
-            // // Store the event listener for cleanup (if needed elsewhere, though removed now)
-            // // deathMessage.dataset.listener = handleRespawn; 
-            // --- END OLD BEHAVIOR ---
+            // Store the event listener for cleanup
+            deathMessage.dataset.listener = handleRespawn;
         }
 
         function respawn() {
@@ -3690,29 +3576,18 @@
         // Update health display
         function updateHealthDisplay() {
             const segments = healthDisplay.children;
-            const numSegments = segments.length;
-            const maxHealth = 100; // Assuming max health is 100
-            const healthPerSegment = maxHealth / numSegments;
-
-            console.log(`[Health Debug] updateHealthDisplay called. Current Player Health: ${playerHealth}`);
-
-            for (let i = 0; i < numSegments; i++) {
-                const segmentThreshold = (i + 1) * healthPerSegment;
-                const prevSegmentThreshold = i * healthPerSegment;
-
-                if (playerHealth >= segmentThreshold) {
-                    // This segment is fully active
-                    segments[i].style.backgroundColor = '#00ff00'; // Full green
-                    segments[i].style.boxShadow = '0 0 10px rgba(0, 255, 0, 0.5)';
-                } else if (playerHealth < prevSegmentThreshold) {
-                    // This segment is fully inactive
-                    segments[i].style.backgroundColor = '#ff0000'; // Full red
+            const healthPerSegment = 20; // 100 health / 5 segments
+            
+            for (let i = 0; i < segments.length; i++) {
+                const segmentHealth = Math.max(0, playerHealth - (i * healthPerSegment));
+                const segmentPercentage = Math.min(100, (segmentHealth / healthPerSegment) * 100);
+                
+                if (segmentPercentage <= 0) {
+                    segments[i].style.backgroundColor = '#ff0000'; // Brighter red when empty
                     segments[i].style.boxShadow = '0 0 10px rgba(255, 0, 0, 0.5)';
                 } else {
-                    // This segment is partially active - Make it yellow for simplicity
-                    // More complex: calculate percentage and use gradient or partial fill
-                    segments[i].style.backgroundColor = '#ffff00'; // Yellow for partial
-                    segments[i].style.boxShadow = '0 0 10px rgba(255, 255, 0, 0.5)';
+                    segments[i].style.backgroundColor = '#00ff00'; // Brighter green when full
+                    segments[i].style.boxShadow = '0 0 10px rgba(0, 255, 0, 0.5)';
                 }
             }
         }
@@ -3826,6 +3701,7 @@
                                     attackerUsername: playerUsername, // Send attacker's username
                                     damage: SHOTGUN_DAMAGE 
                                 }));
+                                console.log(`Sent player_damaged message for ${username}`); // Confirm message sent
                             }
                             pelletPool.release(pellet);
                             return; // Stop processing this pellet after hit
@@ -4393,7 +4269,7 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
             
             // Reset health and damage multipliers
             playerHealth = 100;
-            updateHealthDisplay(); // WAS updateHealthBar()
+            updateHealthBar();
             
             // Close popup
             const popup = document.getElementById('orbPopup');
@@ -4445,7 +4321,7 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
             // Existing ruler logic (health boost, message for local player)
             if (username === playerUsername) {
                 playerHealth = 500; // 5x health
-                updateHealthDisplay(); // WAS updateHealthBar()
+                updateHealthBar();
                 // Show ruler effect
                 const rulerEffect = document.createElement('div');
                 rulerEffect.style.position = 'fixed';
