@@ -737,7 +737,9 @@
             const towerObject = {
                 mesh: group,             // The visual group (has world transform)
                 localCollisionBox: localCollisionBox, // The SHRUNKEN local box
-                isBridge: false          // Flag this as not a bridge
+                isBridge: false,         // Flag this as not a bridge
+                // Add position property needed by spatialGrid
+                position: new THREE.Vector3(towerData.x, height/2 + baseHeight, towerData.z) 
             };
             towers.push(towerObject);
             spatialGrid.add(towerObject); // Add to spatial grid
