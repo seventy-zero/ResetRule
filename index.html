@@ -3958,10 +3958,7 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
         const pushDir = new THREE.Vector3();
         pushDir.copy(newPos).sub(movementCollision.closestPoint).normalize();
         
-        // Push out with safety margin
-        const pushDistance = radius - movementCollision.distance + COLLISION_BIAS + COLLISION_SAFETY_MARGIN;
-        
-        // Always use strong horizontal push
+        // Force horizontal push direction (ignore vertical component)
         const horizontalPushDir = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
         
         // Calculate the actual movement direction
@@ -3971,37 +3968,43 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
         // Calculate the dot product to determine if we're moving into the wall
         const dotProduct = horizontalPushDir.x * moveDir.x + horizontalPushDir.z * moveDir.z;
         
-        // Always apply a strong bounce response
-        const bounceSpeed = Math.max(STUCK_BOUNCE_SPEED * 2, Math.abs(dotProduct) * 5);
+        // Always apply a strong horizontal bounce
+        const bounceSpeed = STUCK_BOUNCE_SPEED * 4; // Increased base bounce speed
         
-        // Apply position correction
-        newPos.x += horizontalPushDir.x * pushDistance * 2;
-        newPos.z += horizontalPushDir.z * pushDistance * 2;
+        // Apply position correction (horizontal only)
+        const pushDistance = radius - movementCollision.distance + COLLISION_BIAS + COLLISION_SAFETY_MARGIN;
+        newPos.x += horizontalPushDir.x * pushDistance * 3; // Increased push force
+        newPos.z += horizontalPushDir.z * pushDistance * 3;
         
-        // Add a small upward boost
-        newPos.y += 0.3;
+        // Reset vertical position to prevent upward sliding
+        newPos.y = startPos.y;
         
-        // Apply bounce velocity
+        // Apply strong horizontal bounce velocity
         velocity.x = horizontalPushDir.x * bounceSpeed;
         velocity.z = horizontalPushDir.z * bounceSpeed;
         
-        // Add some randomness to help escape
-        velocity.x += (Math.random() - 0.5) * 0.5;
-        velocity.z += (Math.random() - 0.5) * 0.5;
+        // Add some horizontal randomness to help escape
+        velocity.x += (Math.random() - 0.5) * bounceSpeed * 0.5;
+        velocity.z += (Math.random() - 0.5) * bounceSpeed * 0.5;
+        
+        // Reset vertical velocity to prevent upward movement
+        velocity.y = 0;
         
         // Final safety check
         const finalCheck = checkCollision(newPos, radius);
         if (finalCheck.collision) {
-            // If still colliding, force a position reset with bounce
-            console.warn('Final collision check failed, forcing bounce reset');
-            newPos.copy(startPos);
-            newPos.y += 0.5;
+            // If still colliding, force a position reset with strong horizontal bounce
+            console.warn('Final collision check failed, forcing horizontal bounce reset');
             
-            // Apply emergency bounce velocity
-            const escapeDir = new THREE.Vector3();
-            escapeDir.copy(newPos).sub(finalCheck.closestPoint).normalize();
-            velocity.x = escapeDir.x * STUCK_BOUNCE_SPEED * 3;
-            velocity.z = escapeDir.z * STUCK_BOUNCE_SPEED * 3;
+            // Reset to start position but slightly offset in the opposite direction
+            newPos.copy(startPos);
+            newPos.x -= horizontalPushDir.x * radius * 2;
+            newPos.z -= horizontalPushDir.z * radius * 2;
+            
+            // Apply emergency horizontal bounce velocity
+            velocity.x = -horizontalPushDir.x * STUCK_BOUNCE_SPEED * 5;
+            velocity.z = -horizontalPushDir.z * STUCK_BOUNCE_SPEED * 5;
+            velocity.y = 0; // Ensure no vertical movement
         }
         
         return { position: newPos, velocity: velocity };
