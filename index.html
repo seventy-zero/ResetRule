@@ -3732,11 +3732,74 @@
         // Initialize game audio
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         
-        // Play background music on startup
-        const backgroundMusic = new Audio('leader-ultra-essence-lossy-64.mp3');
-        backgroundMusic.loop = true; // Will be set again in listener, but safe default
-        backgroundMusic.volume = 0.5; // Set to 50% volume by default
-        let musicShouldPlay = false; // Track if music should be playing based on checkbox
+        // --- Music Playback Setup ---
+        // IMPORTANT: Replace 'track2.mp3' with the actual filename of your second music track!
+        const musicTracks = ['leader-ultra-essence-lossy-64.mp3', 'leader-bounce-lossy-64.mp3'];
+        let currentTrackIndex = -1; // Start with no track selected
+        let currentAudio = null; // Holds the currently playing Audio object
+        let musicShouldPlay = false; // Track if music should be playing based on checkbox state
+        let isMusicInitialized = false; // Track if the first track has been chosen
+
+        // Function to play a specific track by index
+        function playTrack(index) {
+            // Stop and remove listener from previous audio if it exists
+            if (currentAudio) {
+                currentAudio.removeEventListener('ended', playNextTrack);
+                currentAudio.pause();
+            }
+
+            currentTrackIndex = index;
+            const trackName = musicTracks[currentTrackIndex];
+            console.log(`Attempting to play track: ${trackName}`); // Log track name
+
+            currentAudio = new Audio(trackName);
+            currentAudio.volume = 0.5; // Set volume
+            currentAudio.addEventListener('ended', playNextTrack); // Add listener to play next track when this one finishes
+
+            // Play if music is supposed to be playing and context is ready
+            if (musicShouldPlay && audioContext.state === 'running') {
+                currentAudio.play().then(() => {
+                    console.log(`Playing: ${trackName}`);
+                }).catch(error => {
+                    console.error(`Error playing ${trackName}:`, error);
+                    // Attempt to play next track if current one fails immediately
+                    // Avoid infinite loop if all tracks fail
+                    if (error.name !== 'NotAllowedError') { // Don't auto-retry on NotAllowedError
+                         setTimeout(playNextTrack, 100); // Delay slightly
+                    }
+                });
+            } else if (musicShouldPlay) {
+                 console.log(`Audio context not running, playback for ${trackName} deferred.`);
+            }
+        }
+
+        // Function to play the next track in the sequence
+        function playNextTrack() {
+            if (!musicTracks || musicTracks.length === 0) return; // Safety check
+            const nextIndex = (currentTrackIndex + 1) % musicTracks.length;
+            playTrack(nextIndex);
+        }
+
+        // Function to initialize and start music playback (chooses random first track)
+        function initializeAndStartMusic() {
+            if (!isMusicInitialized) {
+                const randomIndex = Math.floor(Math.random() * musicTracks.length);
+                console.log(`Initial random track index: ${randomIndex}`);
+                isMusicInitialized = true;
+                playTrack(randomIndex); // Play the randomly selected track
+            } else if (currentAudio && currentAudio.paused) {
+                 // If music was initialized but paused, just resume
+                 currentAudio.play().catch(error => console.error("Error resuming paused music:", error));
+                 console.log("Resuming paused music");
+            } else if (!currentAudio) {
+                 // If initialized but something went wrong (currentAudio is null), restart sequence
+                 console.warn("Music initialized but no current audio, restarting sequence.");
+                 const randomIndex = Math.floor(Math.random() * musicTracks.length);
+                 playTrack(randomIndex);
+            }
+        }
+        // --- End Music Playback Setup ---
+
 
         // Handle audio context suspension (needed for some browsers)
         const resumeAudio = () => {
@@ -3744,16 +3807,14 @@
             if (audioContext.state === 'suspended') {
                 audioContext.resume().then(() => {
                     console.log("AudioContext Resumed");
-                    // Check if music should play *after* context is resumed
+                    // If music should be playing, initialize or resume it
                     if (musicShouldPlay) {
-                        backgroundMusic.play().catch(error => console.log('Error playing background music after resume:', error));
-                        console.log("Music started via resumeAudio");
+                        initializeAndStartMusic();
                     }
                 }).catch(e => console.error("Error resuming AudioContext:", e));
-            } else if (audioContext.state === 'running' && musicShouldPlay && backgroundMusic.paused) {
-                // If context is running but music didn't start (e.g., race condition), try playing again
-                 backgroundMusic.play().catch(error => console.log('Error playing background music (context already running):', error));
-                 console.log("Music started via resumeAudio (already running)");
+            } else if (audioContext.state === 'running' && musicShouldPlay) {
+                 // If context is running and music should play, ensure it's initialized or playing
+                 initializeAndStartMusic();
             }
         };
 
@@ -3769,32 +3830,32 @@
             musicShouldPlay = musicCheckbox.checked;
 
             musicCheckbox.addEventListener('change', () => {
-                musicShouldPlay = musicCheckbox.checked; // Update state
-                resumeAudio(); // Make sure context is active before playing/pausing
+                const wasMusicPlaying = musicShouldPlay;
+                musicShouldPlay = musicCheckbox.checked; // Update state based on new checkbox value
+
+                resumeAudio(); // Ensure context is active
+
                 if (musicShouldPlay) {
-                    backgroundMusic.loop = true;
-                    // Attempt to play immediately if context is running, otherwise resumeAudio will handle it
-                    if (audioContext.state === 'running') {
-                         backgroundMusic.play().catch(error => console.log('Error playing background music via toggle:', error));
-                         console.log("Music started via toggle");
-                    }
+                    console.log("Music toggled ON");
+                    // If turning on, initialize and start (or resume)
+                    initializeAndStartMusic();
                 } else {
-                    backgroundMusic.pause();
-                    backgroundMusic.currentTime = 0; // Reset to start
-                    console.log("Music stopped via toggle");
+                    console.log("Music toggled OFF");
+                    // If turning off, pause the current audio if it exists and is playing
+                    if (currentAudio && !currentAudio.paused) {
+                        currentAudio.pause();
+                        console.log("Paused current track via toggle");
+                    }
                 }
             });
         }
 
-        // Play music if the checkbox is checked on load *only after first interaction*
-        // The resumeAudio function now handles starting music after interaction
-        // No need for the setTimeout logic here anymore.
+        // Log initial state - music will start playing after first interaction via resumeAudio -> initializeAndStartMusic
         if (musicShouldPlay) {
              console.log("Music checkbox checked on load, waiting for interaction to play.");
         }
 
-        // Removed immediate call to resumeAudio() - it should only happen on interaction or toggle
-        // resumeAudio();
+        // Removed backgroundMusic object and related code no longer needed
 
         // Check collisions for normal movement
         // --- Start Iterative Collision Resolution ---
