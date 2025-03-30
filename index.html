@@ -1985,134 +1985,27 @@
                 // Add fling button event listeners
                 flingBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
-                    flingStartTime = performance.now();
+                    // flingStartTime = performance.now(); // Keep if needed for duration checks
                     console.log('Fling button touch started');
                     showLine = true;
                     this.classList.add('active');
-                    
-                    // Update line trace position
-                    const cameraDirection = new THREE.Vector3();
-                    camera.getWorldDirection(cameraDirection);
-                    const rightVector = new THREE.Vector3();
-                    rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
-                    
-                    // Calculate start and end points
-                    const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
-                    startPoint.y = camera.position.y;
-                    
-                    const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
-                    
-                    // Update curve points
-                    curve.points[0].copy(startPoint);
-                    curve.points[1].copy(endPoint);
-                    
-                    // Update the tube geometry
-                    const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
-                    tubeMesh.geometry.dispose();
-                    tubeMesh.geometry = newTubeGeometry;
-                    tubeMesh.visible = true;
+                    // --- Removed line update logic from here ---
                 }, { passive: false });
 
                 flingBtn.addEventListener('touchmove', function(e) {
-                    e.preventDefault();
-                    if (!showLine) return;
-                    
-                    // Update line trace position
-                    const cameraDirection = new THREE.Vector3();
-                    camera.getWorldDirection(cameraDirection);
-                    const rightVector = new THREE.Vector3();
-                    rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
-                    
-                    // Calculate start and end points
-                    const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
-                    startPoint.y = camera.position.y;
-                    
-                    const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
-                    
-                    // Update curve points
-                    curve.points[0].copy(startPoint);
-                    curve.points[1].copy(endPoint);
-                    
-                    // Update the tube geometry
-                    const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
-                    tubeMesh.geometry.dispose();
-                    tubeMesh.geometry = newTubeGeometry;
-
-                    // Check for line collision with towers
-                    raycaster.set(camera.position, cameraDirection);
-                    const intersects = [];
-                    towers.forEach(tower => {
-                        const towerIntersects = raycaster.intersectObject(tower.mesh);
-                        if (towerIntersects.length > 0 && towerIntersects[0].distance <= 500) { // Increased from 330 to 500
-                            intersects.push(towerIntersects[0]);
-                        }
-                    });
-
-                    // Sort intersections by distance and get the closest one
-                    if (intersects.length > 0) {
-                        intersects.sort((a, b) => a.distance - b.distance);
-                        lineCollisionPoint = intersects[0].point;
-                        
-                        // Update line end point to collision point
-                        curve.points[1].copy(lineCollisionPoint);
-                        const collidedTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
-                        tubeMesh.geometry.dispose();
-                        tubeMesh.geometry = collidedTubeGeometry;
-                        
-                        // Change line color to indicate valid target
-                        tubeMaterial.color.setHex(0x00ff00);
-                    } else {
-                        lineCollisionPoint = null;
-                        // Change line color to indicate no target
-                        tubeMaterial.color.setHex(0xff0000);
-                    }
+                    e.preventDefault(); 
+                    // --- Removed all line update and raycasting logic from here ---
+                    // Keep preventDefault if necessary for scrolling behavior
                 }, { passive: false });
 
                 flingBtn.addEventListener('touchend', function(e) {
                     e.preventDefault();
-                    const touchDuration = performance.now() - flingStartTime;
+                    // const touchDuration = performance.now() - flingStartTime; // Keep if needed
                     console.log('Fling button touch ended');
                     showLine = false;
-                    tubeMesh.visible = false;
+                    // tubeMesh.visible = false; // Visibility handled in animate loop
                     this.classList.remove('active');
-                    
-                    if (lineCollisionPoint) {
-                        console.log('Initiating fling with collision point:', lineCollisionPoint);
-                        const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
-                        const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                        
-                        // Match desktop fling strength calculation exactly
-                        const scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
-                        
-                        // Set fling velocity with proper strength
-                        flingVelocity.x = flingDirection.x * scaledStrength;
-                        flingVelocity.z = flingDirection.z * scaledStrength;
-                        verticalVelocity = flingDirection.y * scaledStrength + 0.5;
-                        
-                        // Set fling state
-                        isFlinging = true;
-                        isGrounded = false;
-                        
-                        // Clear line collision point
-                        lineCollisionPoint = null;
-                        
-                        // Apply initial fling velocity immediately
-                        camera.position.x += flingVelocity.x;
-                        camera.position.z += flingVelocity.z;
-                        camera.position.y += verticalVelocity;
-                        
-                        // Apply damping to horizontal movement
-                        flingVelocity.x *= flingDamping;
-                        flingVelocity.z *= flingDamping;
-                        
-                        // Force camera position update
-                        camera.position.y += verticalVelocity;
-                        
-                        // Apply gravity immediately
-                        verticalVelocity -= gravity.y;
-                        
-                        console.log('Fling initiated with velocity:', flingVelocity);
-                    }
+                    // --- Removed fling impulse logic from here (it's in animate) ---
                 }, { passive: false });
 
                 // Camera control variables
@@ -2368,14 +2261,16 @@
 
                 // Mouse controls for line visibility
                 document.addEventListener('mousedown', (event) => {
-                    if (event.button === 0) { // Left mouse button
+                    if (event.button === 0 && controls.isLocked) { // Left mouse button AND pointer locked
                         showLine = true;
                     }
+                    // Shotgun firing moved to separate handler
                 });
 
                 document.addEventListener('mouseup', (event) => {
                     if (event.button === 0) { // Left mouse button
                         showLine = false;
+                        // Fling impulse is handled in animate loop based on showLine becoming false
                     }
                 });
 
@@ -2638,8 +2533,62 @@
 
                     } // End of physics update block
 
-                    // Update line trace (remains mostly the same, uses camera position)
-                    // ... (line trace logic) ...
+                    // --- Update Fling Aiming Line --- 
+                    if (showLine && controls.isLocked) {
+                        const cameraDirection = objectPool.getVector(); // Use pool
+                        camera.getWorldDirection(cameraDirection);
+                        
+                        // Calculate start point slightly offset from camera
+                        const rightVector = objectPool.getVector(); // Use pool
+                        rightVector.crossVectors(cameraDirection, camera.up).normalize(); 
+                        const startPoint = objectPool.getVector().copy(camera.position).addScaledVector(rightVector, 1); // Offset slightly right
+                        startPoint.y = camera.position.y - 0.5; // Offset slightly down
+                        const endPoint = objectPool.getVector().copy(camera.position).addScaledVector(cameraDirection, 500); // Max range
+
+                        // Raycast for fling target
+                        raycaster.set(camera.position, cameraDirection);
+                        const objectsToIntersect = towers.map(t => t.mesh); // Get all tower/bridge meshes
+                        const intersects = raycaster.intersectObjects(objectsToIntersect, true); // Recursive check
+
+                        lineCollisionPoint = null; // Reset collision point
+                        let closestDistance = 500; // Max range
+
+                        if (intersects.length > 0) {
+                            for (const intersect of intersects) {
+                                if (intersect.distance < closestDistance) {
+                                    closestDistance = intersect.distance;
+                                    lineCollisionPoint = intersect.point; 
+                                }
+                            }
+                        }
+
+                        // Update line curve and geometry
+                        curve.points[0].copy(startPoint);
+                        if (lineCollisionPoint) {
+                            curve.points[1].copy(lineCollisionPoint);
+                            tubeMaterial.color.setHex(0x00ff00); // Green for valid target
+                        } else {
+                            curve.points[1].copy(endPoint); // Extend to max range if no target
+                            tubeMaterial.color.setHex(0xff0000); // Red for no target
+                        }
+
+                        // Recreate tube geometry (necessary if curve points change)
+                        const newTubeGeometry = new THREE.TubeGeometry(curve, 2, 0.08, 8, false);
+                        tubeMesh.geometry.dispose(); // Dispose old geometry
+                        tubeMesh.geometry = newTubeGeometry;
+                        tubeMesh.visible = true;
+                        
+                        // Release pooled vectors
+                        objectPool.releaseVector(cameraDirection);
+                        objectPool.releaseVector(rightVector);
+                        objectPool.releaseVector(startPoint);
+                        objectPool.releaseVector(endPoint);
+
+                    } else {
+                        tubeMesh.visible = false; // Hide line if not aiming
+                        lineCollisionPoint = null; // Ensure collision point is null when not aiming
+                    }
+                    // --- End Fling Aiming Line Update ---
 
                     // --- Remove Old Physics/Collision Logic ---
                     // Remove velocity/flingVelocity calculations
@@ -3026,6 +2975,21 @@
 
             // Play sound effect
             playShotgunSound();
+
+            // --- Show Muzzle Flash --- 
+            if (muzzleFlash && outerFlash) { // Check if meshes exist
+                muzzleFlash.position.copy(muzzlePosition);
+                outerFlash.position.copy(muzzlePosition);
+                muzzleFlash.visible = true;
+                outerFlash.visible = true;
+
+                // Hide flash after a short delay
+                setTimeout(() => {
+                    muzzleFlash.visible = false;
+                    outerFlash.visible = false;
+                }, 75); // Adjust duration (milliseconds) as needed
+            }
+            // --- End Muzzle Flash --- 
         }
 
         // Sound effects
