@@ -3801,33 +3801,50 @@
                  velocity.x = pushDir.x * 2.0;
                  velocity.z = pushDir.z * 2.0;
                  // Vertical velocity was already handled in the loop
-             } else if (dotProduct < 0) { // Moving into the wall
-                 // Apply slight bounce/stop
-                 const bounceStrength = 0.05; 
-                 velocity.x = pushDir.x * currentSpeed * bounceStrength;
-                 velocity.z = pushDir.z * currentSpeed * bounceStrength;
-                 if (currentSpeed > 0.1) {
-                      verticalVelocity = Math.max(verticalVelocity, currentSpeed * 0.05, 0.05); // Small hop
+             } else if (dotProduct < 0) { // Moving into the wall after iterations
+                  // --- NEW LOGIC ---
+                  // Calculate the velocity component *into* the wall
+                  const inwardSpeed = -dotProduct; // dotProduct is negative, so this is positive
+
+                  // Remove the inward component from the velocity
+                  velocity.x += pushDir.x * inwardSpeed; // Add the normal component scaled by inward speed
+                  velocity.z += pushDir.z * inwardSpeed;
+
+                  // Small hop to unstick from ground/flat surface hits if mostly horizontal collision
+                  if (Math.abs(pushDir.y) < 0.1 && currentSpeed > 0.01) {
+                      verticalVelocity = Math.max(verticalVelocity, 0.1); // Small hop
                       isGrounded = false;
-                 }
-             } else { // Sliding along the wall
-                 // Project velocity onto tangent plane and apply friction
-                 const slideVelX = velocity.x - pushDir.x * dotProduct;
-                 const slideVelZ = velocity.z - pushDir.z * dotProduct;
-                 velocity.x = slideVelX * CORNER_SLIDE_FORCE;
-                 velocity.z = slideVelZ * CORNER_SLIDE_FORCE;
-             } 
-        } // else: No collision after resolution, velocity remains as calculated from input
+                  }
+                  // --- END NEW LOGIC ---
 
-        // Apply friction to normal movement (applied after collision response)
-        velocity.x *= MOVEMENT_SMOOTHING;
-        velocity.z *= MOVEMENT_SMOOTHING;
+                  // --- OLD LOGIC (Commented out for reference) ---
+                  /*
+                  const bounceStrength = 0.05;
+                  velocity.x = pushDir.x * currentSpeed * bounceStrength;
+                  velocity.z = pushDir.z * currentSpeed * bounceStrength;
+                  if (currentSpeed > 0.1) {
+                       verticalVelocity = Math.max(verticalVelocity, currentSpeed * 0.05, 0.05); // Small hop
+                       isGrounded = false;
+                  }
+                  */
+              } else { // Sliding along the wall or moving away
+                  // Project velocity onto tangent plane and apply friction/sliding force
+                  const slideVelX = velocity.x - pushDir.x * dotProduct;
+                  const slideVelZ = velocity.z - pushDir.z * dotProduct;
+                  velocity.x = slideVelX * CORNER_SLIDE_FORCE;
+                  velocity.z = slideVelZ * CORNER_SLIDE_FORCE;
+              }
+         } // else: No collision after resolution, velocity remains as calculated from input
 
-        // Stop movement when velocity is very small
-        if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
-        if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
-        // } // This brace might be closing the 'else' block from line 2866, needs verification
-        // --- Previous code structure needs careful review ensure correct block closure --- 
+         // Apply friction to normal movement (applied after collision response)
+         velocity.x *= MOVEMENT_SMOOTHING;
+         velocity.z *= MOVEMENT_SMOOTHING;
+
+         // Stop movement when velocity is very small
+         if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
+         if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
+         // } // This brace might be closing the 'else' block from line 2866, needs verification
+         // --- Previous code structure needs careful review ensure correct block closure --- 
     
 
     // Always render the scene
