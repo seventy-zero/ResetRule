@@ -1010,6 +1010,7 @@
 
             ws.addEventListener('message', (event) => {
                 const data = JSON.parse(event.data);
+                console.log(`[WS Receive Debug] Received message type: ${data.type}, Victim: ${data.victimUsername || 'N/A'}, LocalUser: ${playerUsername}`); // Log ALL incoming message types
                 // console.log('Received WebSocket message:', { // Commenting this out to reduce console noise
                 //     type: data.type,
                 //     username: data.username,

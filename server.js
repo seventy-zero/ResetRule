@@ -552,47 +552,27 @@ class GameRoom {
                 break;
 
             case 'player_damaged':
-                const attacker = this.players.get(ws);
-                if (attacker) {
-                    const victim = Array.from(this.players.values()).find(p => p.username === data.victimUsername);
-                    if (victim) {
-                        // Apply damage with 5x multiplier if attacker is ruler
-                        const damage = attacker.username === this.currentRuler ? data.damage * 5 : data.damage;
-                        victim.health -= damage;
-                        
-                        if (victim.health <= 0) {
-                            // Player died, drop their orbs
-                            const dropOrbs = victim.orbs;
-                            if (dropOrbs > 0) {
-                                // Drop orbs in a spread pattern around death location
-                                for (let i = 0; i < dropOrbs; i++) {
-                                    const spread = 10;
-                                    const angle = (Math.PI * 2 * i) / dropOrbs;
-                                    const x = victim.position.x + Math.cos(angle) * spread;
-                                    const z = victim.position.z + Math.sin(angle) * spread;
-                                    const y = Math.random() * 100 + 50;
+                const victimUsername = data.victimUsername;
+                let victimWs = null;
 
-                                    const orb = {
-                                        id: this.world.orbs.length,
-                                        position: { x, y, z },
-                                        color: Math.floor(Math.random() * 0xFFFFFF),
-                                        size: Math.random() * 0.5 + 0.5
-                                    };
-                                    this.world.orbs.push(orb);
-                                }
-                                victim.orbs = 0;
-                            }
-                            victim.health = 100;
-                            victim.position = { x: 0, y: 10, z: 0 };
-                        }
-                        
-                        // Broadcast health update
-                        this.broadcast(JSON.stringify({
-                            type: 'player_health_update',
-                            username: victim.username,
-                            health: victim.health
-                        }));
+                // Find the victim's WebSocket connection
+                this.players.forEach((playerData, ws) => {
+                    if (playerData.username === victimUsername) {
+                        victimWs = ws;
                     }
+                });
+
+                // If victim found and connection is open, send them the damage message
+                if (victimWs && victimWs.readyState === WebSocket.OPEN) {
+                    console.log(`[Server Debug] Relaying player_damaged message to ${victimUsername}`); // Log relay
+                    victimWs.send(JSON.stringify({
+                        type: 'player_damaged',
+                        victimUsername: victimUsername,
+                        attackerUsername: data.attackerUsername, // Pass attacker info
+                        damage: data.damage             // Pass damage amount
+                    }));
+                } else {
+                    console.log(`[Server Debug] Could not find or send player_damaged message to ${victimUsername}`);
                 }
                 break;
         }
