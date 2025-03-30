@@ -657,25 +657,25 @@
             
             switch(towerData.type) {
                 case 0: // Cylindrical tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 27, height, segments: 8 });
-                    break;
-                case 1: // Tapered tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 6 });
-                    break;
-                case 2: // Square tower
-                    geometry = getGeometryFromCache('box', { width: 54, height, depth: 54 });
-                    break;
-                case 3: // Hexagonal tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 30, height, segments: 6 });
-                    break;
-                case 4: // Twisted tower
                     geometry = getGeometryFromCache('cylinder', { radius: 22, height, segments: 8 });
                     break;
+                case 1: // Tapered tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 15, height, segments: 6 });
+                    break;
+                case 2: // Square tower
+                    geometry = getGeometryFromCache('box', { width: 44, height, depth: 44 });
+                    break;
+                case 3: // Hexagonal tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 25, height, segments: 6 });
+                    break;
+                case 4: // Twisted tower
+                    geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
+                    break;
                 case 5: // Pyramid tower
-                    geometry = getGeometryFromCache('cone', { radius: 36, height, segments: 4 });
+                    geometry = getGeometryFromCache('cone', { radius: 30, height, segments: 4 });
                     break;
                 case 6: // Octagonal tower
-                    geometry = getGeometryFromCache('cylinder', { radius: 28, height, segments: 8 });
+                    geometry = getGeometryFromCache('cylinder', { radius: 23, height, segments: 8 });
                     break;
                 case 7: // Double width tower
                     geometry = getGeometryFromCache('box', { width: 63, height, depth: 63 });
