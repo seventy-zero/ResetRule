@@ -3005,8 +3005,9 @@
                         }
 
                         // Apply friction to normal movement
-                        velocity.x *= MOVEMENT_SMOOTHING;
-                        velocity.z *= MOVEMENT_SMOOTHING;
+                        const effectiveSmoothing = Math.pow(MOVEMENT_SMOOTHING, deltaTime * 60); // Framerate independent
+                        velocity.x *= effectiveSmoothing;
+                        velocity.z *= effectiveSmoothing;
 
                         // Stop movement when velocity is very small
                         if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
@@ -3837,8 +3838,9 @@
          } // else: No collision after resolution, velocity remains as calculated from input
 
          // Apply friction to normal movement (applied after collision response)
-         velocity.x *= MOVEMENT_SMOOTHING;
-         velocity.z *= MOVEMENT_SMOOTHING;
+         const effectiveSmoothing = Math.pow(MOVEMENT_SMOOTHING, deltaTime * 60); // Framerate independent
+         velocity.x *= effectiveSmoothing;
+         velocity.z *= effectiveSmoothing;
 
          // Stop movement when velocity is very small
          if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
