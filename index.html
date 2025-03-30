@@ -1824,12 +1824,14 @@
             });
 
             controls.addEventListener('unlock', function() {
+                console.log('[Unlock Debug] Controls unlocked.'); // Log unlock start
                 if (!isMobile) {
                     instructions.classList.remove('hidden');
                 }
                 
                 // Notify server that player is leaving
                 if (ws && ws.readyState === WebSocket.OPEN) {
+                    console.log('[Unlock Debug] Sending player_left message.'); // Log message send
                     ws.send(JSON.stringify({
                         type: 'player_left',
                         username: playerUsername
@@ -1837,19 +1839,24 @@
                 }
                 
                 // Remove our own player model if it exists
+                console.log(`[Unlock Debug] Attempting to remove self: ${playerUsername}`); // Log self removal attempt
                 removePlayer(playerUsername);
                 
                 // Clear all other player models
+                console.log('[Unlock Debug] Iterating playerStates to remove others.'); // Log loop start
                 playerStates.forEach((playerState, username) => {
+                    console.log(`[Unlock Debug] Attempting to remove other player: ${username}`); // Log removal attempt in loop
                     removePlayer(username);
                 });
+                console.log('[Unlock Debug] Clearing playerStates map.'); // Log map clear
                 playerStates.clear(); // Explicitly clear the map after removing individuals
 
                 // Reset game state
+                console.log('[Unlock Debug] Resetting game state variables.'); // Log state reset
                 gameStarted = false;
-                playerUsername = '';
+                playerUsername = ''; // Reset username *after* sending player_left
                 
-                // Reset position
+                // Reset position and physics
                 camera.position.set(0, playerHeight, 0);
                 camera.rotation.set(0, 0, 0);
                 velocity.set(0, 0, 0);
@@ -1857,6 +1864,7 @@
                 verticalVelocity = 0;
                 isFlinging = false;
                 isGrounded = true;
+                isDead = false; // Reset death state
                 
                 // Show instructions again
                 instructions.classList.remove('hidden');
@@ -1865,9 +1873,18 @@
                 
                 // Clear any mobile controls if they exist
                 if (isMobile) {
-                    document.querySelector('.mobile-controls').style.display = 'none';
-                    document.getElementById('flingButton').style.display = 'none';
+                    // Assuming these elements exist if isMobile is true
+                    const mobileControls = document.querySelector('.mobile-controls');
+                    const flingButton = document.getElementById('flingButton');
+                    if (mobileControls) mobileControls.style.display = 'none';
+                    if (flingButton) flingButton.style.display = 'none';
+                     // Also attempt removal of left joystick if it was added dynamically
+                    const leftControls = document.querySelector('.mobile-controls.left');
+                    if (leftControls && leftControls.parentElement) {
+                        leftControls.parentElement.removeChild(leftControls);
+                    }
                 }
+                 console.log('[Unlock Debug] Unlock handler finished.'); // Log end
             });
 
             // Mobile controls initialization function
@@ -3611,22 +3628,29 @@
         // Update health display
         function updateHealthDisplay() {
             const segments = healthDisplay.children;
-            const healthPerSegment = 20; // 100 health / 5 segments
-            
-            // --- DEBUG LOG START ---
-            console.log(`[Health Debug] updateHealthDisplay called. Current Player Health: ${playerHealth}`); // Optional: Log health value being used
-            // --- DEBUG LOG END ---
+            const numSegments = segments.length;
+            const maxHealth = 100; // Assuming max health is 100
+            const healthPerSegment = maxHealth / numSegments;
 
-            for (let i = 0; i < segments.length; i++) {
-                const segmentHealth = Math.max(0, playerHealth - (i * healthPerSegment));
-                const segmentPercentage = Math.min(100, (segmentHealth / healthPerSegment) * 100);
-                
-                if (segmentPercentage <= 0) {
-                    segments[i].style.backgroundColor = '#ff0000'; // Brighter red when empty
+            console.log(`[Health Debug] updateHealthDisplay called. Current Player Health: ${playerHealth}`);
+
+            for (let i = 0; i < numSegments; i++) {
+                const segmentThreshold = (i + 1) * healthPerSegment;
+                const prevSegmentThreshold = i * healthPerSegment;
+
+                if (playerHealth >= segmentThreshold) {
+                    // This segment is fully active
+                    segments[i].style.backgroundColor = '#00ff00'; // Full green
+                    segments[i].style.boxShadow = '0 0 10px rgba(0, 255, 0, 0.5)';
+                } else if (playerHealth < prevSegmentThreshold) {
+                    // This segment is fully inactive
+                    segments[i].style.backgroundColor = '#ff0000'; // Full red
                     segments[i].style.boxShadow = '0 0 10px rgba(255, 0, 0, 0.5)';
                 } else {
-                    segments[i].style.backgroundColor = '#00ff00'; // Brighter green when full
-                    segments[i].style.boxShadow = '0 0 10px rgba(0, 255, 0, 0.5)';
+                    // This segment is partially active - Make it yellow for simplicity
+                    // More complex: calculate percentage and use gradient or partial fill
+                    segments[i].style.backgroundColor = '#ffff00'; // Yellow for partial
+                    segments[i].style.boxShadow = '0 0 10px rgba(255, 255, 0, 0.5)';
                 }
             }
         }
