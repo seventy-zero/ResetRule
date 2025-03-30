@@ -259,7 +259,9 @@
     {
         "imports": {
             "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+            // --- Switch to unpkg URL ---
+            "@dimforge/rapier3d-compat": "https://unpkg.com/@dimforge/rapier3d-compat@0.11.2/rapier.es.js" 
         }
     }
     </script>
@@ -452,13 +454,26 @@
                  if (this.rapierBodyHandle !== null && rapierWorld) {
                      const body = rapierWorld.getRigidBody(this.rapierBodyHandle);
                      if (body) {
-                         rapierWorld.removeRigidBody(body);
+                         // Remove colliders first
+                         const numColliders = body.numColliders();
+                         for (let i = 0; i < numColliders; i++) {
+                             const colliderHandle = body.collider(0);
+                             const collider = rapierWorld.getCollider(colliderHandle);
+                             if (collider) {
+                                 rapierWorld.removeCollider(collider, false);
+                             }
+                         }
+                         rapierWorld.removeRigidBody(body); // Then remove body
                          console.log(`Removed Rapier body for remote player: ${this.username}, Handle: ${this.rapierBodyHandle}`);
                      } else {
                          console.warn(`Could not find Rapier body to remove for player: ${this.username}, Handle: ${this.rapierBodyHandle}`);
                      }
                      this.rapierBodyHandle = null;
                      playerHandles.delete(this.username); // Remove from username mapping
+                     // Also remove from meshToBodyMap if it exists there
+                     if (this.mesh) {
+                         meshToBodyMap.delete(this.mesh.uuid);
+                     }
                  }
              }
              // --- End remove method ---
@@ -2004,16 +2019,22 @@
                         // It's crucial to remove colliders associated with the body *before* removing the body itself
                         // Iterate through colliders attached to the body
                         const numColliders = body.numColliders();
+                        console.log(`Removing ${numColliders} colliders for local player body ${playerBodyHandle}`);
                         for (let i = 0; i < numColliders; i++) {
-                            const colliderHandle = body.collider(0); // Get collider handle (index is always 0 after removal)
+                            // Always get index 0 because removing shifts the indices
+                            const colliderHandle = body.collider(0);
                             const collider = rapierWorld.getCollider(colliderHandle);
                             if (collider) {
+                                console.log(`Removing collider handle: ${colliderHandle}`);
                                 rapierWorld.removeCollider(collider, false); // false: don't wake neighbors unnecessarily
+                            } else {
+                                console.warn(`Could not find collider with handle ${colliderHandle} to remove.`);
+                                // Break potentially? Or just log and continue trying? Let's log and continue.
                             }
                         }
                         // Now remove the rigid body
                         rapierWorld.removeRigidBody(body);
-                        console.log(`Removed player Rapier body and colliders, handle: ${playerBodyHandle}`);
+                        console.log(`Removed player Rapier body handle: ${playerBodyHandle}`);
                      } else {
                          console.warn(`Could not find Rapier body with handle ${playerBodyHandle} to remove.`);
                      }
