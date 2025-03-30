@@ -291,6 +291,7 @@ class GameRoom {
         this.isActive = true;
         this.lastActivity = Date.now();
         this.world = generateWorld(); // Generate world when room is created
+        this.currentRuler = null; // Track the current ruler
         console.log(`Room ${this.name} created with ${this.world.orbs.length} orbs`);
     }
 
@@ -374,6 +375,228 @@ class GameRoom {
             }
         });
     }
+
+    handleMessage(ws, data) {
+        switch (data.type) {
+            case 'join':
+                this.addPlayer(ws, data.username);
+                
+                // Send initial room information to the new player
+                ws.send(JSON.stringify({
+                    type: 'room_info',
+                    id: this.id,
+                    name: this.name,
+                    playerCount: this.players.size
+                }));
+
+                // Send existing players to the new player
+                this.players.forEach((playerData, playerWs) => {
+                    if (playerWs !== ws) {
+                        ws.send(JSON.stringify({
+                            type: 'player_joined',
+                            username: playerData.username,
+                            position: playerData.position,
+                            rotation: playerData.rotation
+                        }));
+                    }
+                });
+
+                // Broadcast new player to all other players in the room
+                this.broadcast(JSON.stringify({
+                    type: 'player_joined',
+                    username: data.username,
+                    position: { x: 0, y: 10, z: 0 },
+                    rotation: { x: 0, y: 0, z: 0 }
+                }), ws);
+                break;
+
+            case 'request_world_data':
+                // Send world data to the requesting player
+                ws.send(JSON.stringify({
+                    type: 'world_data',
+                    towers: this.world.towers,
+                    bridges: this.world.bridges,
+                    orbs: this.world.orbs
+                }));
+                break;
+
+            case 'collect_orb':
+                const player = this.players.get(ws);
+                if (player) {
+                    // Find the orb in the room's world
+                    const orbIndex = this.world.orbs.findIndex(orb => orb.id === data.orbId);
+                    if (orbIndex !== -1) {
+                        // Remove the orb from the world
+                        this.world.orbs.splice(orbIndex, 1);
+                        
+                        // Broadcast orb collection to all players in the room
+                        this.broadcast(JSON.stringify({
+                            type: 'orb_collected',
+                            orbId: data.orbId,
+                            username: player.username
+                        }));
+                    }
+                }
+                break;
+
+            case 'position':
+                const playerData = this.players.get(ws);
+                if (playerData) {
+                    playerData.position = data.position;
+                    playerData.rotation = data.rotation;
+                    
+                    this.broadcast(JSON.stringify({
+                        type: 'position',
+                        username: playerData.username,
+                        position: data.position,
+                        rotation: data.rotation
+                    }), ws);
+                }
+                break;
+
+            case 'shotgun_shot':
+                const shooter = this.players.get(ws);
+                if (shooter) {
+                    // Broadcast shot to all players in the room
+                    this.broadcast(JSON.stringify({
+                        type: 'shotgun_shot',
+                        username: shooter.username,
+                        position: data.position,
+                        directions: data.directions
+                    }), ws);
+
+                    // Check for hits on other players
+                    this.players.forEach((player, playerWs) => {
+                        if (playerWs === ws) return; // Skip shooter
+
+                        const playerPos = new THREE.Vector3(
+                            player.position[0],
+                            player.position[1],
+                            player.position[2]
+                        );
+                        const shooterPos = new THREE.Vector3(
+                            data.position[0],
+                            data.position[1],
+                            data.position[2]
+                        );
+                        
+                        const distance = playerPos.distanceTo(shooterPos);
+                        
+                        // Check if player is within range (10 units)
+                        if (distance <= 10) {
+                            // Check each pellet direction
+                            data.directions.forEach(pelletDir => {
+                                const direction = new THREE.Vector3(
+                                    pelletDir[0],
+                                    pelletDir[1],
+                                    pelletDir[2]
+                                ).normalize();
+                                
+                                const toPlayer = playerPos.clone()
+                                    .sub(shooterPos)
+                                    .normalize();
+                                
+                                // Calculate angle between shot and player
+                                const angle = direction.angleTo(toPlayer);
+                                
+                                // If player is within the cone (45 degrees = 0.785 radians)
+                                if (angle <= 0.785) {
+                                    // Send damage message to hit player
+                                    playerWs.send(JSON.stringify({
+                                        type: 'player_damaged',
+                                        username: player.username,
+                                        damage: 20 // Damage per pellet
+                                    }));
+                                }
+                            });
+                        }
+                    });
+                }
+                break;
+
+            case 'new_ruler':
+                if (!this.currentRuler) {
+                    this.currentRuler = data.username;
+                    this.broadcast(JSON.stringify({
+                        type: 'new_ruler',
+                        username: data.username
+                    }));
+                }
+                break;
+
+            case 'reset_game':
+                // Reset the world
+                this.world = generateWorld();
+                this.currentRuler = null;
+                
+                // Reset all players
+                this.players.forEach((player, playerWs) => {
+                    player.position = { x: 0, y: 10, z: 0 };
+                    player.rotation = { x: 0, y: 0, z: 0 };
+                    player.health = 100;
+                    player.orbs = 0;
+                    
+                    // Send reset message to each player
+                    playerWs.send(JSON.stringify({
+                        type: 'reset_game'
+                    }));
+                });
+
+                // Broadcast new world data to all players
+                this.broadcast(JSON.stringify({
+                    type: 'world_data',
+                    towers: this.world.towers,
+                    bridges: this.world.bridges,
+                    orbs: this.world.orbs
+                }));
+                break;
+
+            case 'player_damaged':
+                const attacker = this.players.get(ws);
+                if (attacker) {
+                    const victim = Array.from(this.players.values()).find(p => p.username === data.victimUsername);
+                    if (victim) {
+                        // Apply damage with 5x multiplier if attacker is ruler
+                        const damage = attacker.username === this.currentRuler ? data.damage * 5 : data.damage;
+                        victim.health -= damage;
+                        
+                        if (victim.health <= 0) {
+                            // Player died, drop their orbs
+                            const dropOrbs = victim.orbs;
+                            if (dropOrbs > 0) {
+                                // Drop orbs in a spread pattern around death location
+                                for (let i = 0; i < dropOrbs; i++) {
+                                    const spread = 10;
+                                    const angle = (Math.PI * 2 * i) / dropOrbs;
+                                    const x = victim.position.x + Math.cos(angle) * spread;
+                                    const z = victim.position.z + Math.sin(angle) * spread;
+                                    const y = Math.random() * 100 + 50;
+
+                                    const orb = {
+                                        id: this.world.orbs.length,
+                                        position: { x, y, z },
+                                        color: Math.floor(Math.random() * 0xFFFFFF),
+                                        size: Math.random() * 0.5 + 0.5
+                                    };
+                                    this.world.orbs.push(orb);
+                                }
+                                victim.orbs = 0;
+                            }
+                            victim.health = 100;
+                            victim.position = { x: 0, y: 10, z: 0 };
+                        }
+                        
+                        // Broadcast health update
+                        this.broadcast(JSON.stringify({
+                            type: 'player_health_update',
+                            username: victim.username,
+                            health: victim.health
+                        }));
+                    }
+                }
+                break;
+        }
+    }
 }
 
 // Rooms management
@@ -417,151 +640,12 @@ wss.on('connection', (ws) => {
         try {
             const data = JSON.parse(message);
 
-            switch (data.type) {
-                case 'join':
-                    currentRoom = findAvailableRoom();
-                    currentRoom.addPlayer(ws, data.username);
-                    
-                    // Send initial room information to the new player
-                    ws.send(JSON.stringify({
-                        type: 'room_info',
-                        id: currentRoom.id,
-                        name: currentRoom.name,
-                        playerCount: currentRoom.players.size
-                    }));
-
-                    // Send existing players to the new player
-                    currentRoom.players.forEach((playerData, playerWs) => {
-                        if (playerWs !== ws) {
-                            ws.send(JSON.stringify({
-                                type: 'player_joined',
-                                username: playerData.username,
-                                position: playerData.position,
-                                rotation: playerData.rotation
-                            }));
-                        }
-                    });
-
-                    // Broadcast new player to all other players in the room
-                    currentRoom.broadcast(JSON.stringify({
-                        type: 'player_joined',
-                        username: data.username,
-                        position: { x: 0, y: 10, z: 0 },
-                        rotation: { x: 0, y: 0, z: 0 }
-                    }), ws);
-                    break;
-
-                case 'request_world_data':
-                    if (currentRoom) {
-                        // Send world data to the requesting player
-                        ws.send(JSON.stringify({
-                            type: 'world_data',
-                            towers: currentRoom.world.towers,
-                            bridges: currentRoom.world.bridges,
-                            orbs: currentRoom.world.orbs
-                        }));
-                    }
-                    break;
-
-                case 'collect_orb':
-                    if (currentRoom) {
-                        const player = currentRoom.players.get(ws);
-                        if (player) {
-                            // Find the orb in the room's world
-                            const orbIndex = currentRoom.world.orbs.findIndex(orb => orb.id === data.orbId);
-                            if (orbIndex !== -1) {
-                                // Remove the orb from the world
-                                currentRoom.world.orbs.splice(orbIndex, 1);
-                                
-                                // Broadcast orb collection to all players in the room
-                                currentRoom.broadcast(JSON.stringify({
-                                    type: 'orb_collected',
-                                    orbId: data.orbId,
-                                    username: player.username
-                                }));
-                            }
-                        }
-                    }
-                    break;
-
-                case 'position':
-                    if (currentRoom) {
-                        const player = currentRoom.players.get(ws);
-                        if (player) {
-                            player.position = data.position;
-                            player.rotation = data.rotation;
-                            
-                            currentRoom.broadcast(JSON.stringify({
-                                type: 'position',
-                                username: player.username,
-                                position: data.position,
-                                rotation: data.rotation
-                            }), ws);
-                        }
-                    }
-                    break;
-
-                case 'shotgun_shot':
-                    if (currentRoom) {
-                        const shooter = currentRoom.players.get(ws);
-                        if (shooter) {
-                            // Broadcast shot to all players in the room
-                            currentRoom.broadcast(JSON.stringify({
-                                type: 'shotgun_shot',
-                                username: shooter.username,
-                                position: data.position,
-                                directions: data.directions
-                            }), ws);
-
-                            // Check for hits on other players
-                            currentRoom.players.forEach((player, playerWs) => {
-                                if (playerWs === ws) return; // Skip shooter
-
-                                const playerPos = new THREE.Vector3(
-                                    player.position[0],
-                                    player.position[1],
-                                    player.position[2]
-                                );
-                                const shooterPos = new THREE.Vector3(
-                                    data.position[0],
-                                    data.position[1],
-                                    data.position[2]
-                                );
-                                
-                                const distance = playerPos.distanceTo(shooterPos);
-                                
-                                // Check if player is within range (10 units)
-                                if (distance <= 10) {
-                                    // Check each pellet direction
-                                    data.directions.forEach(pelletDir => {
-                                        const direction = new THREE.Vector3(
-                                            pelletDir[0],
-                                            pelletDir[1],
-                                            pelletDir[2]
-                                        ).normalize();
-                                        
-                                        const toPlayer = playerPos.clone()
-                                            .sub(shooterPos)
-                                            .normalize();
-                                        
-                                        // Calculate angle between shot and player
-                                        const angle = direction.angleTo(toPlayer);
-                                        
-                                        // If player is within the cone (45 degrees = 0.785 radians)
-                                        if (angle <= 0.785) {
-                                            // Send damage message to hit player
-                                            playerWs.send(JSON.stringify({
-                                                type: 'player_damaged',
-                                                username: player.username,
-                                                damage: 20 // Damage per pellet
-                                            }));
-                                        }
-                                    });
-                                }
-                            });
-                        }
-                    }
-                    break;
+            if (currentRoom) {
+                currentRoom.handleMessage(ws, data);
+            } else {
+                // If no current room, find an available room
+                currentRoom = findAvailableRoom();
+                currentRoom.handleMessage(ws, data);
             }
         } catch (error) {
             console.error('Error processing message:', error);

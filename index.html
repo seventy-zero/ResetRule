@@ -371,6 +371,7 @@
         const orbs = new Map(); // Add orbs collection
         const playerOrbs = new Map(); // Track orbs collected by each player
         const collisionBoxes = []; // Add collision boxes collection
+        let currentRuler = null; // Track who is the ruler
 
         // Vectors and other THREE.js objects
         const velocity = new THREE.Vector3();
@@ -1227,6 +1228,14 @@
                                 playOrbCollectionSound();
                             }
                         }
+                        break;
+
+                    case 'new_ruler':
+                        handleBecomeRuler(data.username);
+                        break;
+
+                    case 'reset_game':
+                        handleGameReset();
                         break;
                 }
             });
@@ -4021,6 +4030,169 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
 }
 
 // ... existing code ...
+
+        // Function to handle orb collection
+        function handleOrbCollection(orbId, username) {
+            const orb = orbs.get(orbId);
+            if (orb) {
+                scene.remove(orb);
+                orbs.delete(orbId);
+                
+                // Only update the collector's orb count
+                if (username === playerUsername) {
+                    const currentOrbs = playerOrbs.get(playerUsername) || 0;
+                    playerOrbs.set(playerUsername, currentOrbs + 1);
+                    updateOrbCount();
+                    playOrbCollectionSound();
+
+                    // Check if this player becomes the ruler
+                    if (currentOrbs + 1 >= 30 && !currentRuler) {
+                        currentRuler = playerUsername;
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({
+                                type: 'new_ruler',
+                                username: playerUsername
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Function to handle game reset
+        function handleGameReset() {
+            // Reset local state
+            playerOrbs.set(playerUsername, 0);
+            updateOrbCount();
+            currentRuler = null;
+            
+            // Reset position to spawn
+            camera.position.set(0, 10, 0);
+            velocity.set(0, 0, 0);
+            flingVelocity.set(0, 0, 0);
+            verticalVelocity = 0;
+            
+            // Reset health and damage multipliers
+            playerHealth = 100;
+            updateHealthBar();
+            
+            // Close popup
+            const popup = document.getElementById('orbPopup');
+            popup.style.display = 'none';
+        }
+
+        // Function to handle becoming ruler
+        function handleBecomeRuler(username) {
+            currentRuler = username;
+            if (username === playerUsername) {
+                playerHealth = 500; // 5x health
+                updateHealthBar();
+                // Show ruler effect
+                const rulerEffect = document.createElement('div');
+                rulerEffect.style.position = 'fixed';
+                rulerEffect.style.top = '50%';
+                rulerEffect.style.left = '50%';
+                rulerEffect.style.transform = 'translate(-50%, -50%)';
+                rulerEffect.style.color = '#FFD700';
+                rulerEffect.style.fontSize = '24px';
+                rulerEffect.style.fontWeight = 'bold';
+                rulerEffect.style.textShadow = '0 0 10px #FFD700';
+                rulerEffect.style.zIndex = '2000';
+                rulerEffect.textContent = 'YOU ARE THE RULER!';
+                document.body.appendChild(rulerEffect);
+                
+                // Remove effect after 3 seconds
+                setTimeout(() => {
+                    document.body.removeChild(rulerEffect);
+                }, 3000);
+            }
+        }
+
+        // Update the orb popup handlers
+        function updateOrbPopupHandlers() {
+            const popup = document.getElementById('orbPopup');
+            if (popup) {
+                // Function to handle reset
+                const handleReset = () => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'reset_game'
+                        }));
+                    }
+                    handleGameReset();
+                };
+                
+                // Function to handle rule
+                const handleRule = () => {
+                    if (currentRuler === playerUsername) {
+                        // Ruler already has 5x health and damage
+                        popup.style.display = 'none';
+                    } else {
+                        // Show message that someone else is ruler
+                        const message = document.createElement('div');
+                        message.style.position = 'fixed';
+                        message.style.top = '50%';
+                        message.style.left = '50%';
+                        message.style.transform = 'translate(-50%, -50%)';
+                        message.style.color = '#FFD700';
+                        message.style.fontSize = '20px';
+                        message.style.fontWeight = 'bold';
+                        message.style.textShadow = '0 0 10px #FFD700';
+                        message.style.zIndex = '2000';
+                        message.textContent = `${currentRuler} is the Ruler!`;
+                        document.body.appendChild(message);
+                        
+                        // Remove message after 2 seconds
+                        setTimeout(() => {
+                            document.body.removeChild(message);
+                        }, 2000);
+                    }
+                };
+                
+                // Add button event listeners
+                document.getElementById('resetButton').onclick = handleReset;
+                document.getElementById('ruleButton').onclick = handleRule;
+                
+                // Add keyboard event listeners
+                const handleKeyPress = (event) => {
+                    if (event.key.toLowerCase() === 'c') {
+                        handleReset();
+                    } else if (event.key.toLowerCase() === 'v') {
+                        handleRule();
+                    }
+                };
+                
+                // Add keyboard listener when popup is shown
+                document.addEventListener('keydown', handleKeyPress);
+            }
+        }
+
+        // Update the WebSocket message handler to handle new ruler and game reset
+        ws.addEventListener('message', (event) => {
+            const data = JSON.parse(event.data);
+            switch (data.type) {
+                // ... existing cases ...
+                case 'new_ruler':
+                    handleBecomeRuler(data.username);
+                    break;
+                case 'reset_game':
+                    handleGameReset();
+                    break;
+            }
+        });
+
+        // Update the pellet collision handler to apply 5x damage for ruler
+        function handlePelletCollision(victimUsername, attackerUsername) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const damage = attackerUsername === currentRuler ? SHOTGUN_DAMAGE * 5 : SHOTGUN_DAMAGE;
+                ws.send(JSON.stringify({
+                    type: 'player_damaged',
+                    victimUsername: victimUsername,
+                    attackerUsername: attackerUsername,
+                    damage: damage
+                }));
+            }
+        }
     </script>
 </body>
 </html>
