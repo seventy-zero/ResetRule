@@ -2434,8 +2434,8 @@
                 const deltaTime = clock.getDelta();
                 const currentTime = performance.now();
 
-                // Update pellets
-                updatePellets(deltaTime); // Pass deltaTime
+                // Update pellets with fixed timestep
+                updatePellets(FIXED_DELTA_TIME);
 
                 if (gameStarted) {
                     // Update frustum for culling
@@ -2613,27 +2613,20 @@
 
                         // --- Vertical Movement & Gravity --- (Largely unchanged)
                         if (!isGrounded) {
-                            // Apply gravity (framerate independent)
-                            // ... (gravity logic - check if needs adjustment without velocity interaction in collision)
-                            verticalVelocity -= gravity * deltaTime;
+                            // Apply gravity with fixed timestep
+                            verticalVelocity -= gravity * FIXED_DELTA_TIME;
                         } else {
                             verticalVelocity = 0; 
                         }
-                        // Apply vertical velocity (framerate independent)
-                        // Fling velocity is handled separately
-                        let verticalMove = verticalVelocity * deltaTime;
-                        if(isFlinging) {
-                             // Assuming flingVelocity includes Y component for initial jump
-                             // Need to handle fling vertical movement
-                             // This might need adjustment - let's keep simple verticalVelocity for now
-                        }
+
+                        // Apply vertical velocity with fixed timestep
+                        let verticalMove = verticalVelocity * FIXED_DELTA_TIME;
                         camera.position.y += verticalMove;
 
                         // --- Fling Horizontal Movement --- (Apply separately if needed)
                         if (isFlinging) {
-                           camera.position.x += flingVelocity.x * deltaTime;
-                           camera.position.z += flingVelocity.z * deltaTime;
-                           // Damping applied later
+                            camera.position.x += flingVelocity.x * FIXED_DELTA_TIME;
+                            camera.position.z += flingVelocity.z * FIXED_DELTA_TIME;
                         }
 
                         // --- Ground Check --- (Unchanged)
@@ -2642,7 +2635,8 @@
                         // --- Damping / Friction --- 
                         // Apply damping ONLY to fling velocity 
                         if (isFlinging) {
-                            const effectiveFlingDamping = Math.pow(flingDamping, deltaTime * 60);
+                            // Apply damping with fixed timestep
+                            const effectiveFlingDamping = Math.pow(flingDamping, FIXED_DELTA_TIME * 60);
                             flingVelocity.x *= effectiveFlingDamping;
                             flingVelocity.z *= effectiveFlingDamping;
                             if (flingVelocity.lengthSq() < 0.001) {
@@ -3521,7 +3515,6 @@
         // Add pellet animation to the main animation loop
         function animatePellets() {
             const currentTime = Date.now();
-            const deltaTime = clock.getDelta();
             
             pelletPool.active.forEach(pellet => {
                 // Check if pellet has expired
@@ -3534,19 +3527,17 @@
                 pellet.lastPosition.copy(pellet.position);
                 
                 // Apply gravity (framerate independent)
-                // Ensure velocity exists
                 if (!pellet.userData.velocity) {
-                    pellet.userData.velocity = new THREE.Vector3(); // Initialize if missing
+                    pellet.userData.velocity = new THREE.Vector3();
                 }
-                pellet.velocity.y -= PELLET_GRAVITY * deltaTime;
+                pellet.userData.velocity.y -= PELLET_GRAVITY * FIXED_DELTA_TIME;
                 
                 // Apply friction (framerate independent)
-                // Assume PELLET_FRICTION (e.g., 0.99) was tuned for 60fps
-                const effectivePelletFriction = Math.pow(PELLET_FRICTION, deltaTime * 60);
-                pellet.velocity.multiplyScalar(effectivePelletFriction); 
+                const effectivePelletFriction = Math.pow(PELLET_FRICTION, FIXED_DELTA_TIME * 60);
+                pellet.userData.velocity.multiplyScalar(effectivePelletFriction);
                 
-                // Update position (already framerate independent)
-                pellet.position.addScaledVector(pellet.velocity, deltaTime); // Use addScaledVector for clarity
+                // Update position with fixed timestep
+                pellet.position.addScaledVector(pellet.userData.velocity, FIXED_DELTA_TIME);
                 
                 // Check for collisions with towers
                 const pelletCollider = new THREE.Sphere(pellet.position, PELLET_RADIUS);
@@ -3984,7 +3975,7 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
             // Add a small upward boost to help escape
             newPos.y += 0.2;
             
-            // Apply strong horizontal velocity in the push direction
+            // Apply strong horizontal velocity in the push direction with fixed timestep
             const escapeSpeed = STUCK_BOUNCE_SPEED * (1 + Math.abs(dotProduct));
             velocity.x = horizontalPushDir.x * escapeSpeed;
             velocity.z = horizontalPushDir.z * escapeSpeed;
@@ -3997,7 +3988,7 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
             newPos.x += horizontalPushDir.x * pushDistance * COLLISION_PUSH_FORCE;
             newPos.z += horizontalPushDir.z * pushDistance * COLLISION_PUSH_FORCE;
             
-            // Handle velocity reflection
+            // Handle velocity reflection with fixed timestep
             const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
             
             if (dotProduct < 0) {
