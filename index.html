@@ -2532,29 +2532,35 @@
                             const isStuck = distance < playerRadius * STUCK_THRESHOLD;
                             
                             if (isStuck) {
-                                // Player is stuck, apply push-out based on penetration depth and initiate a bounce
-                                // pushDir and pushDistance are already calculated
+                                // Force horizontal-only push direction
+                                const horizontalPushDir = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
                                 
-                                // 1. Apply position correction based on penetration depth
-                                camera.position.x += pushDir.x * pushDistance * STUCK_PUSH_FORCE;
-                                camera.position.z += pushDir.z * pushDistance * STUCK_PUSH_FORCE;
-
-                                // 2. Add upward velocity impulse to help escape
-                                verticalVelocity = 0.3; // Small vertical pop
+                                // Strong horizontal push-out
+                                camera.position.x += horizontalPushDir.x * pushDistance * STUCK_PUSH_FORCE * 2;
+                                camera.position.z += horizontalPushDir.z * pushDistance * STUCK_PUSH_FORCE * 2;
+                                
+                                // Reset vertical position to prevent upward movement
+                                camera.position.y = positionBeforeFrame.y;
+                                
+                                // Apply strong horizontal bounce velocity
+                                flingVelocity.x = horizontalPushDir.x * STUCK_BOUNCE_SPEED * 2;
+                                flingVelocity.z = horizontalPushDir.z * STUCK_BOUNCE_SPEED * 2;
+                                
+                                // Add some horizontal randomness to help escape
+                                flingVelocity.x += (Math.random() - 0.5) * STUCK_BOUNCE_SPEED;
+                                flingVelocity.z += (Math.random() - 0.5) * STUCK_BOUNCE_SPEED;
+                                
+                                // Reset vertical velocity
+                                verticalVelocity = 0;
                                 isGrounded = false;
+                                isFlinging = true;
 
-                                // 3. Set fling velocity to bounce directly away
-                                flingVelocity.x = pushDir.x * STUCK_BOUNCE_SPEED;
-                                flingVelocity.z = pushDir.z * STUCK_BOUNCE_SPEED;
-                                isFlinging = true; // Activate fling physics for this bounce
-
-                                // Logging the bounce event
-                                console.log('Player stuck, initiating bounce:', {
-                                    pushDir: pushDir.clone(),
+                                // Log the bounce event with horizontal-only values
+                                console.log('Player stuck, initiating horizontal bounce:', {
+                                    pushDir: horizontalPushDir.clone(),
                                     pushDistance: pushDistance,
-                                    bounceVelocity: flingVelocity.clone()
+                                    bounceVelocity: new THREE.Vector3(flingVelocity.x, 0, flingVelocity.z)
                                 });
-
                             } else {
                                 // Normal collision response (not stuck)
                                 // pushDir and pushDistance are already calculated
