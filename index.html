@@ -2150,52 +2150,89 @@
                 }, { passive: false });
 
                 leftJoystickZone.addEventListener('touchmove', function(e) {
-                    if (!isLeftTouching) return;
                     e.preventDefault();
+                    if (!isLeftTouching) return;
+                    
                     const touch = e.touches[0];
-                    const currentTime = performance.now();
-                    
-                    if (currentTime - lastUpdateTime < updateInterval) return;
-                    lastUpdateTime = currentTime;
-                    
                     const deltaX = touch.clientX - leftTouchStartX;
                     const deltaY = touch.clientY - leftTouchStartY;
+                    
+                    // Calculate joystick position
                     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                    if (distance > leftMaxDistance) {
+                        const angle = Math.atan2(deltaY, deltaX);
+                        leftJoystickX = Math.cos(angle) * leftMaxDistance;
+                        leftJoystickY = Math.sin(angle) * leftMaxDistance;
+                    } else {
+                        leftJoystickX = deltaX;
+                        leftJoystickY = deltaY;
+                    }
                     
-                    // Apply exponential smoothing to joystick movement
-                    const smoothing = 0.5;
-                    const targetX = distance > leftMaxDistance ? (deltaX / distance) * leftMaxDistance : deltaX;
-                    const targetY = distance > leftMaxDistance ? (deltaY / distance) * leftMaxDistance : deltaY;
+                    // Update joystick visual position
+                    leftJoystick.style.left = `${60 + leftJoystickX}px`;
+                    leftJoystick.style.top = `${60 + leftJoystickY}px`;
                     
-                    leftJoystickX += (targetX - leftJoystickX) * smoothing;
-                    leftJoystickY += (targetY - leftJoystickY) * smoothing;
+                    // Calculate movement direction
+                    const moveX = leftJoystickX / leftMaxDistance;
+                    const moveY = leftJoystickY / leftMaxDistance;
                     
-                    // Update joystick position
-                    leftJoystick.style.left = `${leftJoystickX + 60}px`;
-                    leftJoystick.style.top = `${leftJoystickY + 60}px`;
+                    // Set movement flags based on joystick position
+                    moveForward = moveY < -0.2;
+                    moveBackward = moveY > 0.2;
+                    moveLeft = moveX < -0.2;
+                    moveRight = moveX > 0.2;
                     
-                    // Calculate movement velocity with acceleration
-                    const targetVelocityX = (leftJoystickX / leftMaxDistance) * MAX_MOVEMENT_SPEED;
-                    const targetVelocityY = (leftJoystickY / leftMaxDistance) * MAX_MOVEMENT_SPEED;
+                    // Calculate movement velocity
+                    movementVelocity.x = moveX * MOVEMENT_ACCELERATION;
+                    movementVelocity.y = moveY * MOVEMENT_ACCELERATION;
                     
-                    movementVelocity.x += (targetVelocityX - movementVelocity.x) * MOVEMENT_ACCELERATION;
-                    movementVelocity.y += (targetVelocityY - movementVelocity.y) * MOVEMENT_ACCELERATION;
+                    // Limit movement speed
+                    const speed = movementVelocity.length();
+                    if (speed > MAX_MOVEMENT_SPEED) {
+                        movementVelocity.multiplyScalar(MAX_MOVEMENT_SPEED / speed);
+                    }
                     
-                    // Get camera direction vectors
-                    const cameraDirection = new THREE.Vector3();
-                    camera.getWorldDirection(cameraDirection);
-                    const rightVector = new THREE.Vector3();
-                    rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
+                    // Apply movement using the same system as desktop
+                    const inputDirection = new THREE.Vector3();
+                    inputDirection.z = Number(moveForward) - Number(moveBackward);
+                    inputDirection.x = Number(moveRight) - Number(moveLeft);
+                    inputDirection.normalize();
                     
-                    // Calculate movement relative to camera direction
-                    // Forward/backward movement (Y axis of joystick)
-                    const forwardMovement = movementVelocity.y * cameraDirection;
-                    // Left/right movement (X axis of joystick)
-                    const rightMovement = movementVelocity.x * rightVector;
+                    // Calculate movement distance
+                    const moveDistanceZ = inputDirection.z * moveSpeed * FIXED_DELTA_TIME;
+                    const moveDistanceX = inputDirection.x * moveSpeed * FIXED_DELTA_TIME;
                     
-                    // Combine movements
-                    velocity.x = forwardMovement.x + rightMovement.x;
-                    velocity.z = forwardMovement.z + rightMovement.z;
+                    // Apply movement using PointerLockControls
+                    controls.moveForward(moveDistanceZ);
+                    controls.moveRight(moveDistanceX);
+                    
+                    // Check for collisions
+                    const positionBeforeFrame = camera.position.clone();
+                    playerCollider.center.copy(positionBeforeFrame);
+                    const movementCollision = checkCollision(positionBeforeFrame, playerRadius);
+                    
+                    if (movementCollision.collision) {
+                        const pushDir = new THREE.Vector3();
+                        pushDir.copy(camera.position).sub(movementCollision.closestPoint).normalize();
+                        const pushDistance = playerRadius - movementCollision.distance;
+                        
+                        // Apply horizontal push-out
+                        camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+                        camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                        
+                        // Handle velocity changes
+                        const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
+                        const dotProduct = horizontalPushNormal.x * movementVelocity.x + horizontalPushNormal.y * movementVelocity.y;
+                        
+                        if (dotProduct < 0) {
+                            // We're moving towards the collision, stop movement
+                            movementVelocity.set(0, 0);
+                        } else {
+                            // We're moving along the surface, apply sliding
+                            movementVelocity.x = horizontalPushNormal.x * Math.abs(movementVelocity.x) * CORNER_SLIDE_FORCE;
+                            movementVelocity.y = horizontalPushNormal.y * Math.abs(movementVelocity.y) * CORNER_SLIDE_FORCE;
+                        }
+                    }
                     
                     console.log('Left touch moved:', leftJoystickX, leftJoystickY);
                 }, { passive: false });
