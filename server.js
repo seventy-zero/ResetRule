@@ -12,9 +12,9 @@ const BRIDGE_CHANCE = 0.12;
 const NUM_ORBS = 120;
 
 // Tower dimensions
-const TOWER_RADIUS = 50; // Increased from 30
-const TOWER_WIDTH = 100; // Increased from 60
-const TOWER_DEPTH = 100; // Increased from 60
+const TOWER_RADIUS = 75; // Increased from 50
+const TOWER_WIDTH = 150; // Increased from 100
+const TOWER_DEPTH = 150; // Increased from 100
 
 // Word lists for room names
 const adjectives = [
