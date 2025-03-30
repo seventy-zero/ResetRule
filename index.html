@@ -2756,11 +2756,11 @@
                          lastSentPosition.copy(currentPosition); // Use copy for Vector3
                          lastSentRotation.set(currentRotation.x, currentRotation.y, currentRotation.z);
                     }
-                }
 
-                // --- Release pooled vector ---
-                objectPool.releaseVector(currentPosition);
-                // --- End release ---
+                    // --- Release pooled vector (Moved inside the if block) ---
+                    objectPool.releaseVector(currentPosition);
+                    // --- End release ---
+                }
             }
 
             // Call the modified animate loop
