@@ -734,11 +734,13 @@
             // --- No shrinking needed/applied for this simpler box --- 
 
             // Store tower info with the size-matched simplified localCollisionBox
-            towers.push({
+            const towerObject = {
                 mesh: group,             // The visual group (has world transform)
                 localCollisionBox: localCollisionBox, // The SHRUNKEN local box
                 isBridge: false          // Flag this as not a bridge
-            });
+            };
+            towers.push(towerObject);
+            spatialGrid.add(towerObject); // Add to spatial grid
         }
 
         // Function to create bridge from server data
@@ -795,9 +797,12 @@
             const bridgeObject = {
                 mesh: bridgeGroup, // Store the group which has world transform
                 localCollisionBox: localCollisionBox, // Store the local box
-                isBridge: true // Add flag to identify bridges
+                isBridge: true, // Add flag to identify bridges
+                // Add position explicitly for grid key calculation (use midpoint)
+                position: midPoint.clone() 
             };
             towers.push(bridgeObject);
+            spatialGrid.add(bridgeObject); // Add to spatial grid
 
             // Log bridge collision box details for debugging
             console.log('Bridge added to collision system:', {
@@ -821,7 +826,13 @@
             const localClosestPoint = new THREE.Vector3();
             const worldClosestPoint = new THREE.Vector3();
             
-            for (const tower of towers) {
+            // --- Get nearby objects from spatial grid --- 
+            const nearbyObjects = spatialGrid.getNearbyObjects(position, radius * 2 + 50); // Query slightly larger area
+            // console.log(`Checking collisions against ${nearbyObjects.size} nearby objects`); // Optional debug log
+
+            // Iterate only over nearby objects
+            nearbyObjects.forEach(tower => {
+            // for (const tower of towers) { // <-- OLD WAY: Iterate through all towers
                 const isBridge = tower.isBridge;
                 
                 if (isBridge && tower.localCollisionBox && tower.mesh) {
@@ -903,7 +914,7 @@
                         }
                     }
                 } // Removed the old AABB logic entirely
-            }
+            }); // End of nearbyObjects loop
             
             // Return the closest valid collision found
             return closestCollision || {
@@ -4004,9 +4015,20 @@ function checkContinuousCollision(startPos, endPos, radius) {
     const localClosestPoint = new THREE.Vector3();
     const worldClosestPoint = new THREE.Vector3();
     
-    for (const tower of towers) {
+    // --- Get potentially colliding objects from spatial grid --- 
+    // Query based on the bounding box of the movement line + radius
+    const movementBox = new THREE.Box3().setFromPoints([startPos, endPos]);
+    movementBox.expandByScalar(radius);
+    const queryCenter = movementBox.getCenter(new THREE.Vector3());
+    const queryRadius = movementBox.getSize(new THREE.Vector3()).length() / 2;
+    const nearbyObjects = spatialGrid.getNearbyObjects(queryCenter, queryRadius + 50); // Query based on movement path
+    // console.log(`Checking continuous collisions against ${nearbyObjects.size} nearby objects`); // Optional debug log
+
+    nearbyObjects.forEach(tower => {
+    // for (const tower of towers) { // <-- OLD WAY: Iterate through all towers
         const isBridge = tower.isBridge;
         
+        // OBB Check logic remains the same...
         if (isBridge && tower.localCollisionBox && tower.mesh) {
             // --- OBB Check for Bridges ---
             const bridgeMesh = tower.mesh;
@@ -4102,7 +4124,7 @@ function checkContinuousCollision(startPos, endPos, radius) {
                 }
             }
         }
-    }
+    }); // End of nearbyObjects loop
     
     return closestCollision;
 }
