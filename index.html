@@ -1938,7 +1938,7 @@
                     const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
                     startPoint.y = camera.position.y;
                     
-                    const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
+                    const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(700)); // Increased from 500
                     
                     // Update curve points
                     curve.points[0].copy(startPoint);
@@ -1965,7 +1965,7 @@
                     const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
                     startPoint.y = camera.position.y;
                     
-                    const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(50));
+                    const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(700)); // Increased from 500
                     
                     // Update curve points
                     curve.points[0].copy(startPoint);
@@ -1981,7 +1981,7 @@
                     const intersects = [];
                     towers.forEach(tower => {
                         const towerIntersects = raycaster.intersectObject(tower.mesh);
-                        if (towerIntersects.length > 0 && towerIntersects[0].distance <= 500) { // Increased from 330 to 500
+                        if (towerIntersects.length > 0 && towerIntersects[0].distance <= 700) { // Increased from 500
                             intersects.push(towerIntersects[0]);
                         }
                     });
@@ -2741,7 +2741,7 @@
                         const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
                         startPoint.y = camera.position.y;
                         
-                        const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(200)); // Increased from 50 to 200
+                        const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(700)); // Increased from 500
                         
                         // Update curve points
                         curve.points[0].copy(startPoint);
@@ -2757,7 +2757,7 @@
                         const intersects = [];
                         towers.forEach(tower => {
                             const towerIntersects = raycaster.intersectObject(tower.mesh);
-                            if (towerIntersects.length > 0 && towerIntersects[0].distance <= 430) { // Increased from 330 to 500
+                            if (towerIntersects.length > 0 && towerIntersects[0].distance <= 700) { // Increased from 500
                                 intersects.push(towerIntersects[0]);
                             }
                         });
