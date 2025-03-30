@@ -3449,28 +3449,37 @@
             // Visual feedback for death
             document.body.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
             
-            // Show death message
-            const deathMessage = document.createElement('div');
-            deathMessage.style.position = 'fixed';
-            deathMessage.style.top = '50%';
-            deathMessage.style.left = '50%';
-            deathMessage.style.transform = 'translate(-50%, -50%)';
-            deathMessage.style.color = 'white';
-            deathMessage.style.fontSize = '24px';
-            deathMessage.style.textAlign = 'center';
-            deathMessage.textContent = 'You died! Press SPACE to respawn';
-            document.body.appendChild(deathMessage);
+            // --- NEW BEHAVIOR: Return to "login" screen by unlocking controls ---
+            console.log('[Death Debug] Player died. Unlocking controls to return to login.');
+            controls.unlock(); 
+            // --- END NEW BEHAVIOR ---
+
+            // --- OLD BEHAVIOR: Show death message & wait for respawn ---
+            // // Show death message
+            // const deathMessage = document.createElement('div');
+            // deathMessage.style.position = 'fixed';
+            // deathMessage.style.top = '50%';
+            // deathMessage.style.left = '50%';
+            // deathMessage.style.transform = 'translate(-50%, -50%)';
+            // deathMessage.style.color = 'white';
+            // deathMessage.style.fontSize = '24px';
+            // deathMessage.style.textAlign = 'center';
+            // deathMessage.textContent = 'You died! Press SPACE to respawn';
+            // document.body.appendChild(deathMessage);
             
-            // Handle respawn
-            const handleRespawn = (event) => {
-                if (event.code === 'Space') {
-                    respawn();
-                }
-            };
-            document.addEventListener('keydown', handleRespawn);
+            // // Handle respawn
+            // const handleRespawn = (event) => {
+            //     if (event.code === 'Space') {
+            //         respawn();
+            //         document.removeEventListener('keydown', handleRespawn); // Clean up listener
+            //         deathMessage.remove(); // Remove message
+            //     }
+            // };
+            // document.addEventListener('keydown', handleRespawn);
             
-            // Store the event listener for cleanup
-            deathMessage.dataset.listener = handleRespawn;
+            // // Store the event listener for cleanup (if needed elsewhere, though removed now)
+            // // deathMessage.dataset.listener = handleRespawn; 
+            // --- END OLD BEHAVIOR ---
         }
 
         function respawn() {
@@ -3586,7 +3595,7 @@
             const healthPerSegment = 20; // 100 health / 5 segments
             
             // --- DEBUG LOG START ---
-            // console.log(`[Health Debug] updateHealthDisplay called. Current Player Health: ${playerHealth}`); // Optional: Log health value being used
+            console.log(`[Health Debug] updateHealthDisplay called. Current Player Health: ${playerHealth}`); // Optional: Log health value being used
             // --- DEBUG LOG END ---
 
             for (let i = 0; i < segments.length; i++) {
@@ -4280,7 +4289,7 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
             
             // Reset health and damage multipliers
             playerHealth = 100;
-            updateHealthBar();
+            updateHealthDisplay(); // WAS updateHealthBar()
             
             // Close popup
             const popup = document.getElementById('orbPopup');
@@ -4332,7 +4341,7 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
             // Existing ruler logic (health boost, message for local player)
             if (username === playerUsername) {
                 playerHealth = 500; // 5x health
-                updateHealthBar();
+                updateHealthDisplay(); // WAS updateHealthBar()
                 // Show ruler effect
                 const rulerEffect = document.createElement('div');
                 rulerEffect.style.position = 'fixed';
