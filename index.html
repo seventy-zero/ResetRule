@@ -1241,9 +1241,12 @@
                                 if (pellet) {
                                     const direction = new THREE.Vector3().fromArray(directionArray);
                                     pellet.position.copy(shooterPos); // Start at shooter's reported position
-                                    pellet.velocity.copy(direction).multiplyScalar(PELLET_SPEED);
-                                    pellet.spawnTime = now;
-                                    pellet.bounces = 0; // Reset bounces (though we won't use them)
+                                    // --- Use userData for pellet properties ---
+                                    if (!pellet.userData.velocity) pellet.userData.velocity = new THREE.Vector3(); // Initialize if needed
+                                    pellet.userData.velocity.copy(direction).multiplyScalar(PELLET_SPEED);
+                                    pellet.userData.spawnTime = now;
+                                    pellet.userData.bounces = 0; // Reset bounces
+                                    // --- End userData usage ---
                                     pellet.visible = true; // Make it visible
                                     // Note: pellet is already added to the scene during pool initialization
                                 } else {
@@ -3243,12 +3246,16 @@
             
             pelletPool.active.forEach(pellet => {
                 // Check if pellet has expired
-                if (currentTime - pellet.spawnTime > PELLET_LIFETIME) {
+                if (currentTime - pellet.userData.spawnTime > PELLET_LIFETIME) { // Use userData.spawnTime
                     pelletPool.release(pellet);
                     return;
                 }
                 
                 // Store last position for collision detection
+                // Ensure lastPosition exists before copying
+                if (!pellet.lastPosition) {
+                    pellet.lastPosition = new THREE.Vector3();
+                }
                 pellet.lastPosition.copy(pellet.position);
                 
                 // Apply gravity (framerate independent)
@@ -3256,15 +3263,15 @@
                 if (!pellet.userData.velocity) {
                     pellet.userData.velocity = new THREE.Vector3(); // Initialize if missing
                 }
-                pellet.velocity.y -= PELLET_GRAVITY * deltaTime;
+                pellet.userData.velocity.y -= PELLET_GRAVITY * deltaTime; // Use userData.velocity
                 
                 // Apply friction (framerate independent)
                 // Assume PELLET_FRICTION (e.g., 0.99) was tuned for 60fps
                 const effectivePelletFriction = Math.pow(PELLET_FRICTION, deltaTime * 60);
-                pellet.velocity.multiplyScalar(effectivePelletFriction); 
+                pellet.userData.velocity.multiplyScalar(effectivePelletFriction); // Use userData.velocity
                 
                 // Update position (already framerate independent)
-                pellet.position.addScaledVector(pellet.velocity, deltaTime); // Use addScaledVector for clarity
+                pellet.position.addScaledVector(pellet.userData.velocity, deltaTime); // Use userData.velocity
                 
                 // Check for collisions with towers
                 const pelletCollider = new THREE.Sphere(pellet.position, PELLET_RADIUS);
@@ -3305,16 +3312,19 @@
                     pellet.position.copy(pellet.lastPosition);
                     
                     // Reflect velocity based on collision normal
-                    pellet.velocity.reflect(collisionNormal);
+                    pellet.userData.velocity.reflect(collisionNormal); // Use userData.velocity
                     
                     // Apply bounce and friction
-                    pellet.velocity.multiplyScalar(PELLET_BOUNCE * PELLET_FRICTION);
+                    pellet.userData.velocity.multiplyScalar(PELLET_BOUNCE * PELLET_FRICTION); // Use userData.velocity
                     
                     // Increment bounce counter
-                    pellet.bounces++;
+                    if (typeof pellet.userData.bounces === 'undefined') pellet.userData.bounces = 0; // Initialize if needed
+                    pellet.userData.bounces++; // Use userData.bounces
                     
                     // Remove pellet if too many bounces
-                    if (pellet.bounces >= pellet.maxBounces) {
+                    // Use userData.maxBounces if defined, else PELLET_MAX_BOUNCES. Ensure comparison value exists.
+                    const maxBounces = typeof pellet.userData.maxBounces !== 'undefined' ? pellet.userData.maxBounces : PELLET_MAX_BOUNCES;
+                    if (pellet.userData.bounces >= maxBounces) {
                         pelletPool.release(pellet);
                     }
                 }
