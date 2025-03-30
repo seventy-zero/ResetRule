@@ -411,7 +411,7 @@
 
                 // Use exponential smoothing for interpolation towards the authoritative position
                 // Reduced from -20 to -15 for smoother interpolation
-                const lerpFactor = 1 - Math.exp(-15 * deltaTime); 
+                const lerpFactor = 1 - Math.exp(-25 * deltaTime); // WAS -15
 
                 // Smoothly interpolate position towards the last known server position
                 this.mesh.position.lerp(this.position, lerpFactor);
@@ -1010,13 +1010,13 @@
 
             ws.addEventListener('message', (event) => {
                 const data = JSON.parse(event.data);
-                console.log('Received WebSocket message:', {
-                    type: data.type,
-                    username: data.username,
-                    position: data.position,
-                    rotation: data.rotation,
-                    timestamp: new Date().toISOString()
-                });
+                // console.log('Received WebSocket message:', { // Commenting this out to reduce console noise
+                //     type: data.type,
+                //     username: data.username,
+                //     position: data.position,
+                //     rotation: data.rotation,
+                //     timestamp: new Date().toISOString()
+                // });
                 
                 switch (data.type) {
                     case 'world_data':
