@@ -291,7 +291,7 @@
         const PELLET_LIFETIME = 250;  // Milliseconds - much shorter lifespan
         const PELLET_GRAVITY = 0.0;     // Gravity effect on pellets (0 for straight line)
         const PELLET_RADIUS = 0.4;     // Pellet collision radius - Larger
-        const SHOTGUN_DAMAGE = 10;     // Damage per pellet hit
+        const SHOTGUN_DAMAGE = 5;     // Damage per pellet hit - WAS 10
         const PELLET_FRICTION = 0.99;  // Damping factor for pellets (0=stop, 1=no friction)
         const PELLET_BOUNCE = 0.5;     // How much velocity is kept after bouncing (0-1)
         const PELLET_MAX_BOUNCES = 0;  // How many times a pellet can bounce before disappearing
@@ -435,12 +435,20 @@
 
         // Function to create player model
         function createPlayerModel(username) {
-            console.log('Creating player model for:', username);
-            
+            // More detailed log
+            console.log(`[CreateModel Debug] Attempting model creation. Target User: ${username}, Local User: ${playerUsername}, Game Started: ${gameStarted}, PlayerStates has target? ${playerStates.has(username)}`);
+
             // Check if player model already exists
             if (playerStates.has(username)) {
-                console.log('Player model already exists for:', username);
-                return;
+                const existingState = playerStates.get(username);
+                // If a model somehow exists but the mesh is gone (e.g., disposal error), try recreating.
+                if (!existingState.mesh || !scene.children.includes(existingState.mesh)) {
+                    console.warn(`[CreateModel Debug] Player state existed for ${username}, but mesh was missing/removed. Recreating.`);
+                    playerStates.delete(username); // Remove bad state first
+                } else {
+                    console.log(`[CreateModel Debug] Player model already exists in map and scene for: ${username}. Skipping creation.`);
+                    return existingState.mesh; // Return existing mesh
+                }
             }
 
             const geometry = new THREE.CapsuleGeometry(2, 6, 2, 8);
@@ -1105,27 +1113,31 @@
                         break;
 
                     case 'player_joined':
-                        console.log('Player joined:', {
+                        console.log('[PlayerJoined Debug] Received player_joined:', {
                             username: data.username,
-                            position: data.position,
-                            rotation: data.rotation,
+                            localUsername: playerUsername,
                             gameStarted: gameStarted,
-                            isCurrentPlayer: data.username === playerUsername
+                            shouldCreate: (data.username !== playerUsername && gameStarted)
                         });
                         // Only create player model if it's not the current player and game has started
                         if (data.username !== playerUsername && gameStarted) {
-                            console.log('Creating player model for:', data.username);
+                            console.log(`[PlayerJoined Debug] Conditions met for creating model for ${data.username}. Checking map... PlayerStates has? ${playerStates.has(data.username)}`); // Log check before create
                             if (!playerStates.has(data.username)) {
                                 const playerMesh = createPlayerModel(data.username);
-                                console.log('Player model created:', {
-                                    username: data.username,
-                                    mesh: playerMesh,
-                                    position: playerMesh.position,
-                                    visible: playerMesh.visible,
-                                    inScene: scene.children.includes(playerMesh)
-                                });
+                                // Conditional log based on playerMesh creation result
+                                if (playerMesh) {
+                                    console.log('[PlayerJoined Debug] Player model created via createPlayerModel:', {
+                                        username: data.username,
+                                        meshId: playerMesh.uuid.substring(0, 6), // Log part of mesh ID
+                                        inScene: scene.children.includes(playerMesh)
+                                    });
+                                } else {
+                                     console.warn(`[PlayerJoined Debug] createPlayerModel returned null/undefined for ${data.username}`);
+                                }
+                            } else {
+                                 console.log(`[PlayerJoined Debug] Skipping model creation for ${data.username} because playerStates already has them.`);
                             }
-                            updatePlayerList();
+                            updatePlayerList(); // Keep this outside the if, might need update even if model exists
                         }
                         break;
 
@@ -3764,7 +3776,6 @@
                                     attackerUsername: playerUsername, // Send attacker's username
                                     damage: SHOTGUN_DAMAGE 
                                 }));
-                                console.log(`Sent player_damaged message for ${username}`); // Confirm message sent
                             }
                             pelletPool.release(pellet);
                             return; // Stop processing this pellet after hit
