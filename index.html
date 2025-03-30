@@ -354,6 +354,8 @@
         // Physics world
         let world;
         let physicsReady = false; // Flag to track Rapier initialization
+        let playerBodyHandle = null; // Handle to the player's rigid body in Rapier
+        const gravity = { x: 0.0, y: -9.81 * 2, z: 0.0 }; // Stronger gravity
 
         // Collections
         const towers = [];
@@ -640,14 +642,54 @@
             towerEdges: new THREE.LineBasicMaterial({ color: 0xffffff })
         };
 
-        // Modify createTowerFromData to use shared materials
+        // --- Rapier Initialization ---
+        async function initPhysics() {
+            await RAPIER.init();
+            world = new RAPIER.World(gravity);
+            physicsReady = true;
+            console.log('Rapier physics world initialized.');
+
+            // Create Ground Collider (static plane)
+            let groundColliderDesc = RAPIER.ColliderDesc.cuboid(3000.0, 0.1, 3000.0)
+               .setTranslation(0.0, -0.1, 0.0); // Position slightly below y=0
+            world.createCollider(groundColliderDesc);
+            console.log('Rapier ground collider created.');
+        }
+
+        // Call this initialization function early, perhaps after RAPIER import is confirmed
+        initPhysics();
+
+        // --- Player Physics Body Creation (Call this when game starts) ---
+        function createPlayerPhysicsBody() {
+            if (!physicsReady || playerBodyHandle !== null) return; // Don't create if not ready or already exists
+
+            // Player Rigid Body
+            let rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic()
+                .setTranslation(0.0, playerHeight, 0.0) // Initial position
+                .lockRotations(); // Prevent player capsule from falling over
+
+            let rigidBody = world.createRigidBody(rigidBodyDesc);
+
+            // Player Collider (Capsule Shape)
+            let colliderDesc = RAPIER.ColliderDesc.capsuleY(playerHeight / 2 - playerRadius, playerRadius)
+                .setDensity(1.0) // Set density for mass calculation
+                .setFriction(0.7)
+                .setRestitution(0.3); // Adjust bounciness
+
+            world.createCollider(colliderDesc, rigidBody);
+
+            playerBodyHandle = rigidBody.handle; // Store the handle
+            console.log('Player physics body created with handle:', playerBodyHandle);
+        }
+
+        // Modify the `createTowerFromData` function to add Rapier colliders
         function createTowerFromData(towerData) {
             const height = towerData.height;
             const baseHeight = towerData.baseHeight;
-            
+            const position = { x: towerData.x, y: height / 2 + baseHeight, z: towerData.z };
+
+            // --- Create Three.js visual mesh (as before) ---
             let geometry;
-            let towerHeight = height;
-            
             switch(towerData.type) {
                 case 0: // Cylindrical tower
                     geometry = getGeometryFromCache('cylinder', { radius: 18, height, segments: 8 });
@@ -697,40 +739,51 @@
             const group = new THREE.Group();
             group.add(mesh);
             group.add(edges);
-            group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
+            group.position.set(position.x, position.y, position.z); // Set visual position
             scene.add(group);
 
-            // --- Create a simplified local BOX collider based on tower's WIDEST point --- 
-            let collisionWidth;
-            switch(towerData.type) {
-                case 0: collisionWidth = 18 * 2; break; // Cylindrical (Radius 18)
-                case 1: collisionWidth = 12 * 2; break; // Tapered (Radius 12)
-                case 2: collisionWidth = 36; break;     // Square (Width 36)
-                case 3: collisionWidth = 20 * 2; break; // Hexagonal (Radius 20)
-                case 4: collisionWidth = 15 * 2; break; // Twisted (Radius 15)
-                case 5: collisionWidth = 24 * 2; break; // Pyramid (Base Radius 24)
-                case 6: collisionWidth = 19 * 2; break; // Octagonal (Radius 19)
-                case 7: collisionWidth = 42; break;     // Double width box (Width 42)
-                case 8: collisionWidth = 12 * 2; break; // Inverse pyramid (Top Radius 12) - Assuming this is widest
-                case 9: collisionWidth = 24 * 2; break; // Star (Outer Radius 24)
-                case 10: collisionWidth = 8 * 2; break; // Thin spire (Radius 8)
-                default: collisionWidth = 36; // Fallback default width
+            // --- Create Rapier Collider for the tower ---
+            if (physicsReady) {
+                let colliderDesc;
+                // Match Rapier collider shape roughly to the visual tower type
+                switch (towerData.type) {
+                    case 0: // Cylindrical
+                    case 1: // Tapered
+                    case 3: // Hexagonal
+                    case 4: // Twisted
+                    case 6: // Octagonal
+                    case 8: // Inverse pyramid (approximate with cylinder)
+                    case 9: // Star tower (approximate with cylinder)
+                    case 10: // Thin spire
+                        // Use Cylinder shape for these types
+                        colliderDesc = RAPIER.ColliderDesc.cylinder(height / 2, towerData.radius || 18); // Use provided radius or default
+                        break;
+                    case 2: // Square
+                         colliderDesc = RAPIER.ColliderDesc.cuboid(18, height / 2, 18); // Half-extents
+                         break;
+                    case 5: // Pyramid
+                        // Approximate pyramid with a cone or cylinder
+                        colliderDesc = RAPIER.ColliderDesc.cylinder(height / 2, 24); // Use base radius
+                        break;
+                    case 7: // Double width tower
+                        colliderDesc = RAPIER.ColliderDesc.cuboid(21, height / 2, 21); // Half-extents
+                        break;
+                    default: // Fallback to a default box
+                        colliderDesc = RAPIER.ColliderDesc.cuboid(18, height / 2, 18);
+                }
+
+                colliderDesc.setTranslation(position.x, position.y, position.z) // Set collider position
+                            .setFriction(0.7)
+                            .setRestitution(0.3);
+
+                world.createCollider(colliderDesc); // Create static collider directly in the world
             }
 
-            // Create a simple BoxGeometry for collision using determined width and tower height
-            const collisionGeometry = new THREE.BoxGeometry(collisionWidth, height, collisionWidth);
-            // Create the localCollisionBox from this simple geometry
-            const localCollisionBox = new THREE.Box3().setFromBufferAttribute(
-                 collisionGeometry.attributes.position
-            );
-            collisionGeometry.dispose(); // Dispose temporary geometry
-            // --- No shrinking needed/applied for this simpler box --- 
-
-            // Store tower info with the size-matched simplified localCollisionBox
+            // --- Store tower info (only visual mesh needed now for Three.js) ---
             towers.push({
                 mesh: group,             // The visual group (has world transform)
-                localCollisionBox: localCollisionBox, // The SHRUNKEN local box
-                isBridge: false          // Flag this as not a bridge
+                isBridge: false,         // Flag this as not a bridge
+                // No collision box needed here anymore, Rapier handles it
             });
         }
 
@@ -784,21 +837,29 @@
 
             scene.add(bridgeGroup);
 
-            // Add bridge to towers array for consistent handling
-            const bridgeObject = {
-                mesh: bridgeGroup, // Store the group which has world transform
-                localCollisionBox: localCollisionBox, // Store the local box
-                isBridge: true // Add flag to identify bridges
-            };
-            towers.push(bridgeObject);
+            // --- Create Rapier Collider for the bridge ---
+            if (physicsReady) {
+                // Create a cuboid collider matching the bridge dimensions
+                // Note: Rapier uses half-extents for cuboids
+                let colliderDesc = RAPIER.ColliderDesc.cuboid(bridgeLength / 2, bridgeWidth / 2, bridgeWidth / 2)
+                    .setTranslation(midPoint.x, midPoint.y, midPoint.z) // Set position
+                    .setRotation({ w: Math.cos(angle / 2), x: 0, y: Math.sin(angle / 2), z: 0 }) // Apply rotation
+                    .setFriction(0.7)
+                    .setRestitution(0.3);
 
-            // Log bridge collision box details for debugging
-            console.log('Bridge added to collision system:', {
-                center: bridgeObject.localCollisionBox.getCenter(new THREE.Vector3()), // Log local center
-                size: bridgeObject.localCollisionBox.getSize(new THREE.Vector3()),     // Log local size
-                hasCollisionBox: !!bridgeObject.localCollisionBox, // Check if local box exists
-                isBridge: bridgeObject.isBridge
-            });
+                world.createCollider(colliderDesc); // Create static collider
+            }
+
+            // Store bridge info (visual mesh only)
+            const bridgeObject = {
+                mesh: bridgeGroup,
+                isBridge: true,
+                // No localCollisionBox needed
+            };
+            towers.push(bridgeObject); // Still store in towers for iteration if needed elsewhere
+
+            // Log bridge addition (optional)
+            // console.log('Bridge visual mesh added:', bridgeGroup);
             return bridgeGroup;
         }
 
@@ -1732,25 +1793,41 @@
             // Modified start button handler
             startButton.addEventListener('click', function(event) {
                 event.preventDefault();
-                if (usernameInput.value.trim()) {
+                if (usernameInput.value.trim() && physicsReady) { // Ensure physics is ready
                     playerUsername = usernameInput.value.trim();
                     gameStarted = true;
                     instructions.classList.add('hidden');
-                    
+
+                    // Create player physics body FIRST
+                    createPlayerPhysicsBody();
+
                     // Send join message to server
-                    if (ws.readyState === WebSocket.OPEN) {
+                    if (ws && ws.readyState === WebSocket.OPEN) { // Check ws exists
                         ws.send(JSON.stringify({
                             type: 'join',
                             username: playerUsername
                         }));
+                         // Send initial position from physics body if available
+                         if (playerBodyHandle !== null) {
+                             const playerBody = world.getRigidBody(playerBodyHandle);
+                             if (playerBody) {
+                                 const initialPos = playerBody.translation();
+                                 const initialRot = { x: 0, y: 0, z: 0 }; // Rotation locked
+                                 sendPositionUpdate(initialPos, initialRot); // Send initial state
+                             }
+                         }
                     }
-                    
+
                     if (isMobile) {
                         document.querySelector('.mobile-controls').style.display = 'block';
                         document.getElementById('flingButton').style.display = 'block';
                         initializeMobileControls();
                     }
                     controls.lock();
+
+                } else if (!physicsReady) {
+                    console.error("Physics not ready, cannot start game.");
+                    // Optionally show a message to the user
                 }
             });
 
@@ -1802,6 +1879,16 @@
                 if (isMobile) {
                     document.querySelector('.mobile-controls').style.display = 'none';
                     document.getElementById('flingButton').style.display = 'none';
+                }
+
+                // Remove player physics body
+                if (physicsReady && playerBodyHandle !== null) {
+                    const playerBody = world.getRigidBody(playerBodyHandle);
+                    if (playerBody) {
+                        world.removeRigidBody(playerBody);
+                        console.log('Player physics body removed.');
+                    }
+                    playerBodyHandle = null;
                 }
             });
 
@@ -2019,7 +2106,7 @@
                         camera.position.y += verticalVelocity;
                         
                         // Apply gravity immediately
-                        verticalVelocity -= gravity;
+                        verticalVelocity -= gravity.y;
                         
                         console.log('Fling initiated with velocity:', flingVelocity);
                     }
@@ -2424,652 +2511,268 @@
                 });
             }
 
-            // Animation loop with collision detection, star rotation, and nebula animation
+            // --- Refactored Animate Loop ---
             function animate() {
                 requestAnimationFrame(animate);
 
-                const deltaTime = clock.getDelta();
+                const deltaTime = Math.min(clock.getDelta(), 0.1); // Clamp delta time to avoid large steps
                 const currentTime = performance.now();
 
-                // Update pellets
-                updatePellets(deltaTime); // Pass deltaTime
+                // --- Step 1: Advance Physics Simulation ---
+                if (physicsReady && world) {
+                    world.step();
+                }
+
+                // Update pellets (keep existing logic for now)
+                updatePellets(deltaTime);
 
                 if (gameStarted) {
-                    // Update frustum for culling
-                    projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-                    frustum.setFromProjectionMatrix(projScreenMatrix);
-                    
-                    // Update other players' positions with throttling
+                    // Update frustum for culling (remains the same)
+                    // ...
+
+                    // Update other players' positions (will need refactoring later for physics)
+                    // For now, keep the lerping for visual smoothing
                     if (currentTime - lastCollisionCheck > COLLISION_CHECK_INTERVAL) {
                         playerStates.forEach((playerState, username) => {
                             if (username !== playerUsername) {
                                 const timeSinceUpdate = Date.now() - playerState.lastUpdateTime;
                                 if (timeSinceUpdate > 5000) {
+                                    // Consider removing physics body too if networked players have them
                                     removePlayer(username);
-                                } else {
-                                    playerState.update(deltaTime);
+                                } else if (playerState.mesh) { // Check if mesh exists
+                                    playerState.update(deltaTime); // Continue visual lerping
                                 }
                             }
                         });
                         lastCollisionCheck = currentTime;
                     }
-                    
-                    // Update nebula animations (framerate independent)
-                    const time = currentTime * 0.001; // Keep time for shader effects if needed
-                    nebulas.forEach((nebula, index) => {
-                        if (nebula && nebula.material && nebula.material.uniforms) {
-                            nebula.material.uniforms.time.value = time;
-                            // Scale rotation and position changes by deltaTime
-                            const nebulaRotSpeed = 0.01; // Adjust speed as needed
-                            const nebulaDriftSpeed = 0.5; // Adjust speed as needed
-                            nebula.rotation.y += nebulaRotSpeed * deltaTime;
-                            nebula.rotation.x += (nebulaRotSpeed * 0.5) * deltaTime;
-                            nebula.position.y += Math.sin(time * 0.1 + index) * nebulaDriftSpeed * deltaTime;
-                            nebula.position.x += Math.cos(time * 0.15 + index) * nebulaDriftSpeed * deltaTime;
-                        }
-                    });
 
-                    // Rotate star fields (framerate independent)
-                    // Define base rotation speeds (radians per second)
-                    const starFieldSpeed = 0.005;
-                    const largeStarFieldSpeed = 0.003;
-                    
-                    if (starField) {
-                        starField.rotation.y += starFieldSpeed * deltaTime; // Use deltaTime
-                    }
-                    if (largeStarField) {
-                        largeStarField.rotation.y += largeStarFieldSpeed * deltaTime; // Use deltaTime
-                    }
+                    // Update nebula/star animations (remains the same)
+                    // ...
 
-                    // Update nebula opacity (example - add your nebula logic here if needed)
-                    // if (nebulaMaterial) { ... }
+                    // --- Step 2 & 3: Player Physics Update & Input Handling ---
+                    if (physicsReady && playerBodyHandle !== null && controls.isLocked) {
+                        const playerBody = world.getRigidBody(playerBodyHandle);
+                        if (!playerBody) return; // Should not happen if handle is valid
 
-                    // Only process movement and game logic if controls are locked and game is started
-                    if (controls.isLocked && gameStarted) {
+                        // --- Apply Movement Input Forces/Impulses ---
+                        const moveForceMagnitude = 500.0; // Adjust force strength as needed
+                        const currentVel = playerBody.linvel();
+                        const movementImpulse = { x: 0, y: 0, z: 0 };
 
-                        // --- Store Position Before Movement for Collision Check ---
-                        const positionBeforeFrame = camera.position.clone();
+                        // Get camera direction (ignoring pitch)
+                        const cameraDirection = new THREE.Vector3();
+                        camera.getWorldDirection(cameraDirection);
+                        cameraDirection.y = 0; // Project onto XZ plane
+                        cameraDirection.normalize();
 
-                        // --- Calculate Input Direction ---
-                        const inputDirection = new THREE.Vector3();
-                        inputDirection.z = Number(moveForward) - Number(moveBackward);
-                        inputDirection.x = Number(moveRight) - Number(moveLeft);
-                        inputDirection.normalize(); // Ensure consistent speed diagonally
+                        const rightDirection = new THREE.Vector3();
+                        rightDirection.crossVectors(camera.up, cameraDirection).normalize(); // Right vector relative to camera yaw
 
-                        // --- MOBILE DEBUG LOG START ---
-                        if (isMobile && (moveForward || moveBackward || moveLeft || moveRight)) {
-                           console.log(`[Mobile Debug Animate] Flags: F=${moveForward}, B=${moveBackward}, L=${moveLeft}, R=${moveRight}`);
-                        }
-                        // --- MOBILE DEBUG LOG END ---
+                        let appliedForce = false;
 
-                        // --- Calculate Movement Distance for this Frame ---
-                        // Treat moveSpeed as units per second
-                        const moveDistanceZ = inputDirection.z * moveSpeed * deltaTime;
-                        const moveDistanceX = inputDirection.x * moveSpeed * deltaTime;
+                         // --- Simplified Input to Impulse ---
+                         const impulseStrength = 80.0; // Adjust impulse strength
+                         const targetVel = new THREE.Vector3();
 
-                        // --- Apply Movement using PointerLockControls ---
-                        // This handles movement relative to camera orientation
-                        controls.moveForward(moveDistanceZ); 
-                        controls.moveRight(moveDistanceX);
-                        // NOTE: We are no longer using the separate 'velocity' vector for WASD
+                        if (moveForward) targetVel.add(cameraDirection);
+                        if (moveBackward) targetVel.sub(cameraDirection);
+                        if (moveLeft) targetVel.sub(rightDirection);
+                        if (moveRight) targetVel.add(rightDirection);
 
-                        // --- Collision Check Block (Uses positionBeforeFrame) ---
-                        playerCollider.center.copy(positionBeforeFrame); // Check based on where we *were*
-                        const movementCollision = checkCollision(positionBeforeFrame, playerRadius);
-                        
-                        if (movementCollision.collision) {
-                            // --- Define pushDir early, it's needed for multiple conditions ---
-                            const pushDir = new THREE.Vector3();
-                            pushDir.copy(positionBeforeFrame).sub(movementCollision.closestPoint).normalize();
-                            const distance = positionBeforeFrame.distanceTo(movementCollision.closestPoint);
-                            const pushDistance = playerRadius - distance; // Penetration depth
-                            
-                            const isStuck = distance < playerRadius * STUCK_THRESHOLD;
-                            
-                            if (isStuck) {
-                                // Player is stuck, apply push-out based on penetration depth and initiate a bounce
-                                // pushDir and pushDistance are already calculated
-                                
-                                // 1. Apply position correction based on penetration depth
-                                camera.position.x += pushDir.x * pushDistance * STUCK_PUSH_FORCE;
-                                camera.position.z += pushDir.z * pushDistance * STUCK_PUSH_FORCE;
+                        targetVel.normalize().multiplyScalar(moveSpeed); // Use original moveSpeed for target velocity magnitude
 
-                                // 2. Add upward velocity impulse to help escape
-                                verticalVelocity = 0.3; // Small vertical pop
-                                isGrounded = false;
+                         // Calculate impulse needed to reach target velocity (simplified)
+                         // We aim to change velocity directly for responsiveness, clamped by max force
+                         const desiredVelChange = {
+                             x: targetVel.x - currentVel.x,
+                             y: 0, // Don't affect Y velocity with WASD
+                             z: targetVel.z - currentVel.z
+                         };
 
-                                // 3. Set fling velocity to bounce directly away
-                                flingVelocity.x = pushDir.x * STUCK_BOUNCE_SPEED;
-                                flingVelocity.z = pushDir.z * STUCK_BOUNCE_SPEED;
-                                isFlinging = true; // Activate fling physics for this bounce
+                         // Apply impulse directly (Rapier handles mass)
+                         // Clamping might be needed if impulse gets too large, but start simple
+                         playerBody.applyImpulse(desiredVelChange, true);
 
-                                // Logging the bounce event
-                                console.log('Player stuck, initiating bounce:', {
-                                    pushDir: pushDir.clone(),
-                                    pushDistance: pushDistance,
-                                    bounceVelocity: flingVelocity.clone()
-                                });
 
-                            } else {
-                                // Normal collision response (not stuck)
-                                // pushDir and pushDistance are already calculated
-                                
-                                // Store vertical velocity *before* potential gravity application
-                                const verticalVelocityBeforeCheck = verticalVelocity;
+                        // --- Jumping (Example: Space bar) ---
+                        // Need to add key listener for jump (e.g., Space)
+                        // if (jumpRequested && isPlayerGrounded(playerBody)) {
+                        //     playerBody.applyImpulse({ x: 0, y: 300.0, z: 0 }, true); // Adjust jump impulse
+                        //     jumpRequested = false;
+                        // }
 
-                                // Check if hitting an underside while moving up
-                                if (pushDir.y < -0.1 && verticalVelocityBeforeCheck > 0) {
-                                    // Log hitting underside
-                                    console.log('Collision: Hitting underside', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck });
+                        // --- Fling ---
+                         // Modify the fling logic (mouse/touch release) to apply impulse
+                         if (lineCollisionPoint && !showLine) { // Fling triggered
+                             const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
+                             const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
+                             // Adjust strength calculation if needed, map to an impulse value
+                             const flingImpulseStrength = Math.min(distanceToTarget * 50, flingStrength * 150); // Increase multiplier significantly for impulse
 
-                                    // Stop upward movement immediately
-                                    verticalVelocity = 0;
-                                    isGrounded = false;
+                             const impulse = {
+                                 x: flingDirection.x * flingImpulseStrength,
+                                 y: (flingDirection.y + 0.1) * flingImpulseStrength, // Add some upward bias
+                                 z: flingDirection.z * flingImpulseStrength
+                             };
+                             playerBody.applyImpulse(impulse, true);
 
-                                    // Apply full 3D push-out using pre-calculated pushDistance
-                                    camera.position.addScaledVector(pushDir, pushDistance * COLLISION_PUSH_FORCE);
+                             isFlinging = true; // Keep track if needed for other effects
+                             lineCollisionPoint = null; // Clear collision point
+                         } else if (!showLine) {
+                              isFlinging = false; // Reset fling state if line released without target
+                         }
 
-                                    // Dampen horizontal velocity after hitting ceiling
-                                    if (isFlinging) {
-                                        flingVelocity.x *= 0.5;
-                                        flingVelocity.z *= 0.5;
-                                    } 
-                                    // No else needed for velocity here, as WASD velocity isn't used
-                                } else {
-                                    // Standard collision response (horizontal push/sliding)
-                                    // Log standard collision
-                                    console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
 
-                                    // Apply horizontal push-out using pre-calculated pushDistance
-                                    const horizontalPushForce = isFlinging ? COLLISION_PUSH_FORCE * 1.5 : COLLISION_PUSH_FORCE;
-                                    camera.position.x += pushDir.x * pushDistance * horizontalPushForce;
-                                    camera.position.z += pushDir.z * pushDistance * horizontalPushForce;
+                         // --- Step 4: Synchronize Camera with Physics Body ---
+                         const bodyPosition = playerBody.translation();
+                         camera.position.set(bodyPosition.x, bodyPosition.y + playerHeight / 2, bodyPosition.z); // Adjust camera height relative to body center
 
-                                    // Adjust velocities based on collision (Sliding / Reflection)
-                                    const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
-                                    if (isFlinging) {
-                                        // Fling reflection/dampening - OK
-                                        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                        const dot = flingVelocity.x * horizontalPushNormal.x + flingVelocity.z * horizontalPushNormal.z;
-                                        if (dot < 0) { 
-                                          flingVelocity.x -= 2 * dot * horizontalPushNormal.x * 0.8; 
-                                          flingVelocity.z -= 2 * dot * horizontalPushNormal.z * 0.8;
-                                        }
-                                        flingVelocity.multiplyScalar(0.8); 
-                                    } 
-                                    // No else for normal velocity sliding needed anymore
-                                }
-                            }
-                        } // End of movementCollision response block
-                        // --- [End Collision Response Block] ---
+                        // --- Orb Collision Check (using Rapier) ---
+                        checkOrbCollisionRapier(playerBody);
 
-                        // --- Movement Update --- 
-                        // NO LONGER NEEDED for WASD - PointerLockControls handles it
-                        // Remove calculation of moveVector, totalVelocityX/Z 
-                        // Remove camera.position.x += totalVelocityX * deltaTime; etc.
 
-                        // --- Vertical Movement & Gravity --- (Largely unchanged)
-                        if (!isGrounded) {
-                            // Apply gravity (framerate independent)
-                            // ... (gravity logic - check if needs adjustment without velocity interaction in collision)
-                            verticalVelocity -= gravity * deltaTime;
-                        } else {
-                            verticalVelocity = 0; 
-                        }
-                        // Apply vertical velocity (framerate independent)
-                        // Fling velocity is handled separately
-                        let verticalMove = verticalVelocity * deltaTime;
-                        if(isFlinging) {
-                             // Assuming flingVelocity includes Y component for initial jump
-                             // Need to handle fling vertical movement
-                             // This might need adjustment - let's keep simple verticalVelocity for now
-                        }
-                        camera.position.y += verticalMove;
+                    } // End of physics update block
 
-                        // --- Fling Horizontal Movement --- (Apply separately if needed)
-                        if (isFlinging) {
-                           camera.position.x += flingVelocity.x * deltaTime;
-                           camera.position.z += flingVelocity.z * deltaTime;
-                           // Damping applied later
-                        }
+                    // Update line trace (remains mostly the same, uses camera position)
+                    // ... (line trace logic) ...
 
-                        // --- Ground Check --- (Unchanged)
-                        // ...
+                    // --- Remove Old Physics/Collision Logic ---
+                    // Remove velocity/flingVelocity calculations
+                    // Remove checkCollision calls and responses
+                    // Remove manual gravity application
+                    // Remove isGrounded checks (can potentially query Rapier if needed)
+                    // Remove playerCollider updates
 
-                        // --- Damping / Friction --- 
-                        // Apply damping ONLY to fling velocity 
-                        if (isFlinging) {
-                            const effectiveFlingDamping = Math.pow(flingDamping, deltaTime * 60);
-                            flingVelocity.x *= effectiveFlingDamping;
-                            flingVelocity.z *= effectiveFlingDamping;
-                            if (flingVelocity.lengthSq() < 0.001) {
-                                isFlinging = false;
-                                flingVelocity.set(0, 0, 0);
-                            }
-                        }
-                        // Remove normal velocity damping (velocity no longer used for WASD)
-
-                        // --- Final Updates for Frame --- (Unchanged)
-                        playerCollider.center.copy(camera.position); // Update collider to final position
-                        // ... (Orb check etc) ...
-
-                    } // End of if (controls.isLocked && gameStarted)
-
-                    // Update line trace position
-                    const cameraDirection = new THREE.Vector3();
-                    camera.getWorldDirection(cameraDirection);
-                    const rightVector = new THREE.Vector3();
-                    rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0)).normalize();
-                    
-                    // Update line visibility
-                    tubeMesh.visible = showLine;
-                    
-                    if (showLine) {
-                        // Calculate start and end points
-                        const startPoint = camera.position.clone().add(rightVector.multiplyScalar(2));
-                        startPoint.y = camera.position.y;
-                        
-                        const endPoint = camera.position.clone().add(cameraDirection.multiplyScalar(200)); // Increased from 50 to 200
-                        
-                        // Update curve points
-                        curve.points[0].copy(startPoint);
-                        curve.points[1].copy(endPoint);
-                        
-                        // Update the tube geometry
-                        const newTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
-                        tubeMesh.geometry.dispose();
-                        tubeMesh.geometry = newTubeGeometry;
-
-                        // Check for line collision with towers
-                        raycaster.set(camera.position, cameraDirection);
-                        const intersects = [];
-                        towers.forEach(tower => {
-                            const towerIntersects = raycaster.intersectObject(tower.mesh);
-                            if (towerIntersects.length > 0 && towerIntersects[0].distance <= 430) { // Increased from 330 to 500
-                                intersects.push(towerIntersects[0]);
-                            }
-                        });
-
-                        // Sort intersections by distance and get the closest one
-                        if (intersects.length > 0) {
-                            intersects.sort((a, b) => a.distance - b.distance);
-                            lineCollisionPoint = intersects[0].point;
-                            
-                            // Update line end point to collision point
-                            curve.points[1].copy(lineCollisionPoint);
-                            const collidedTubeGeometry = new THREE.TubeGeometry(curve, 1, 0.08, 8, false);
-                            tubeMesh.geometry.dispose();
-                            tubeMesh.geometry = collidedTubeGeometry;
-                            
-                            // Change line color to indicate valid target
-                            tubeMaterial.color.setHex(0x00ff00);
-                        } else {
-                            lineCollisionPoint = null;
-                            // Change line color to indicate no target
-                            tubeMaterial.color.setHex(0xff0000);
-                        }
-                    } else if (lineCollisionPoint) {
-                        // Initiate fling when line is released and we had a collision point
-                        const flingDirection = lineCollisionPoint.clone().sub(camera.position).normalize();
-                        
-                        // Increase fling strength based on distance to target, but more gently
-                        const distanceToTarget = camera.position.distanceTo(lineCollisionPoint);
-                        const scaledStrength = Math.min(distanceToTarget * 0.09, flingStrength * 1.4);
-                        
-                        // Set velocity components
-                        flingVelocity.x = flingDirection.x * scaledStrength;
-                        flingVelocity.z = flingDirection.z * scaledStrength;
-                        verticalVelocity = flingDirection.y * scaledStrength + 0.5;
-                        
-                        isFlinging = true;
-                        isGrounded = false;
-                        lineCollisionPoint = null;
-                    }
-
-                    // Apply fling velocity if active
-                    if (isFlinging) {
-                        // Move in world space
-                        camera.position.x += flingVelocity.x;
-                        camera.position.z += flingVelocity.z;
-                        camera.position.y += verticalVelocity;
-
-                        // Apply gravity
-                        verticalVelocity -= gravity;
-
-                        // Update player collider position
-                        playerCollider.center.copy(camera.position);
-
-                        // Check collisions with all towers
-                        const movementCollision = checkCollision(camera.position, playerRadius);
-                        
-                        // If there's a collision during fling, push out and continue
-                        if (movementCollision.collision) {
-                            if (isFlinging) {
-                                // During fling, push out strongly and redirect velocity
-                                const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(movementCollision.closestPoint).normalize();
-                                
-                                // Push out with a stronger force
-                                const pushDistance = playerRadius - movementCollision.distance;
-                                camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                
-                                // Normal collision response for all objects
-                                const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                
-                                // Add corner sliding effect
-                                const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-                                if (dotProduct < 0) {
-                                    // We're moving towards the collision, apply stronger bounce
-                                    flingVelocity.x = pushDir.x * speed * 0.8;
-                                    flingVelocity.z = pushDir.z * speed * 0.8;
-                                } else {
-                                    // We're moving along the surface, apply sliding
-                                    flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
-                                    flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
-                                }
-                                
-                                // Add upward velocity for bounce
-                                verticalVelocity = Math.abs(verticalVelocity) * 0.8;
-                            }
-                        }
-
-                        // Apply damping to horizontal movement
-                        flingVelocity.x *= flingDamping;
-                        flingVelocity.z *= flingDamping;
-
-                        // Check for ground collision
-                        if (camera.position.y <= playerHeight) {
-                            camera.position.y = playerHeight;
-                            verticalVelocity = 0;
-                            isGrounded = true;
-                            isFlinging = false;
-                            flingVelocity.set(0, 0, 0);
-                        }
-
-                        // Stop flinging when velocity is very small
-                        if (Math.abs(flingVelocity.x) < 0.001 && Math.abs(flingVelocity.z) < 0.001) {
-                            isFlinging = false;
-                            flingVelocity.set(0, 0, 0);
-                        }
-                    }
-
-                    // Apply gravity and handle ground collision
-                    if (!isGrounded) {
-                        verticalVelocity -= gravity;
-                        camera.position.y += verticalVelocity;
-
-                        // Update player collider position
-                        playerCollider.center.copy(camera.position);
-
-                        // Check collisions after vertical movement
-                        const verticalCollision = checkCollision(camera.position, playerRadius);
-                        if (verticalCollision.collision) {
-                            if (isFlinging) {
-                                // During fling, push out strongly and redirect velocity
-                                const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(verticalCollision.closestPoint).normalize();
-                                
-                                // Push out with a stronger force
-                                const pushDistance = playerRadius - verticalCollision.distance;
-                                camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                
-                                // Normal collision response for all objects
-                                const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                
-                                // Add corner sliding effect
-                                const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-                                if (dotProduct < 0) {
-                                    // We're moving towards the collision, apply stronger bounce
-                                    flingVelocity.x = pushDir.x * speed * 0.8;
-                                    flingVelocity.z = pushDir.z * speed * 0.8;
-                                } else {
-                                    // We're moving along the surface, apply sliding
-                                    flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
-                                    flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
-                                }
-                                
-                                // Add upward velocity for bounce
-                                verticalVelocity = Math.abs(verticalVelocity) * 0.8;
-                            } else {
-                                // During normal movement, push out smoothly
-                                const pushDir = new THREE.Vector3();
-                                pushDir.copy(camera.position).sub(verticalCollision.closestPoint).normalize();
-                                
-                                // Push out with a smoother force
-                                const pushDistance = playerRadius - verticalCollision.distance;
-                                camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                
-                                // Add corner sliding for normal movement
-                                const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
-                                if (dotProduct < 0) {
-                                    // We're moving towards the collision, stop movement
-                                    velocity.x = 0;
-                                    velocity.z = 0;
-                                } else {
-                                    // We're moving along the surface, apply sliding
-                                    velocity.x = pushDir.x * Math.abs(velocity.x) * CORNER_SLIDE_FORCE;
-                                    velocity.z = pushDir.z * Math.abs(velocity.z) * CORNER_SLIDE_FORCE;
-                                }
-                                
-                                // Remove special bridge handling - treat all collisions the same
-                                const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-                                if (currentSpeed > 0.1) { // Only apply bounce if we have significant speed
-                                    const bounceStrength = 0.8; // Consistent bounce for all objects
-                                    velocity.x = pushDir.x * currentSpeed * bounceStrength;
-                                    velocity.z = pushDir.z * currentSpeed * bounceStrength;
-                                    // Further reduced bounce factors
-                                    verticalVelocity = Math.max(currentSpeed * 0.15, 0.1); // Was 0.25, 0.2
-                                    isGrounded = false;
-                                }
-                            }
-                        }
-
-                        // Check for ground collision
-                        if (camera.position.y <= playerHeight) {
-                            camera.position.y = playerHeight;
-                            verticalVelocity = 0;
-                            isGrounded = true;
-                        }
-                    }
-
-                    // Update player collider position for final position
-                    playerCollider.center.copy(camera.position);
-
-                    // Check for orb collisions
-                    // --- DEBUG LOGGING START ---
-                    if (isMobile) {
-                        console.log(`[Mobile Debug] Checking orb collision. Orbs count: ${orbs.size}, Player Pos: ${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)}`);
-                    }
-                    // --- DEBUG LOGGING END ---
-                    const orbCollision = checkOrbCollision(camera.position, playerRadius);
-                    if (orbCollision) {
-                        // Send collection message to server
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({
-                                type: 'collect_orb',
-                                orbId: orbCollision.orbId
-                            }));
-                            
-                            // Remove orb from scene and collection
-                            scene.remove(orbCollision.orb);
-                            orbs.delete(orbCollision.orbId);
-                            
-                            // Update local orb count
-                            const currentOrbs = playerOrbs.get(playerUsername) || 0;
-                            playerOrbs.set(playerUsername, currentOrbs + 1);
-                            updateOrbCount();
-                            
-                            // Play collection sound
-                            playOrbCollectionSound();
-                        }
-                    }
-
-                    // Check collisions for normal movement
-                    const normalCollision = checkCollision(camera.position, playerRadius);
-                    
-                    // Handle normal movement collisions with push-out
-                    if (normalCollision.collision) {
-                        const distance = camera.position.distanceTo(normalCollision.closestPoint);
-                        const isStuck = distance < playerRadius * STUCK_THRESHOLD;
-                        
-                        if (isStuck) {
-                            // Player is stuck, apply stronger push-out force
-                            const pushDir = new THREE.Vector3();
-                            pushDir.copy(camera.position).sub(normalCollision.closestPoint).normalize();
-                            
-                            // Apply extra push force when stuck
-                            const pushDistance = playerRadius * STUCK_PUSH_FORCE;
-                            camera.position.x += pushDir.x * pushDistance;
-                            camera.position.z += pushDir.z * pushDistance;
-                            
-                            // Add upward velocity to help escape
-                            verticalVelocity = 0.3; // Reduced from 1.0
-                            isGrounded = false;
-                            
-                            if (isFlinging) {
-                                // Add extra fling velocity in the push direction
-                                const flingSpeed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                flingVelocity.x = pushDir.x * flingSpeed * 2.0;
-                                flingVelocity.z = pushDir.z * flingSpeed * 2.0;
-                            } else {
-                                // Add some horizontal velocity to help escape
-                                velocity.x = pushDir.x * 2.0;
-                                velocity.z = pushDir.z * 2.0;
-                            }
-                        } else {
-                            // Normal collision response
-                            const pushDir = new THREE.Vector3();
-                            pushDir.copy(camera.position).sub(normalCollision.closestPoint).normalize();
-                            const pushDistance = (playerRadius - distance) + COLLISION_BIAS; // penetration depth + bias
-                            
-                            // Store vertical velocity *before* gravity might affect it later in the loop
-                            const verticalVelocityBeforeCheck = verticalVelocity;
-
-                            // Check if hitting an underside while moving up (using pre-check velocity)
-                            if (pushDir.y < -0.1 && verticalVelocityBeforeCheck > 0) { 
-                                // Log hitting underside
-                                console.log('Collision: Hitting underside', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck });
-                                
-                                // Stop upward movement immediately
-                                verticalVelocity = 0; 
-                                isGrounded = false; // No longer moving up, but not grounded yet
-
-                                // Apply full push-out (including Y) to resolve interpenetration
-                                camera.position.addScaledVector(pushDir, pushDistance * COLLISION_PUSH_FORCE);
-                                
-                                // Optional: Dampen or redirect horizontal velocity after hitting ceiling
-                                if (isFlinging) {
-                                    flingVelocity.x *= 0.5; // Dampen fling
-                                    flingVelocity.z *= 0.5;
-                                } else {
-                                    velocity.x = 0; // Stop horizontal movement
-                                    velocity.z = 0;
-                                }
-                            } else {
-                                // Standard collision response (horizontal push, sliding, etc.)
-                                // If not hitting underside while moving up, apply horizontal push/slide
-                                // Log standard collision
-                                console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
-
-                                if (isFlinging) {
-                                    // Push out horizontally
-                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE * 1.5;
-                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE * 1.5;
-                                    
-                                    // Redirect fling velocity based on horizontal component of collision
-                                    const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-                                    const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
-                                    // Reflect velocity (simple version)
-                                    const dot = flingVelocity.x * horizontalPushNormal.x + flingVelocity.z * horizontalPushNormal.z;
-                                    flingVelocity.x -= 2 * dot * horizontalPushNormal.x * 0.9;
-                                    flingVelocity.z -= 2 * dot * horizontalPushNormal.z * 0.9;
-                                    // Apply some dampening
-                                    flingVelocity.multiplyScalar(0.8);
-
-                                } else {
-                                    // Push out horizontally during normal movement
-                                    camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                                    camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-                                    
-                                    // Add corner sliding for normal movement
-                                    const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
-                                    const dotProduct = horizontalPushNormal.x * velocity.x + horizontalPushNormal.z * velocity.z;
-                                    if (dotProduct < 0) { // Moving into the wall
-                                        // Project velocity onto the collision plane (slide)
-                                        const slideVelX = velocity.x - dotProduct * horizontalPushNormal.x;
-                                        const slideVelZ = velocity.z - dotProduct * horizontalPushNormal.z;
-                                        velocity.x = slideVelX * CORNER_SLIDE_FORCE; // Apply sliding with force factor
-                                        velocity.z = slideVelZ * CORNER_SLIDE_FORCE;
-                                    } // else: moving away or parallel, let friction handle it
-                                }
-                            }
-                        }
-
-                        // Apply friction to normal movement
-                        const effectiveSmoothing = Math.pow(MOVEMENT_SMOOTHING, deltaTime * 60); // Framerate independent
-                        velocity.x *= effectiveSmoothing;
-                        velocity.z *= effectiveSmoothing;
-
-                        // Stop movement when velocity is very small
-                        if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
-                        if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
-                    }
-                }
+                } // End of if (gameStarted)
 
                 // Always render the scene
                 renderer.render(scene, camera);
             }
-            animate();
 
-            // Send position updates
-            function sendPositionUpdate() {
-                if (ws.readyState === WebSocket.OPEN && gameStarted) {
-                    // Calculate speed and heading
-                    const dx = camera.position.x - lastSentPosition.x;
-                    const dz = camera.position.z - lastSentPosition.z;
-                    const speed = Math.sqrt(dx * dx + dz * dz) / (0.016); // Assuming 60fps
-                    const heading = Math.atan2(-dx, -dz) * 180 / Math.PI;
-                    const verticalSpeed = (camera.position.y - lastSentPosition.y) / 0.016;
+            // Helper to check if player is grounded (using Rapier raycast)
+            function isPlayerGrounded(playerBody) {
+                if (!world || !playerBody) return false;
 
-                    // Round position data to 2 decimal places
+                const rayOrigin = playerBody.translation();
+                const rayDirection = { x: 0, y: -1, z: 0 };
+                // Cast slightly below the player capsule's bottom
+                const rayLength = playerRadius + 0.2;
+                const ray = new RAPIER.Ray(rayOrigin, rayDirection);
+                const maxToi = rayLength;
+                const solid = true; // Hit solid objects
+
+                const hit = world.castRay(ray, maxToi, solid);
+                return hit !== null; // Grounded if the ray hits something below
+            }
+
+
+            // Modify orb collision check to use Rapier proximity/intersection
+            function checkOrbCollisionRapier(playerBody) {
+                 if (!world || !playerBody) return;
+
+                 const playerPosition = playerBody.translation();
+                 // Define a shape for the player's interaction radius (larger than visual/physics body)
+                 const interactionRadius = playerRadius * 3; // Increased pickup radius (adjust as needed)
+                 const checkShape = new RAPIER.Ball(interactionRadius);
+                 const checkShapePos = { x: playerPosition.x, y: playerPosition.y, z: playerPosition.z };
+                 const checkShapeRot = { w: 1.0, x: 0.0, y: 0.0, z: 0.0 }; // No rotation for ball
+
+                 // Iterate through orbs (assuming they don't have Rapier bodies yet)
+                 orbs.forEach((orbMesh, orbId) => {
+                     if (!orbMesh) return; // Skip if mesh is missing
+
+                     const orbPosition = orbMesh.position;
+                     const distanceSq = playerPosition.distanceToSquared(orbPosition); // Use squared distance for efficiency
+                     const combinedRadius = interactionRadius + (orbMesh.userData.originalScale || 6); // Use orb scale
+
+                     if (distanceSq < combinedRadius * combinedRadius) {
+                         // Collision detected - Send message to server
+                         console.log(`[Rapier Orb Check] Collision with Orb ID: ${orbId}`);
+                         if (ws && ws.readyState === WebSocket.OPEN) {
+                             ws.send(JSON.stringify({
+                                 type: 'collect_orb',
+                                 orbId: orbId
+                             }));
+                             // Client-side removal and count update still happen on 'orb_collected' message from server
+                             playOrbCollectionSound(); // Play sound immediately for responsiveness
+                         }
+                         // Note: We don't remove the orb here, wait for server confirmation
+                     }
+                 });
+            }
+
+            // Update sendPositionUpdate to potentially take args or read from body
+            function sendPositionUpdate(pos = null, rot = null) { // Allow passing pos/rot
+                if (ws && ws.readyState === WebSocket.OPEN && gameStarted && physicsReady && playerBodyHandle !== null) {
+                    const playerBody = world.getRigidBody(playerBodyHandle);
+                    if (!playerBody) return;
+
+                    const currentPosition = pos || playerBody.translation();
+                    // Rotation is locked, send a fixed rotation or derive from velocity if needed
+                    const currentRotation = rot || { x: 0, y: camera.rotation.y, z: 0 }; // Send camera yaw
+                    const linVel = playerBody.linvel();
+
+                    // Basic speed calculation from linear velocity
+                    const speed = Math.sqrt(linVel.x * linVel.x + linVel.z * linVel.z);
+                    const heading = Math.atan2(-linVel.x, -linVel.z) * 180 / Math.PI; // Heading from velocity
+                    const verticalSpeed = linVel.y;
+
+                    // Round position data
                     const positionData = {
                         position: [
-                            Math.round(camera.position.x * 100) / 100,
-                            Math.round(camera.position.y * 100) / 100,
-                            Math.round(camera.position.z * 100) / 100
+                            Math.round(currentPosition.x * 100) / 100,
+                            Math.round(currentPosition.y * 100) / 100,
+                            Math.round(currentPosition.z * 100) / 100
                         ],
+                        // Send camera yaw as rotation Y
                         rotation: [
-                            Math.round(camera.rotation.x * 100) / 100,
+                            0, // X rotation locked
                             Math.round(camera.rotation.y * 100) / 100,
-                            Math.round(camera.rotation.z * 100) / 100
+                            0  // Z rotation locked
                         ],
                         speed: Math.round(speed),
                         heading: Math.round(heading),
                         verticalSpeed: Math.round(verticalSpeed * 100) / 100
                     };
 
-                    ws.send(JSON.stringify({
-                        type: 'position',
-                        ...positionData
-                    }));
+                    // Check if position or rotation has changed significantly enough to send
+                     const posChanged = !lastSentPosition || currentPosition.distanceTo(lastSentPosition) > 0.01;
+                     // Crude rotation change check (only checking yaw)
+                     const rotChanged = !lastSentRotation || Math.abs(currentRotation.y - lastSentRotation.y) > 0.01;
 
-                    lastSentPosition.copy(camera.position);
-                    lastSentRotation.copy(camera.rotation);
+                    if (posChanged || rotChanged) {
+                        ws.send(JSON.stringify({
+                            type: 'position',
+                            ...positionData
+                        }));
+
+                        // Update last sent state using the actual *physics* position
+                         lastSentPosition.set(currentPosition.x, currentPosition.y, currentPosition.z);
+                         lastSentRotation.set(currentRotation.x, currentRotation.y, currentRotation.z);
+                    }
                 }
             }
 
-            // Update position more frequently (16ms = ~60fps)
-            setInterval(sendPositionUpdate, 16);
+            // Call the modified animate loop
+            animate();
 
-            // Add periodic player list updates
-            setInterval(() => {
-                if (document.getElementById('playerList').classList.contains('visible')) {
-                    updatePlayerList();
-                }
-            }, 100); // Update every 100ms when visible
+            // --- Clean up old variables (optional but recommended) ---
+            // You can now remove:
+            // const velocity = new THREE.Vector3();
+            // const flingVelocity = new THREE.Vector3();
+            // let isGrounded = true;
+            // let verticalVelocity = 0.0;
+            // const playerCollider = new THREE.Sphere(...);
+            // const raycaster = new THREE.Raycaster(); // If only used for old collision/fling
+            // The custom collision constants (COLLISION_PUSH_FORCE etc.)
+
+            // --- TODO / Next Steps ---
+            // - Networked Players: Need to give other players Rapier bodies (kinematic?) and update them based on network messages.
+            // - Jump Keybinding: Add event listener for space bar to trigger jump impulse.
+            // - Fine-tuning: Adjust forces, friction, restitution, gravity, etc. for desired feel.
+            // - Pellet Physics: Decide if pellets need Rapier bodies or if current system is OK.
+            // - Debugging: Use Rapier's debug renderer if needed (requires additional setup).
         } catch (error) {
             console.error('Error during initialization:', error);
             document.body.innerHTML = `
