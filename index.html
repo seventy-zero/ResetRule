@@ -3954,11 +3954,11 @@ if (isFlinging) {
     // Store previous position for continuous collision detection
     const previousPosition = camera.position.clone();
     
-    // Calculate target position
+    // Calculate target position using fixed delta time
     const targetPosition = new THREE.Vector3(
-        camera.position.x + flingVelocity.x,
-        camera.position.y + verticalVelocity,
-        camera.position.z + flingVelocity.z
+        camera.position.x + flingVelocity.x * FIXED_DELTA_TIME,
+        camera.position.y + verticalVelocity * FIXED_DELTA_TIME,
+        camera.position.z + flingVelocity.z * FIXED_DELTA_TIME
     );
     
     // Check for collisions along the movement path
@@ -3974,25 +3974,43 @@ if (isFlinging) {
         
         // Push out slightly past the collision point
         const pushDistance = playerRadius - movementCollision.distance + COLLISION_BIAS;
-        camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-        camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
         
-        // Handle velocity reflection
-        const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
-        const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
-        
-        if (dotProduct < 0) {
-            // We're moving towards the collision, apply bounce
-            flingVelocity.x = pushDir.x * speed * 0.8;
-            flingVelocity.z = pushDir.z * speed * 0.8;
+        // When stuck, push out horizontally instead of vertically
+        if (pushDistance > playerRadius * STUCK_THRESHOLD) {
+            // Strong horizontal push when stuck
+            const horizontalPushDir = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
+            camera.position.x += horizontalPushDir.x * pushDistance * STUCK_PUSH_FORCE;
+            camera.position.z += horizontalPushDir.z * pushDistance * STUCK_PUSH_FORCE;
+            
+            // Add a small upward boost to help escape
+            camera.position.y += 0.1;
+            
+            // Reset vertical velocity to prevent bouncing
+            verticalVelocity = 0;
+            
+            // Apply strong horizontal velocity in the push direction
+            const escapeSpeed = STUCK_BOUNCE_SPEED;
+            flingVelocity.x = horizontalPushDir.x * escapeSpeed;
+            flingVelocity.z = horizontalPushDir.z * escapeSpeed;
         } else {
-            // We're moving along the surface, apply sliding
-            flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
-            flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
+            // Normal collision response
+            camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
+            camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+            
+            // Handle velocity reflection
+            const speed = Math.sqrt(flingVelocity.x * flingVelocity.x + flingVelocity.z * flingVelocity.z);
+            const dotProduct = pushDir.x * flingVelocity.x + pushDir.z * flingVelocity.z;
+            
+            if (dotProduct < 0) {
+                // We're moving towards the collision, apply bounce
+                flingVelocity.x = pushDir.x * speed * 0.8;
+                flingVelocity.z = pushDir.z * speed * 0.8;
+            } else {
+                // We're moving along the surface, apply sliding
+                flingVelocity.x = pushDir.x * speed * CORNER_SLIDE_FORCE;
+                flingVelocity.z = pushDir.z * speed * CORNER_SLIDE_FORCE;
+            }
         }
-        
-        // Add upward velocity for bounce
-        verticalVelocity = Math.abs(verticalVelocity) * 0.8;
     } else {
         // No collision, move to target position
         camera.position.copy(targetPosition);
