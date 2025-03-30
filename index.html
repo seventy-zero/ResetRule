@@ -3947,18 +3947,6 @@ const MAX_COLLISION_ITERATIONS = 5; // Maximum number of collision resolution at
 const EMERGENCY_PUSH_FORCE = 2.0; // Force multiplier for emergency collision resolution
 
 function moveWithCCD(startPos, targetPos, velocity, radius) {
-    // Create a line segment from start to end position
-    const line = new THREE.Line3(startPos, targetPos);
-    let closestCollision = null;
-    let minDistance = Infinity;
-    
-    // Temporary vectors for calculations
-    const worldToLocalMatrix = new THREE.Matrix4();
-    const localStartPos = new THREE.Vector3();
-    const localEndPos = new THREE.Vector3();
-    const localClosestPoint = new THREE.Vector3();
-    const worldClosestPoint = new THREE.Vector3();
-    
     // Check for collisions along the movement path
     const movementCollision = checkContinuousCollision(startPos, targetPos, radius);
     
@@ -3973,94 +3961,47 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
         // Push out with safety margin
         const pushDistance = radius - movementCollision.distance + COLLISION_BIAS + COLLISION_SAFETY_MARGIN;
         
-        // Always use strong horizontal push for any collision
+        // Always use strong horizontal push
         const horizontalPushDir = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
         
         // Calculate the actual movement direction
         const moveDir = new THREE.Vector3();
         moveDir.subVectors(targetPos, startPos).normalize();
         
-        // Determine if we're stuck by checking if we're moving into the wall
+        // Calculate the dot product to determine if we're moving into the wall
         const dotProduct = horizontalPushDir.x * moveDir.x + horizontalPushDir.z * moveDir.z;
-        const isStuck = dotProduct < 0 || pushDistance > radius * 0.5;
         
-        if (isStuck) {
-            // Emergency collision resolution
-            let iterations = 0;
-            let currentPos = newPos.clone();
-            let stillColliding = true;
-            
-            while (stillColliding && iterations < MAX_COLLISION_ITERATIONS) {
-                const collisionCheck = checkCollision(currentPos, radius);
-                if (!collisionCheck.collision) {
-                    stillColliding = false;
-                    break;
-                }
-                
-                // Calculate emergency push direction
-                const emergencyPushDir = new THREE.Vector3();
-                emergencyPushDir.copy(currentPos).sub(collisionCheck.closestPoint).normalize();
-                
-                // Apply strong emergency push
-                const emergencyPushDistance = radius - collisionCheck.distance + COLLISION_BIAS + COLLISION_SAFETY_MARGIN;
-                currentPos.x += emergencyPushDir.x * emergencyPushDistance * EMERGENCY_PUSH_FORCE;
-                currentPos.z += emergencyPushDir.z * emergencyPushDistance * EMERGENCY_PUSH_FORCE;
-                
-                // Add a small upward boost to help escape
-                currentPos.y += 0.3;
-                
-                iterations++;
-            }
-            
-            // If we're still colliding after all iterations, force a position reset
-            if (stillColliding) {
-                console.warn('Emergency collision resolution failed, forcing position reset');
-                currentPos.copy(startPos);
-                currentPos.y += 0.5; // Lift slightly to prevent immediate re-collision
-            }
-            
-            newPos.copy(currentPos);
-            
-            // Apply strong escape velocity
-            const escapeSpeed = STUCK_BOUNCE_SPEED * 2;
-            velocity.x = horizontalPushDir.x * escapeSpeed;
-            velocity.z = horizontalPushDir.z * escapeSpeed;
-            
-            // Add some randomness to help escape
-            velocity.x += (Math.random() - 0.5) * 0.8;
-            velocity.z += (Math.random() - 0.5) * 0.8;
-        } else {
-            // Normal collision response
-            newPos.x += horizontalPushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-            newPos.z += horizontalPushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-            
-            // Handle velocity reflection
-            const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-            
-            if (dotProduct < 0) {
-                // We're moving towards the collision, apply bounce
-                velocity.x = horizontalPushDir.x * speed * 0.8;
-                velocity.z = horizontalPushDir.z * speed * 0.8;
-            } else {
-                // We're moving along the surface, apply sliding
-                velocity.x = horizontalPushDir.x * speed * CORNER_SLIDE_FORCE;
-                velocity.z = horizontalPushDir.z * speed * CORNER_SLIDE_FORCE;
-            }
-        }
+        // Always apply a strong bounce response
+        const bounceSpeed = Math.max(STUCK_BOUNCE_SPEED * 2, Math.abs(dotProduct) * 5);
+        
+        // Apply position correction
+        newPos.x += horizontalPushDir.x * pushDistance * 2;
+        newPos.z += horizontalPushDir.z * pushDistance * 2;
+        
+        // Add a small upward boost
+        newPos.y += 0.3;
+        
+        // Apply bounce velocity
+        velocity.x = horizontalPushDir.x * bounceSpeed;
+        velocity.z = horizontalPushDir.z * bounceSpeed;
+        
+        // Add some randomness to help escape
+        velocity.x += (Math.random() - 0.5) * 0.5;
+        velocity.z += (Math.random() - 0.5) * 0.5;
         
         // Final safety check
         const finalCheck = checkCollision(newPos, radius);
         if (finalCheck.collision) {
-            // If we're still colliding, force a position reset
-            console.warn('Final collision check failed, forcing position reset');
+            // If still colliding, force a position reset with bounce
+            console.warn('Final collision check failed, forcing bounce reset');
             newPos.copy(startPos);
-            newPos.y += 0.5; // Lift slightly to prevent immediate re-collision
+            newPos.y += 0.5;
             
-            // Apply emergency escape velocity
+            // Apply emergency bounce velocity
             const escapeDir = new THREE.Vector3();
             escapeDir.copy(newPos).sub(finalCheck.closestPoint).normalize();
-            velocity.x = escapeDir.x * STUCK_BOUNCE_SPEED * 2;
-            velocity.z = escapeDir.z * STUCK_BOUNCE_SPEED * 2;
+            velocity.x = escapeDir.x * STUCK_BOUNCE_SPEED * 3;
+            velocity.z = escapeDir.z * STUCK_BOUNCE_SPEED * 3;
         }
         
         return { position: newPos, velocity: velocity };
