@@ -703,37 +703,87 @@
             group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
             scene.add(group);
 
-            // --- Create a simplified local BOX collider based on tower's WIDEST point --- 
-            let collisionWidth;
+            // --- Create Rapier Collider ---
+            let colliderDesc;
+            const position = { x: towerData.x, y: height / 2 + baseHeight, z: towerData.z };
+            let halfExtents; // For boxes
+            let radius, halfHeight; // For cylinders/cones
+
             switch(towerData.type) {
-                case 0: collisionWidth = 18 * 2; break; // Cylindrical (Radius 18)
-                case 1: collisionWidth = 12 * 2; break; // Tapered (Radius 12)
-                case 2: collisionWidth = 36; break;     // Square (Width 36)
-                case 3: collisionWidth = 20 * 2; break; // Hexagonal (Radius 20)
-                case 4: collisionWidth = 15 * 2; break; // Twisted (Radius 15)
-                case 5: collisionWidth = 24 * 2; break; // Pyramid (Base Radius 24)
-                case 6: collisionWidth = 19 * 2; break; // Octagonal (Radius 19)
-                case 7: collisionWidth = 42; break;     // Double width box (Width 42)
-                case 8: collisionWidth = 12 * 2; break; // Inverse pyramid (Top Radius 12) - Assuming this is widest
-                case 9: collisionWidth = 24 * 2; break; // Star (Outer Radius 24)
-                case 10: collisionWidth = 8 * 2; break; // Thin spire (Radius 8)
-                default: collisionWidth = 36; // Fallback default width
+                case 0: // Cylindrical tower (Radius 18)
+                    radius = 18; halfHeight = height / 2;
+                    colliderDesc = RAPIER.ColliderDesc.cylinder(halfHeight, radius);
+                    break;
+                case 1: // Tapered tower (Radius 12) - Approximate as cylinder
+                    radius = 12; halfHeight = height / 2;
+                    colliderDesc = RAPIER.ColliderDesc.cylinder(halfHeight, radius);
+                    break;
+                case 2: // Square tower (Width 36)
+                    halfExtents = { x: 18, y: height / 2, z: 18 };
+                    colliderDesc = RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z);
+                    break;
+                case 3: // Hexagonal tower (Radius 20) - Approximate as cylinder
+                    radius = 20; halfHeight = height / 2;
+                    colliderDesc = RAPIER.ColliderDesc.cylinder(halfHeight, radius);
+                    break;
+                case 4: // Twisted tower (Radius 15) - Approximate as cylinder
+                    radius = 15; halfHeight = height / 2;
+                    colliderDesc = RAPIER.ColliderDesc.cylinder(halfHeight, radius);
+                    break;
+                case 5: // Pyramid tower (Base Radius 24) - Approximate as cone (or cylinder for simplicity)
+                    radius = 24 * 0.7; halfHeight = height / 2; // Use average radius approx.
+                    //colliderDesc = RAPIER.ColliderDesc.cone(halfHeight, radius); // Cone might be better if available/stable
+                    colliderDesc = RAPIER.ColliderDesc.cylinder(halfHeight, radius); // Use cylinder for now
+                    break;
+                case 6: // Octagonal tower (Radius 19) - Approximate as cylinder
+                    radius = 19; halfHeight = height / 2;
+                    colliderDesc = RAPIER.ColliderDesc.cylinder(halfHeight, radius);
+                    break;
+                case 7: // Double width tower (Width 42)
+                    halfExtents = { x: 21, y: height / 2, z: 21 };
+                    colliderDesc = RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z);
+                    break;
+                case 8: // Inverse pyramid (Top Radius 12) - Approximate as cylinder
+                    radius = 12 * 0.7; halfHeight = height / 2; // Use average radius approx.
+                    //colliderDesc = RAPIER.ColliderDesc.cone(halfHeight, radius); // Cone might be better if available/stable
+                    colliderDesc = RAPIER.ColliderDesc.cylinder(halfHeight, radius); // Use cylinder for now
+                    break;
+                case 9: // Star tower (Outer Radius 24) - Approximate as cylinder
+                    radius = 24 * 0.8; halfHeight = height / 2; // Average radius approx.
+                    colliderDesc = RAPIER.ColliderDesc.cylinder(halfHeight, radius);
+                    break;
+                case 10: // Thin spire (Radius 8)
+                    radius = 8; halfHeight = height / 2;
+                    colliderDesc = RAPIER.ColliderDesc.cylinder(halfHeight, radius);
+                    break;
+                default: // Fallback (Square Tower)
+                     halfExtents = { x: 18, y: height / 2, z: 18 };
+                    colliderDesc = RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z);
+                    break;
             }
 
-            // Create a simple BoxGeometry for collision using determined width and tower height
-            const collisionGeometry = new THREE.BoxGeometry(collisionWidth, height, collisionWidth);
-            // Create the localCollisionBox from this simple geometry
-            const localCollisionBox = new THREE.Box3().setFromBufferAttribute(
-                 collisionGeometry.attributes.position
-            );
-            collisionGeometry.dispose(); // Dispose temporary geometry
+            if (rapierWorld && colliderDesc) {
+                colliderDesc.setTranslation(position.x, position.y, position.z);
+                // Set friction and restitution if needed
+                // colliderDesc.setFriction(0.7);
+                // colliderDesc.setRestitution(0.3);
+                const collider = rapierWorld.createCollider(colliderDesc);
+                groundBodies.add(collider.handle); // Assume towers are ground
+                meshToBodyMap.set(group.uuid, collider.handle); // Map visual group to collider handle
+                console.log(`Created Rapier tower collider handle: ${collider.handle}`);
+            } else {
+                 console.warn("Rapier world not ready or colliderDesc invalid for tower");
+            }
+            // --- End Rapier Collider ---
+
             // --- No shrinking needed/applied for this simpler box --- 
 
             // Store tower info with the size-matched simplified localCollisionBox
             towers.push({
                 mesh: group,             // The visual group (has world transform)
                 localCollisionBox: localCollisionBox, // The SHRUNKEN local box
-                isBridge: false          // Flag this as not a bridge
+                isBridge: false,          // Flag this as not a bridge
+                rapierHandle: collider ? collider.handle : null // Store Rapier handle
             });
         }
 
@@ -791,7 +841,8 @@
             const bridgeObject = {
                 mesh: bridgeGroup, // Store the group which has world transform
                 localCollisionBox: localCollisionBox, // Store the local box
-                isBridge: true // Add flag to identify bridges
+                isBridge: true, // Add flag to identify bridges
+                rapierHandle: null // Store Rapier handle
             };
             towers.push(bridgeObject);
 
@@ -802,6 +853,23 @@
                 hasCollisionBox: !!bridgeObject.localCollisionBox, // Check if local box exists
                 isBridge: bridgeObject.isBridge
             });
+
+            // --- Create Rapier Collider for Bridge ---
+            let collider = null;
+            if (rapierWorld) {
+                const halfExtents = { x: bridgeLength / 2, y: bridgeWidth / 2, z: bridgeWidth / 2 };
+                const colliderDesc = RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z)
+                    .setTranslation(midPoint.x, midPoint.y, midPoint.z)
+                    .setRotation({ x: 0, y: Math.sin(angle / 2), z: 0, w: Math.cos(angle / 2) }); // Set Rapier rotation
+                collider = rapierWorld.createCollider(colliderDesc);
+                groundBodies.add(collider.handle); // Assume bridges are ground
+                meshToBodyMap.set(bridgeGroup.uuid, collider.handle);
+                console.log(`Created Rapier bridge collider handle: ${collider.handle}`);
+            } else {
+                 console.warn("Rapier world not ready for bridge");
+            }
+            // --- End Rapier Collider ---
+
             return bridgeGroup;
         }
 
@@ -1735,11 +1803,30 @@
             // Modified start button handler
             startButton.addEventListener('click', function(event) {
                 event.preventDefault();
-                if (usernameInput.value.trim()) {
+                if (usernameInput.value.trim() && rapierWorld) { // Ensure Rapier world is ready
                     playerUsername = usernameInput.value.trim();
                     gameStarted = true;
                     instructions.classList.add('hidden');
-                    
+
+                    // --- Create Player Rapier Body ---
+                    const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
+                        .setTranslation(0, playerHeight + playerRadius + 1, 0) // Start slightly above ground
+                        .setLinvel(0, 0, 0)
+                        .setCcdEnabled(true) // Enable Continuous Collision Detection
+                        .setGravityScale(1.0) // Use world gravity
+                        .setLinearDamping(0.5) // Adjust damping as needed
+                        .setAngularDamping(1.0); // Prevent spinning
+                    const playerBody = rapierWorld.createRigidBody(bodyDesc);
+
+                    const colliderDesc = RAPIER.ColliderDesc.capsuleY(playerHeight / 2, playerRadius) // Capsule along Y axis
+                        .setDensity(1.0)
+                        .setFriction(0.7)
+                        .setRestitution(0.0); // No bounce initially
+                    rapierWorld.createCollider(colliderDesc, playerBody);
+                    playerBodyHandle = playerBody.handle; // Store the handle
+                    console.log(`Created player Rapier body handle: ${playerBodyHandle}`);
+                    // --- End Player Rapier Body ---
+
                     // Send join message to server
                     if (ws.readyState === WebSocket.OPEN) {
                         ws.send(JSON.stringify({
@@ -1747,13 +1834,16 @@
                             username: playerUsername
                         }));
                     }
-                    
+
                     if (isMobile) {
                         document.querySelector('.mobile-controls').style.display = 'block';
                         document.getElementById('flingButton').style.display = 'block';
                         initializeMobileControls();
                     }
-                    controls.lock();
+                    controls.lock(); // Lock pointer lock controls AFTER creating player body
+                } else if (!rapierWorld) {
+                    console.error("Rapier world not initialized before starting game!");
+                    // Maybe show an error message to the user?
                 }
             });
 
@@ -1806,6 +1896,19 @@
                     document.querySelector('.mobile-controls').style.display = 'none';
                     document.getElementById('flingButton').style.display = 'none';
                 }
+
+                 // --- Remove Player Rapier Body ---
+                 if (rapierWorld && playerBodyHandle !== null) {
+                     const body = rapierWorld.getRigidBody(playerBodyHandle);
+                     if (body) {
+                        rapierWorld.removeRigidBody(body);
+                        console.log(`Removed player Rapier body handle: ${playerBodyHandle}`);
+                     } else {
+                         console.warn(`Could not find Rapier body with handle ${playerBodyHandle} to remove.`);
+                     }
+                     playerBodyHandle = null;
+                 }
+                 // --- End Removal ---
             });
 
             // Mobile controls initialization function
@@ -3029,25 +3132,32 @@
 
             // Send position updates
             function sendPositionUpdate() {
-                if (ws.readyState === WebSocket.OPEN && gameStarted) {
-                    // Calculate speed and heading
-                    const dx = camera.position.x - lastSentPosition.x;
-                    const dz = camera.position.z - lastSentPosition.z;
-                    const speed = Math.sqrt(dx * dx + dz * dz) / (0.016); // Assuming 60fps
-                    const heading = Math.atan2(-dx, -dz) * 180 / Math.PI;
-                    const verticalSpeed = (camera.position.y - lastSentPosition.y) / 0.016;
+                if (ws.readyState === WebSocket.OPEN && gameStarted && playerBodyHandle !== null && rapierWorld) {
+                    const playerBody = rapierWorld.getRigidBody(playerBodyHandle);
+                    if (!playerBody) return;
+
+                    const currentPosition = playerBody.translation();
+                    const currentVelocity = playerBody.linvel();
+                    // Use camera rotation for sending, as Rapier body rotation is locked
+                    const currentRotation = camera.rotation;
+
+                    // Calculate speed and heading from velocity (more accurate than position diff)
+                    const speed = Math.sqrt(currentVelocity.x * currentVelocity.x + currentVelocity.z * currentVelocity.z);
+                    // Heading from camera rotation (already calculated by PointerLockControls)
+                    const heading = (currentRotation.y * 180 / Math.PI); // Check sign convention if needed
+                    const verticalSpeed = currentVelocity.y;
 
                     // Round position data to 2 decimal places
                     const positionData = {
                         position: [
-                            Math.round(camera.position.x * 100) / 100,
-                            Math.round(camera.position.y * 100) / 100,
-                            Math.round(camera.position.z * 100) / 100
+                            Math.round(currentPosition.x * 100) / 100,
+                            Math.round(currentPosition.y * 100) / 100, // Send Rapier Y position
+                            Math.round(currentPosition.z * 100) / 100
                         ],
-                        rotation: [
-                            Math.round(camera.rotation.x * 100) / 100,
-                            Math.round(camera.rotation.y * 100) / 100,
-                            Math.round(camera.rotation.z * 100) / 100
+                        rotation: [ // Send camera rotation
+                            Math.round(currentRotation.x * 100) / 100,
+                            Math.round(currentRotation.y * 100) / 100,
+                            Math.round(currentRotation.z * 100) / 100
                         ],
                         speed: Math.round(speed),
                         heading: Math.round(heading),
@@ -3059,8 +3169,9 @@
                         ...positionData
                     }));
 
-                    lastSentPosition.copy(camera.position);
-                    lastSentRotation.copy(camera.rotation);
+                    // Update last sent position/rotation (might not be needed anymore)
+                    // lastSentPosition.set(currentPosition.x, currentPosition.y, currentPosition.z);
+                    // lastSentRotation.copy(currentRotation);
                 }
             }
 
