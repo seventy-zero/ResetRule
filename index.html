@@ -3508,7 +3508,7 @@
             // Add shotgun button event listeners
             shotgunButton.addEventListener('touchstart', function(e) {
                 e.preventDefault();
-                console.log('Firing shotgun (mobile button)');
+                console.log('Mobile shotgun button TAPPED.'); // <-- ADDED LOG
                 fireShotgun();
             }, { passive: false });
         }
@@ -3736,6 +3736,7 @@
         const backgroundMusic = new Audio('leader-ultra-essence-lossy-64.mp3');
         backgroundMusic.loop = true; // Will be set again in listener, but safe default
         backgroundMusic.volume = 0.5; // Set to 50% volume by default
+        let musicShouldPlay = false; // Track if music should be playing based on checkbox
 
         // Handle audio context suspension (needed for some browsers)
         const resumeAudio = () => {
@@ -3743,8 +3744,16 @@
             if (audioContext.state === 'suspended') {
                 audioContext.resume().then(() => {
                     console.log("AudioContext Resumed");
-                    // Don't automatically play music here anymore
+                    // Check if music should play *after* context is resumed
+                    if (musicShouldPlay) {
+                        backgroundMusic.play().catch(error => console.log('Error playing background music after resume:', error));
+                        console.log("Music started via resumeAudio");
+                    }
                 }).catch(e => console.error("Error resuming AudioContext:", e));
+            } else if (audioContext.state === 'running' && musicShouldPlay && backgroundMusic.paused) {
+                // If context is running but music didn't start (e.g., race condition), try playing again
+                 backgroundMusic.play().catch(error => console.log('Error playing background music (context already running):', error));
+                 console.log("Music started via resumeAudio (already running)");
             }
         };
 
@@ -3756,15 +3765,19 @@
         // Add listener for the music toggle checkbox
         const musicCheckbox = document.getElementById('musicToggle');
         if (musicCheckbox) {
+            // Update initial musicShouldPlay state based on checkbox
+            musicShouldPlay = musicCheckbox.checked;
+
             musicCheckbox.addEventListener('change', () => {
+                musicShouldPlay = musicCheckbox.checked; // Update state
                 resumeAudio(); // Make sure context is active before playing/pausing
-                if (musicCheckbox.checked) {
+                if (musicShouldPlay) {
                     backgroundMusic.loop = true;
-                    // Use a timeout to ensure context is resumed before playing
-                    setTimeout(() => {
-                         backgroundMusic.play().catch(error => console.log('Error playing background music:', error));
+                    // Attempt to play immediately if context is running, otherwise resumeAudio will handle it
+                    if (audioContext.state === 'running') {
+                         backgroundMusic.play().catch(error => console.log('Error playing background music via toggle:', error));
                          console.log("Music started via toggle");
-                    }, 100); // Small delay
+                    }
                 } else {
                     backgroundMusic.pause();
                     backgroundMusic.currentTime = 0; // Reset to start
@@ -3773,17 +3786,13 @@
             });
         }
 
-        // Play music if the checkbox is checked on load
-        if (musicCheckbox && musicCheckbox.checked) {
-            resumeAudio(); // Ensure context is active
-            // Use a timeout to ensure context is resumed before playing
-             setTimeout(() => {
-                  backgroundMusic.loop = true;
-                  backgroundMusic.play().catch(error => console.log('Error playing background music on load:', error));
-                  console.log("Music started on load");
-             }, 100); // Small delay
+        // Play music if the checkbox is checked on load *only after first interaction*
+        // The resumeAudio function now handles starting music after interaction
+        // No need for the setTimeout logic here anymore.
+        if (musicShouldPlay) {
+             console.log("Music checkbox checked on load, waiting for interaction to play.");
         }
-        
+
         // Removed immediate call to resumeAudio() - it should only happen on interaction or toggle
         // resumeAudio();
 
