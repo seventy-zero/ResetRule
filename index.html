@@ -2570,7 +2570,8 @@
                         cameraDirection.normalize();
 
                         const rightDirection = new THREE.Vector3();
-                        rightDirection.crossVectors(camera.up, cameraDirection).normalize(); // Right vector relative to camera yaw
+                        // Corrected cross product order: Forward x Up = Right
+                        rightDirection.crossVectors(cameraDirection, camera.up).normalize(); // Right vector relative to camera yaw
 
                         let appliedForce = false;
 
