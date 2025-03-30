@@ -1284,6 +1284,19 @@
                         }
                         break;
 
+                    case 'orbs_dropped': // <-- ADD THIS CASE
+                         console.log(`[Orb Drop Debug] Received ${data.orbs.length} dropped orbs.`);
+                         data.orbs.forEach(orbData => {
+                             // Check if orb already exists locally before creating
+                             if (!orbs.has(orbData.id)) {
+                                 console.log(`[Orb Drop Debug] Creating dropped orb ${orbData.id}`);
+                                 createOrb(orbData); // Use existing function to create orb mesh
+                             } else {
+                                 console.log(`[Orb Drop Debug] Dropped orb ${orbData.id} already exists locally. Ignoring.`);
+                             }
+                         });
+                         break;
+
                     case 'new_ruler':
                         handleBecomeRuler(data.username);
                         break;
@@ -3519,6 +3532,21 @@
             // Visual feedback for death
             document.body.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
             
+            // --- SEND DEATH MESSAGE TO SERVER ---
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                console.log(`[Death Debug] Sending 'player_died' message for ${playerUsername} at position ${camera.position.toArray()}`);
+                ws.send(JSON.stringify({
+                    type: 'player_died',
+                    username: playerUsername,
+                    position: [ // Send final position rounded
+                       Math.round(camera.position.x * 100) / 100,
+                       Math.round(camera.position.y * 100) / 100,
+                       Math.round(camera.position.z * 100) / 100
+                    ]
+                }));
+            }
+            // -----------------------------------
+
             // --- NEW BEHAVIOR: Return to "login" screen by unlocking controls ---
             console.log('[Death Debug] Player died. Unlocking controls to return to login.');
             controls.unlock(); 

@@ -292,7 +292,9 @@ class GameRoom {
         this.lastActivity = Date.now();
         this.world = generateWorld(); // Generate world when room is created
         this.currentRuler = null; // Track the current ruler
-        console.log(`Room ${this.name} created with ${this.world.orbs.length} orbs`);
+        this.playerOrbs = new Map(); // <-- Track orb counts per player (ws -> count)
+        this.lastOrbId = this.world.orbs.reduce((maxId, orb) => Math.max(maxId, orb.id), 0); // <-- Initialize max orb ID
+        console.log(`Room ${this.name} created with ${this.world.orbs.length} orbs. Max initial Orb ID: ${this.lastOrbId}`);
     }
 
     addPlayer(ws, username) {
@@ -302,6 +304,7 @@ class GameRoom {
             rotation: { x: 0, y: 0, z: 0 },
             lastActivity: Date.now()
         });
+        this.playerOrbs.set(ws, 0); // <-- Initialize player orb count
         this.lastActivity = Date.now();
         
         // Log world data before sending
@@ -334,6 +337,7 @@ class GameRoom {
             
             // Remove the player
             this.players.delete(ws);
+            this.playerOrbs.delete(ws); // <-- Remove from orb tracking
             
             // Broadcast updated player count
             this.broadcastRoomInfo();
@@ -429,6 +433,12 @@ class GameRoom {
                         // Remove the orb from the world
                         this.world.orbs.splice(orbIndex, 1);
                         
+                        // --- Update player's orb count ---
+                        const currentOrbCount = this.playerOrbs.get(ws) || 0;
+                        this.playerOrbs.set(ws, currentOrbCount + 1);
+                        console.log(`Player ${player.username} collected orb ${data.orbId}. New count: ${currentOrbCount + 1}`);
+                        // --------------------------------
+                        
                         // Broadcast orb collection to all players in the room
                         this.broadcast(JSON.stringify({
                             type: 'orb_collected',
@@ -480,14 +490,16 @@ class GameRoom {
             case 'reset_game':
                 // Reset the world
                 this.world = generateWorld();
+                this.lastOrbId = this.world.orbs.reduce((maxId, orb) => Math.max(maxId, orb.id), 0); // Re-init max orb ID
                 this.currentRuler = null;
                 
                 // Reset all players
                 this.players.forEach((player, playerWs) => {
                     player.position = { x: 0, y: 10, z: 0 };
                     player.rotation = { x: 0, y: 0, z: 0 };
-                    player.health = 100;
-                    player.orbs = 0;
+                    // NOTE: Health is client-side, no need to reset here
+                    // NOTE: Resetting orb count server-side:
+                    this.playerOrbs.set(playerWs, 0);
                     
                     // Send reset message to each player
                     playerWs.send(JSON.stringify({
@@ -526,6 +538,66 @@ class GameRoom {
                     }));
                 } else {
                     console.log(`[Server Debug] Could not find or send player_damaged message to ${victimUsername}`);
+                }
+                break;
+
+            case 'player_died': // <-- NEW CASE
+                const deadPlayerWs = [...this.players.entries()].find(([socket, playerData]) => playerData.username === data.username)?.[0];
+                
+                if (deadPlayerWs) {
+                    const orbCount = this.playerOrbs.get(deadPlayerWs) || 0;
+                    console.log(`Player ${data.username} died with ${orbCount} orbs.`);
+                    
+                    if (orbCount > 0) {
+                        const droppedOrbsData = [];
+                        const deathPosition = data.position || [0, 10, 0]; // Use received position or default
+                        const dropRadius = 5; // How far around the death point orbs can spawn
+
+                        for (let i = 0; i < orbCount; i++) {
+                            this.lastOrbId++; // Generate unique ID
+                            
+                            // Define dropped orb properties (similar to client-side)
+                            const neonColors = [
+                                0x39FF14, // Neon Green
+                                0x1B03A3, // Neon Blue
+                                0xBC13FE, // Neon Purple
+                                0xFF10F0  // Neon Pink
+                            ];
+                            const randomColor = neonColors[Math.floor(Math.random() * neonColors.length)];
+                            const orbRadius = 6; // Standard orb size
+                            
+                            // Calculate slightly randomized position
+                            const randomAngle = Math.random() * Math.PI * 2;
+                            const randomDist = Math.random() * dropRadius;
+                            const orbX = deathPosition[0] + Math.cos(randomAngle) * randomDist;
+                            const orbY = deathPosition[1] + 1; // Spawn slightly above death point Y
+                            const orbZ = deathPosition[2] + Math.sin(randomAngle) * randomDist;
+                            
+                            const newOrbData = {
+                                id: this.lastOrbId,
+                                position: { x: orbX, y: orbY, z: orbZ },
+                                color: randomColor,
+                                size: orbRadius // Assuming size corresponds to radius for client
+                            };
+                            
+                            this.world.orbs.push(newOrbData); // Add to the authoritative world state
+                            droppedOrbsData.push(newOrbData); // Add to the list to broadcast
+                        }
+
+                        // Reset dead player's orb count
+                        this.playerOrbs.set(deadPlayerWs, 0);
+                        
+                        // Broadcast the newly dropped orbs to everyone
+                        if (droppedOrbsData.length > 0) {
+                            console.log(`Broadcasting ${droppedOrbsData.length} dropped orbs from ${data.username}.`);
+                            this.broadcast(JSON.stringify({
+                                type: 'orbs_dropped',
+                                orbs: droppedOrbsData
+                            }));
+                        }
+                    }
+                } else {
+                    console.warn(`Received player_died message for unknown player: ${data.username}`);
                 }
                 break;
         }
