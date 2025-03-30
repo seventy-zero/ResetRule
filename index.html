@@ -3078,25 +3078,34 @@
                     // --- DEBUG LOGGING END ---
                     const orbCollision = checkOrbCollision(camera.position, playerRadius);
                     if (orbCollision) {
-                        // Send collection message to server
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({
-                                type: 'collect_orb',
-                                orbId: orbCollision.orbId
-                            }));
-                            
-                            // Remove orb from scene and collection
-                            scene.remove(orbCollision.orb);
-                            orbs.delete(orbCollision.orbId);
-                            
-                            // Update local orb count
-                            const currentOrbs = playerOrbs.get(playerUsername) || 0;
-                            playerOrbs.set(playerUsername, currentOrbs + 1);
-                            updateOrbCount();
-                            
-                            // Play collection sound
-                            playOrbCollectionSound();
+                        // --- ADD CHECK FOR ORB COUNT ---
+                        const currentOrbCount = playerOrbs.get(playerUsername) || 0;
+                        if (currentOrbCount < 30) {
+                            // --- END CHECK ---
+                            // Send collection message to server
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({
+                                    type: 'collect_orb',
+                                    orbId: orbCollision.orbId
+                                }));
+                                
+                                // Remove orb from scene and collection (Optimistic removal)
+                                scene.remove(orbCollision.orb);
+                                orbs.delete(orbCollision.orbId);
+                                
+                                // Update local orb count (Optimistic update)
+                                playerOrbs.set(playerUsername, currentOrbCount + 1); // Use calculated count
+                                updateOrbCount();
+                                
+                                // Play collection sound
+                                playOrbCollectionSound();
+                            }
+                         // --- Closing brace for the count check ---
+                        } else {
+                            // Optional: Log that collection was prevented due to cap
+                            // console.log(`[Orb Cap Debug] Orb ${orbCollision.orbId} collection prevented. Already have ${currentOrbCount} orbs.`);
                         }
+                        // ------------------------------------
                     }
 
                     // Check collisions for normal movement

@@ -396,10 +396,6 @@ class GameRoom {
     removePlayer(ws) {
         const player = this.players.get(ws);
         if (player) {
-            // --- Drop orbs BEFORE removing player data ---
-            this.dropPlayerOrbs(ws);
-            // -------------------------------------------
-
             // Broadcast that the player left
             this.broadcast(JSON.stringify({
                 type: 'player_left',
@@ -498,18 +494,25 @@ class GameRoom {
             case 'collect_orb':
                 const player = this.players.get(ws);
                 if (player) {
+                    // --- ADD CHECK FOR SERVER-SIDE ORB COUNT ---
+                    const currentServerOrbCount = this.playerOrbs.get(ws) || 0;
+                    if (currentServerOrbCount >= 30) {
+                        console.log(`[Orb Cap Debug] Player ${player.username} tried to collect orb ${data.orbId} but already has ${currentServerOrbCount}. Ignoring.`);
+                        break; // Ignore the request
+                    }
+                    // ------------------------------------------
+
                     // Find the orb in the room's world
                     const orbIndex = this.world.orbs.findIndex(orb => orb.id === data.orbId);
                     if (orbIndex !== -1) {
                         // Remove the orb from the world
                         this.world.orbs.splice(orbIndex, 1);
-                        
-                        // --- Update player's orb count ---
-                        const currentOrbCount = this.playerOrbs.get(ws) || 0;
-                        this.playerOrbs.set(ws, currentOrbCount + 1);
-                        console.log(`Player ${player.username} collected orb ${data.orbId}. New count: ${currentOrbCount + 1}`);
+
+                        // --- Update player's orb count (Use the checked count) ---
+                        this.playerOrbs.set(ws, currentServerOrbCount + 1);
+                        console.log(`Player ${player.username} collected orb ${data.orbId}. New count: ${currentServerOrbCount + 1}`);
                         // --------------------------------
-                        
+
                         // Broadcast orb collection to all players in the room
                         this.broadcast(JSON.stringify({
                             type: 'orb_collected',
@@ -663,34 +666,56 @@ setInterval(() => {
 
 wss.on('connection', (ws) => {
     let currentRoom = null;
+    let playerUsernameForLog = 'unknown'; // Store username for logging on close
 
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
 
-            if (currentRoom) {
-                currentRoom.handleMessage(ws, data);
-            } else {
-                // If no current room, find an available room
+            // Assign player to a room on first message (e.g., join)
+            if (!currentRoom) {
                 currentRoom = findAvailableRoom();
-                currentRoom.handleMessage(ws, data);
+                console.log(`[Connection] Assigning new connection to room: ${currentRoom.name}`);
             }
+
+            // Store username if it's a join message for logging
+            if (data.type === 'join' && data.username) {
+                 playerUsernameForLog = data.username;
+                 console.log(`[Connection] WebSocket associated with username: ${playerUsernameForLog}`);
+            }
+
+            currentRoom.handleMessage(ws, data);
+
         } catch (error) {
             console.error('Error processing message:', error);
+            // Attempt removal if error occurs after room assignment
+             if (currentRoom) {
+                 console.error(`Removing player ${playerUsernameForLog} due to message processing error.`);
+                 currentRoom.dropPlayerOrbs(ws); // Try dropping orbs first
+                 currentRoom.removePlayer(ws);
+             }
         }
     });
 
     ws.on('close', () => {
+        console.log(`[Connection] WebSocket closed for player: ${playerUsernameForLog}.`);
         if (currentRoom) {
-            currentRoom.removePlayer(ws);
+            console.log(`[Connection] Attempting orb drop for ${playerUsernameForLog} in room ${currentRoom.name} before removal.`);
+            currentRoom.dropPlayerOrbs(ws); // <<< Drop orbs here
+            console.log(`[Connection] Proceeding to remove player ${playerUsernameForLog} from room ${currentRoom.name}.`);
+            currentRoom.removePlayer(ws); // Now remove player data
+        } else {
+             console.log(`[Connection] Player ${playerUsernameForLog} closed connection but wasn't assigned to a room.`);
         }
     });
 
     ws.on('error', (error) => {
-        console.error('WebSocket client error:', error);
-        if (currentRoom) {
-            currentRoom.removePlayer(ws);
-        }
+        console.error(`[Connection] WebSocket client error for ${playerUsernameForLog}:`, error);
+         if (currentRoom) {
+             console.error(`Removing player ${playerUsernameForLog} from room ${currentRoom.name} due to WebSocket error.`);
+             currentRoom.dropPlayerOrbs(ws); // Try dropping orbs first
+             currentRoom.removePlayer(ws);
+         }
     });
 });
 
