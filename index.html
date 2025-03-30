@@ -1200,17 +1200,17 @@
                                 if (pellet) {
                                     const direction = new THREE.Vector3().fromArray(directionArray);
                                     pellet.position.copy(shooterPos); // Start at shooter's reported position
-                                    pellet.velocity.copy(direction).multiplyScalar(PELLET_SPEED);
-                                    pellet.spawnTime = now;
-                                    pellet.bounces = 0; // Reset bounces (though we won't use them)
+                                    pellet.userData.velocity = direction.clone().multiplyScalar(PELLET_SPEED);
+                                    pellet.userData.spawnTime = now;
+                                    pellet.userData.bounces = 0;
                                     pellet.visible = true; // Make it visible
-                                    // Note: pellet is already added to the scene during pool initialization
+                                    pelletPool.active.add(pellet); // Add to active set
                                 } else {
                                     console.warn("Pellet pool exhausted during network update for shotgun_shot");
                                 }
                             });
 
-                            // Play sound effect for other player's shot (consider adding positional audio later)
+                            // Play sound effect for other player's shot
                             playShotgunSound();
                         }
                         break;
@@ -1374,7 +1374,7 @@
             console.log('Scene created');
 
             // Create shotgun pellets with object pooling
-            pelletPool = { // <-- Assign to existing variable
+            pelletPool = {
                 pool: [],           // Array for available pellet objects
                 active: new Set(),  // Set for active pellet objects (efficient add/delete)
                 maxSize: PELLET_COUNT * 10, // Max pellets to pool (adjust as needed)
@@ -1389,24 +1389,30 @@
                             if (pellet) {
                                 pellet.visible = false;
                                 pellet.position.set(0, -10000, 0);
-                                scene.add(pellet); // <-- Re-enable this line
+                                scene.add(pellet);
                                 this.pool.push(pellet);
                             }
                         }
                         this.isInitialized = true;
+                        console.log('Pellet pool initialized with', this.maxSize, 'pellets');
                     } catch (error) {
                         console.error("Error initializing pellet pool:", error);
-                        this.isInitialized = false; // Ensure flag remains false on error
+                        this.isInitialized = false;
                     }
                 },
 
                 _createPelletMesh() {
-                    const pelletGeometry = new THREE.SphereGeometry(PELLET_RADIUS, 6, 6); // Simpler geometry
-                    const pelletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                    const pelletGeometry = new THREE.SphereGeometry(PELLET_RADIUS, 6, 6);
+                    const pelletMaterial = new THREE.MeshBasicMaterial({ 
+                        color: 0xffff00,
+                        transparent: true,
+                        opacity: 0.8
+                    });
                     const pelletMesh = new THREE.Mesh(pelletGeometry, pelletMaterial);
                     pelletMesh.userData = {
                         velocity: new THREE.Vector3(),
-                        birthTime: 0
+                        spawnTime: 0,
+                        bounces: 0
                     };
                     return pelletMesh;
                 },
@@ -1415,26 +1421,24 @@
                 get() {
                     let pellet = null;
                     if (this.pool.length > 0) {
-                        pellet = this.pool.pop(); // Get from available pool
+                        pellet = this.pool.pop();
                     }
                     if (pellet) {
-                        this.active.add(pellet); // Add to the active set
-                        pellet.visible = true;   // Make it visible
+                        this.active.add(pellet);
+                        pellet.visible = true;
                     }
                     return pellet;
                 },
 
                 // Release a pellet back to the pool
                 release(pellet) {
-                    if (this.active.delete(pellet)) { // Remove from active set (returns true if successful)
-                        pellet.visible = false;         // Make invisible
+                    if (this.active.delete(pellet)) {
+                        pellet.visible = false;
                         if (pellet.userData && pellet.userData.velocity) {
-                             pellet.userData.velocity.set(0, 0, 0); // Reset velocity if userData exists
-                        } else {
-                             console.warn("Pellet released without userData or velocity", pellet);
+                            pellet.userData.velocity.set(0, 0, 0);
                         }
-                        pellet.position.set(0, -10000, 0); // Move it far away
-                        this.pool.push(pellet);        // Add back to the available pool
+                        pellet.position.set(0, -10000, 0);
+                        this.pool.push(pellet);
                     }
                 }
             };
@@ -3366,10 +3370,11 @@
                 spreadOffset.applyQuaternion(camera.quaternion);
                 spreadDirection.add(spreadOffset).normalize(); // Add offset and normalize
 
-                // Set pellet velocity
+                // Set pellet velocity and make it visible
                 pellet.userData.velocity.copy(spreadDirection).multiplyScalar(PELLET_SPEED);
                 pellet.userData.spawnTime = now;
-                pellet.userData.bounces = 0; // <-- Add this line to reset bounces
+                pellet.userData.bounces = 0;
+                pellet.visible = true; // Ensure pellet is visible
 
                 // Store direction for network
                 pelletDirections.push(spreadDirection.toArray());
