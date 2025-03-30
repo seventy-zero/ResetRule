@@ -3730,9 +3730,9 @@
 
         // Check collisions for normal movement
         // --- Start Iterative Collision Resolution ---
-        const MAX_ITERATIONS = 5; // Increased iterations
-        let resolvedPosition = camera.position.clone(); // Work with a temporary position
-        let wasStuckInLoop = false;
+        const MAX_ITERATIONS = 8; // Increased iterations further
+         let resolvedPosition = camera.position.clone(); // Work with a temporary position
+         let wasStuckInLoop = false;
 
         // *** ADDED: Ensure a playerCollider is defined for this scope ***
         // Assuming playerRadius is available here. Using resolvedPosition initially.
