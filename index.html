@@ -275,7 +275,7 @@
         const moveSpeed = 22.0; // Units per second
         const gravity = 0.012; // Reduced from 0.015 for less gravity
         const flingStrength = 3.0; // Increased from 2.75
-        const flingDamping = 0.999; // Controls how quickly the fling velocity decreases (closer to 1 means less damping)
+        const flingDamping = 0.98; // Controls how quickly the fling velocity decreases (closer to 1 means less damping) - WAS 0.999
         const clock = new THREE.Clock();
         const lastSentPosition = new THREE.Vector3(); // Initialize last sent position
         const lastSentRotation = new THREE.Vector3(); // Initialize last sent rotation
@@ -336,13 +336,13 @@
 
         // Add movement smoothing constants
         const MOVEMENT_SMOOTHING = 0.85; // Reduced from 0.85 for smoother movement
-        const COLLISION_PUSH_FORCE = 6.0; // Increased from 4.5 for stronger collision response
+        const COLLISION_PUSH_FORCE = 5.0; // Increased from 4.5 for stronger collision response - WAS 6.0
         const COLLISION_BIAS = 0.01;      // Small bias to push player slightly past surface
-        const CORNER_SLIDE_FORCE = 0.8; // Increased from 0.7 for better sliding
+        const CORNER_SLIDE_FORCE = 0.9; // Increased from 0.7 for better sliding - WAS 0.8
         const MIN_VELOCITY_THRESHOLD = 0.001; // Threshold for stopping movement
         const STUCK_THRESHOLD = 0.4; // Increased from 0.3 - require deeper penetration to trigger strong push
-        const STUCK_PUSH_FORCE = 10.0; // Increased significantly from 4.0 - make the strong push more forceful
-        const STUCK_BOUNCE_SPEED = 5.0; // Speed of the bounce applied when stuck
+        const STUCK_PUSH_FORCE = 8.0; // Increased significantly from 4.0 - make the strong push more forceful - WAS 10.0
+        const STUCK_BOUNCE_SPEED = 4.0; // Speed of the bounce applied when stuck - WAS 5.0
 
         // Game state variables
         let gameStarted = false;
