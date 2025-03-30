@@ -291,7 +291,7 @@
         const PELLET_LIFETIME = 250;  // Milliseconds - much shorter lifespan
         const PELLET_GRAVITY = 0.0;     // Gravity effect on pellets (0 for straight line)
         const PELLET_RADIUS = 0.4;     // Pellet collision radius - Larger
-        const SHOTGUN_DAMAGE = 3;     // Damage per pellet hit - WAS 10, then 5
+        const SHOTGUN_DAMAGE = 5;     // Damage per pellet hit - WAS 10, then 5, then 3
         const PELLET_FRICTION = 0.99;  // Damping factor for pellets (0=stop, 1=no friction)
         const PELLET_BOUNCE = 0.5;     // How much velocity is kept after bouncing (0-1)
         const PELLET_MAX_BOUNCES = 0;  // How many times a pellet can bounce before disappearing
@@ -1092,7 +1092,7 @@
                                     const orb = createOrb(orbData);
                                     console.log(`Successfully created orb ${index}:`, orb);
                                     // Ensure orb is added to scene
-                                    if (!scene.children.includes(orb)) {
+                                    if (orb && !scene.children.includes(orb)) { // Add check for orb existence
                                         scene.add(orb);
                                     }
                                 } catch (error) {
@@ -1102,6 +1102,11 @@
                         } else {
                             console.warn('No orbs data received from server');
                         }
+
+                        // --- SET gameStarted AFTER processing world data ---
+                        gameStarted = true;
+                        console.log('[World Data Debug] World data processed. Game Started set to true.');
+                        // ----------------------------------------------------
                         break;
 
                     case 'room_info':
@@ -1819,7 +1824,7 @@
                     console.log(`[Start Game Debug] Starting game as ${playerUsername}. PlayerStates size BEFORE join: ${playerStates.size}`); // Log map state
                     playerHealth = 100; // Reset health
                     updateHealthDisplay(); // Update display immediately
-                    gameStarted = true;
+                    // gameStarted = true; // <-- REMOVE THIS LINE - Will be set after world_data
                     // --- FIX & LOGGING END ---
 
                     instructions.classList.add('hidden');
@@ -3409,7 +3414,7 @@
             camera.getWorldDirection(cameraDirection);
 
             // Calculate muzzle position slightly in front of the camera
-            const muzzleOffset = -1.5; // How far in front of camera view
+            const muzzleOffset = 0; // How far in front of camera view - WAS -1.5
             const muzzlePosition = cameraPosition.clone().addScaledVector(cameraDirection, muzzleOffset);
 
             // Array to store pellet directions for network message
