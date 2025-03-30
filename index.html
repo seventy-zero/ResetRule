@@ -2678,7 +2678,7 @@
                                 } else {
                                     // Standard collision response (horizontal push/sliding)
                                     // Log standard collision
-                                    console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
+                                    // console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
 
                                     // Apply horizontal push-out using pre-calculated pushDistance
                                     const horizontalPushForce = isFlinging ? COLLISION_PUSH_FORCE * 1.5 : COLLISION_PUSH_FORCE;
@@ -3066,7 +3066,7 @@
                                 // Standard collision response (horizontal push, sliding, etc.)
                                 // If not hitting underside while moving up, apply horizontal push/slide
                                 // Log standard collision
-                                console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
+                                // console.log('Collision: Standard horizontal', { pushDirY: pushDir.y, verticalVelocityPreCheck: verticalVelocityBeforeCheck, isFlinging: isFlinging });
 
                                 if (isFlinging) {
                                     // Push out horizontally
