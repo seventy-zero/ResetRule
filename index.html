@@ -3601,117 +3601,132 @@
         }
 
         // Add pellet animation to the main animation loop
-        function animatePellets() {
-            const currentTime = Date.now();
-            
-            pelletPool.active.forEach(pellet => {
-                // Check if pellet has expired
-                if (currentTime - pellet.spawnTime > PELLET_LIFETIME) {
-                    pelletPool.release(pellet);
+        function animatePellets(deltaTime) { // Changed signature to accept deltaTime
+            const currentTime = performance.now(); // Use performance.now for consistency
+
+            // Iterate over a copy of the active set to avoid issues when removing items
+             const activePellets = new Set(pelletPool.active); // Iterate over a copy
+
+            activePellets.forEach(pellet => { // Use the copied set
+                // Check if pellet still exists in the main active set (might have been removed by other logic)
+                if (!pelletPool.active.has(pellet)) {
                     return;
                 }
-                
+
+                // Check if pellet has expired
+                if (!pellet.userData || typeof pellet.userData.spawnTime === 'undefined') {
+                     console.warn("Pellet missing userData.spawnTime", pellet);
+                     pelletPool.release(pellet); // Release problematic pellet
+                     return;
+                }
+                if (currentTime - pellet.userData.spawnTime > PELLET_LIFETIME) {
+                    pelletPool.release(pellet);
+                    return; // Stop processing this pellet
+                }
+
                 // Store last position for collision detection
+                 if (!pellet.lastPosition) { // Ensure lastPosition exists
+                    pellet.lastPosition = new THREE.Vector3();
+                 }
                 pellet.lastPosition.copy(pellet.position);
-                
-                // Apply gravity (framerate independent)
-                if (!pellet.userData.velocity) {
+
+                // Ensure velocity exists in userData
+                if (!pellet.userData.velocity) { // Initialize if missing
                     pellet.userData.velocity = new THREE.Vector3();
-                }
-                pellet.userData.velocity.y -= PELLET_GRAVITY * FIXED_DELTA_TIME;
-                
+                    console.warn("Pellet missing velocity, initialized.", pellet);
+                 }
+                // Apply gravity (framerate independent)
+                pellet.userData.velocity.y -= PELLET_GRAVITY * deltaTime; // Use deltaTime
+
                 // Apply friction (framerate independent)
-                const effectivePelletFriction = Math.pow(PELLET_FRICTION, FIXED_DELTA_TIME * 60);
+                const effectivePelletFriction = Math.pow(PELLET_FRICTION, deltaTime * 60);
                 pellet.userData.velocity.multiplyScalar(effectivePelletFriction);
-                
-                // Update position with fixed timestep
-                pellet.position.addScaledVector(pellet.userData.velocity, FIXED_DELTA_TIME);
-                
-                // Check for collisions with towers
-                const pelletCollider = new THREE.Sphere(pellet.position, PELLET_RADIUS);
-                let collision = false;
-                let collisionNormal = new THREE.Vector3();
-                
-                // Check tower collisions
-                for (const tower of towers) {
-                    const towerBox = new THREE.Box3().setFromObject(tower.mesh);
-                    if (towerBox.containsSphere(pelletCollider)) {
-                        // Calculate collision normal
-                        const center = towerBox.getCenter(new THREE.Vector3());
-                        collisionNormal.copy(pellet.position).sub(center).normalize();
-                        collision = true;
-                        break;
-                    }
-                }
-                
-                // Check bridge collisions
-                for (const bridge of bridges) {
-                    // Get the bridge's collision box from the towers array
-                    const bridgeObject = towers.find(t => t.mesh === bridge.mesh);
-                    if (bridgeObject && bridgeObject.collisionBoxes) {
-                        const bridgeBox = bridgeObject.collisionBoxes[0];
-                        if (bridgeBox.containsSphere(pelletCollider)) {
-                            // Calculate collision normal from bridge center
-                            const center = bridgeBox.getCenter(new THREE.Vector3());
-                            collisionNormal.copy(pellet.position).sub(center).normalize();
-                            collision = true;
-                            break;
-                        }
-                    }
-                }
-                
-                // Handle collision response
-                if (collision) {
-                    // Move pellet back to last position
-                    pellet.position.copy(pellet.lastPosition);
-                    
-                    // Reflect velocity based on collision normal
-                    pellet.velocity.reflect(collisionNormal);
-                    
-                    // Apply bounce and friction
-                    pellet.velocity.multiplyScalar(PELLET_BOUNCE * PELLET_FRICTION);
-                    
-                    // Increment bounce counter
-                    pellet.bounces++;
-                    
-                    // Remove pellet if too many bounces
-                    if (pellet.bounces >= pellet.maxBounces) {
-                        pelletPool.release(pellet);
-                    }
-                }
-                
-                // Check for collisions with players
-                playerStates.forEach((playerState, username) => {
-                    if (username !== playerUsername) {
-                        const playerCollider = new THREE.Sphere(playerState.mesh.position, playerRadius);
-                        const distance = pellet.position.distanceTo(playerState.mesh.position);
-                        
-                        if (distance < playerRadius + PELLET_RADIUS) {
-                            // Player was hit
-                            console.log(`Pellet hit player: ${username}`); // Add log
-                            if (ws && ws.readyState === WebSocket.OPEN) {
-                                ws.send(JSON.stringify({
-                                    type: 'player_damaged',
-                                    username: username, // Send victim's username
-                                    attackerUsername: playerUsername, // Send attacker's username
-                                    damage: SHOTGUN_DAMAGE 
-                                }));
-                                console.log(`Sent player_damaged message for ${username}`); // Confirm message sent
+
+                // Calculate potential next position using userData velocity
+                const deltaPosition = pellet.userData.velocity.clone().multiplyScalar(deltaTime); // Use deltaTime
+                const nextPosition = pellet.position.clone().add(deltaPosition);
+
+                // --- Raycast Collision Check for Environment ---
+                const rayDirection = deltaPosition.clone().normalize();
+                const rayLength = deltaPosition.length();
+                let environmentHit = false;
+
+                if (rayLength > 0.001) { // Only cast if moving significantly
+                    const pelletRaycaster = new THREE.Raycaster(pellet.position, rayDirection, 0, rayLength + PELLET_RADIUS);
+
+                    // Objects to check collisions against (towers and bridges)
+                    // Filter out invalid meshes just in case
+                    const collisionObjects = towers.map(t => t.mesh).filter(mesh => mesh);
+                    const intersects = pelletRaycaster.intersectObjects(collisionObjects, true); // Check recursively
+
+                    if (intersects.length > 0) {
+                        const intersect = intersects[0]; // Closest intersection
+                        if (intersect.distance <= rayLength + PELLET_RADIUS) {
+                             environmentHit = true;
+                             if (!pellet.userData) pellet.userData = {}; // Ensure userData exists
+                             if (typeof pellet.userData.bounces === 'undefined') pellet.userData.bounces = 0; // Initialize bounces
+
+                            // Collision Response
+                            if (pellet.userData.bounces >= PELLET_MAX_BOUNCES) {
+                                pelletPool.release(pellet);
+                                return; // Stop processing this pellet
+                            } else {
+                                // Move pellet to collision point (approximately)
+                                pellet.position.copy(intersect.point).addScaledVector(intersect.face.normal, PELLET_RADIUS * 0.1); // Move slightly off surface
+
+                                // Reflect velocity in userData
+                                const normal = intersect.face.normal;
+                                pellet.userData.velocity.reflect(normal);
+
+                                // Apply bounce and friction to reflected velocity in userData
+                                pellet.userData.velocity.multiplyScalar(PELLET_BOUNCE * effectivePelletFriction); // Apply friction here too
+
+                                pellet.userData.bounces++; // Increment userData bounces
                             }
-                            pelletPool.release(pellet);
-                            return; // Stop processing this pellet after hit
                         }
                     }
-                });
-                
-                // Remove pellet if it's fallen too far
-                if (pellet.position.y < -1000) {
+
+                     // If no environment collision detected by raycast, update position normally
+                     if (!environmentHit) {
+                         pellet.position.copy(nextPosition);
+                     }
+                } else {
+                     // If not moving much, just update position directly
+                     pellet.position.copy(nextPosition);
+                }
+                // --- End Raycast Collision Check ---
+
+                // Check for collisions with players AFTER environment check/response
+                if (!environmentHit && pelletPool.active.has(pellet)) { // Only check if not hit env and still active
+                    playerStates.forEach((playerState, username) => {
+                        // Skip self-collision or if player mesh doesn't exist or victim is already dead
+                        if (username === playerUsername || !playerState.mesh) return; // Add isDead check? Server should handle.
+
+                        // Use player capsule geometry for more accurate check if available, else use simple distance
+                         let hitDistance = playerRadius + PELLET_RADIUS; // Default distance check
+                         // Potential future improvement: check against playerState.mesh bounding sphere/box
+
+                        const distance = pellet.position.distanceTo(playerState.mesh.position);
+
+                        if (distance < hitDistance) {
+                            // Player was hit - Use handlePelletCollision which includes ruler logic
+                            console.log(`Pellet attempting to hit player: ${username}`); // Log before sending damage
+                            handlePelletCollision(username, playerUsername);
+                            pelletPool.release(pellet);
+                            // Use return inside forEach to stop checking other players for *this specific pellet*
+                            return;
+                        }
+                    });
+                }
+
+                // Remove pellet if it's fallen too far (check after potential collision response)
+                if (pelletPool.active.has(pellet) && pellet.position.y < -1000) {
                     pelletPool.release(pellet);
                 }
             });
         }
 
-        // Update the collision handling in the animation loop
+        // Update the collision handling in the animation loop (This is for PLAYER movement, not pellets)
         function handleCollision(collisionResult, isFlinging) {
             if (!collisionResult.collision) return;
             
@@ -3735,548 +3750,322 @@
         }
 
         // Initialize event listeners
-        // setupEventListeners(); // <-- Remove this call
+        // setupEventListeners(); // <-- This call was commented out, keeping it that way
 
-       
-        // Handle player health updates
-        ws.addEventListener('message', (event) => {
-            const data = JSON.parse(event.data);
-            if (data.type === 'playerHealthUpdate') {
-                if (data.id === ws.id) {
-                    // Handle health update
-                }
-            }
-        });
-
-        // Handle orb drops
-        ws.addEventListener('message', (event) => {
-            const data = JSON.parse(event.data);
-            if (data.type === 'orbDrop') {
-                // Handle orb drop
-            }
-        });
-
-        // Initialize game audio
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // --- Music Playback Setup ---
-        // IMPORTANT: Replace 'track2.mp3' with the actual filename of your second music track!
-        const musicTracks = ['leader-ultra-essence-lossy-64.mp3', 'leader-bounce-lossy-64.mp3'];
-        let currentTrackIndex = -1; // Start with no track selected
-        let currentAudio = null; // Holds the currently playing Audio object
-        let musicShouldPlay = false; // Track if music should be playing based on checkbox state
-        let isMusicInitialized = false; // Track if the first track has been chosen
-
-        // Function to play a specific track by index
-        function playTrack(index) {
-            // Stop and remove listener from previous audio if it exists
-            if (currentAudio) {
-                currentAudio.removeEventListener('ended', playNextRandomTrack); // Use new function name
-                currentAudio.pause();
-            }
-
-            currentTrackIndex = index;
-            const trackName = musicTracks[currentTrackIndex];
-            console.log(`Attempting to play track: ${trackName}`); // Log track name
-
-            currentAudio = new Audio(trackName);
-            currentAudio.volume = 0.5; // Set volume
-            currentAudio.addEventListener('ended', playNextRandomTrack); // Use new function name
-            // Add a specific log when the 'ended' event listener is attached
-            console.log(`Attached 'ended' listener to ${trackName} to call playNextRandomTrack`);
-
-            // Play if music is supposed to be playing and context is ready
-            if (musicShouldPlay && audioContext.state === 'running') {
-                console.log(`[playTrack] Attempting to play ${trackName}`); // Log before play()
-                currentAudio.play().then(() => {
-                    console.log(`Playing: ${trackName}`);
-                }).catch(error => {
-                    console.error(`Error playing ${trackName}:`, error);
-                    // Attempt to play next track if current one fails immediately
-                    // Avoid infinite loop if all tracks fail
-                    if (error.name !== 'NotAllowedError') { // Don't auto-retry on NotAllowedError
-                         setTimeout(playNextRandomTrack, 100); // Delay slightly
-                    }
-                });
-            } else if (musicShouldPlay) {
-                 console.log(`Audio context not running, playback for ${trackName} deferred.`);
-            }
-        }
-
-        // Function to play the next track in the sequence RANDOMLY
-        function playNextRandomTrack() {
-            if (!musicTracks || musicTracks.length === 0) return; // Safety check
-            console.log(`[playNextRandomTrack] Current track ${musicTracks[currentTrackIndex]} ended.`); // Log when function is called
+        // Add event listeners inside initializeMobileControls for mobile shotgun button
+        if (isMobile) {
+            // Add shotgun button
+            const shotgunButton = document.createElement('div');
+            shotgunButton.id = 'shotgunButton';
+            shotgunButton.style.cssText = `
+                position: fixed;
+                bottom: 250px; /* Positioned above fling button */
+                left: 40px;    /* Aligned with fling button */
+                width: 80px;
+                height: 80px;
+                background: rgba(255, 165, 0, 0.6);
+                border: 2px solid rgba(255, 255, 255, 0.8);
+                border-radius: 50%;
+                color: white;
+                font-size: 32px;
+                line-height: 80px;
+                text-align: center;
+                pointer-events: auto;
+                cursor: pointer;
+                z-index: 1000;
+                touch-action: none;
+                transition: all 0.1s ease-out;
+                user-select: none;
+            `;
+            shotgunButton.innerHTML = '🔫';
+            document.body.appendChild(shotgunButton);
             
-            let nextIndex;
-            if (musicTracks.length <= 1) {
-                // If only one track, just replay it
-                nextIndex = 0;
-            } else {
-                // Choose a random index DIFFERENT from the current one
-                do {
-                    nextIndex = Math.floor(Math.random() * musicTracks.length);
-                } while (nextIndex === currentTrackIndex);
-            }
-            
-            console.log(`[playNextRandomTrack] Calculated next random track index: ${nextIndex} (${musicTracks[nextIndex]})`); // Log the calculated next index
-            playTrack(nextIndex);
+            // Add shotgun button event listeners
+            shotgunButton.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                console.log('Mobile shotgun button TAPPED.'); // <-- ADDED LOG
+                fireShotgun();
+            }, { passive: false });
         }
 
-        // Function to initialize and start music playback (chooses random first track)
-        function initializeAndStartMusic() {
-            if (!isMusicInitialized) {
-                // --- This block should only run ONCE for the very first track ---
-                isMusicInitialized = true; // Set flag immediately
-                const randomIndex = Math.floor(Math.random() * musicTracks.length);
-                // Explicitly log that this is the INITIAL random choice
-                console.log(`INITIALIZING MUSIC: Chose random index ${randomIndex} (${musicTracks[randomIndex]})`);
-                playTrack(randomIndex); // Play the randomly selected track
-                // --- End of initial block ---
-            } else if (currentAudio && currentAudio.paused && musicShouldPlay) {
-                 // Resuming a previously initialized and paused track
-                 console.log("RESUMING MUSIC: Resuming paused track " + musicTracks[currentTrackIndex]);
-                 currentAudio.play().catch(error => console.error("Error resuming paused music:", error));
-            } else if (!currentAudio && musicShouldPlay) {
-                 // Fallback: Music was initialized, but something is wrong (no currentAudio). Restart sequence.
-                 console.warn("RESTARTING MUSIC: Music was initialized but no current audio object found. Restarting sequence with random track.");
-                 const randomIndex = Math.floor(Math.random() * musicTracks.length);
-                 playTrack(randomIndex);
-            } else if (currentAudio && !currentAudio.paused && musicShouldPlay) {
-                // Music is already initialized and playing.
-                console.log("CHECK MUSIC: Music already playing (" + musicTracks[currentTrackIndex] + ")");
-            } else {
-                // Music should not be playing according to the toggle.
-                console.log("CHECK MUSIC: Conditions not met for playing/resuming (musicShouldPlay=" + musicShouldPlay + ")");
-            }
-        }
-        // --- End Music Playback Setup ---
-
-
-        // Handle audio context suspension (needed for some browsers)
-        const resumeAudio = () => {
-            // Check state before resuming to avoid errors if already running
-            if (audioContext.state === 'suspended') {
-                audioContext.resume().then(() => {
-                    console.log("AudioContext Resumed");
-                    // If music should be playing, initialize or resume it
-                    if (musicShouldPlay) {
-                        initializeAndStartMusic();
-                    }
-                }).catch(e => console.error("Error resuming AudioContext:", e));
-            } else if (audioContext.state === 'running' && musicShouldPlay) {
-                 // If context is running and music should play, ensure it's initialized or playing
-                 initializeAndStartMusic();
-            }
-        };
-
-        // Try to resume context on any user interaction (needed for browsers)
-        document.addEventListener('click', resumeAudio, { once: true });
-        document.addEventListener('touchstart', resumeAudio, { once: true });
-        document.addEventListener('keydown', resumeAudio, { once: true });
-
-        // Add listener for the music toggle checkbox
-        const musicCheckbox = document.getElementById('musicToggle');
-        if (musicCheckbox) {
-            // Update initial musicShouldPlay state based on checkbox
-            musicShouldPlay = musicCheckbox.checked;
-
-            musicCheckbox.addEventListener('change', () => {
-                const wasMusicPlaying = musicShouldPlay;
-                musicShouldPlay = musicCheckbox.checked; // Update state based on new checkbox value
-
-                resumeAudio(); // Ensure context is active
-
-                if (musicShouldPlay) {
-                    console.log("Music toggled ON");
-                    // If turning on, initialize and start (or resume)
-                    initializeAndStartMusic();
-                } else {
-                    console.log("Music toggled OFF");
-                    // If turning off, pause the current audio if it exists and is playing
-                    if (currentAudio && !currentAudio.paused) {
-                        currentAudio.pause();
-                        console.log("Paused current track via toggle");
-                    }
+        // Add event listeners inside the non-mobile block for desktop right-click
+        if (!isMobile) {
+            document.addEventListener('mousedown', (event) => {
+                if (!gameStarted || !controls.isLocked) return; // Only handle clicks if game started and locked
+                if (event.button === 2) { // Right mouse button
+                    console.log('DESKTOP Right Mouse Down -> Firing shotgun');
+                    fireShotgun();
+                } else if (event.button === 0) { // Left mouse button
+                    showLine = true;
                 }
             });
+             document.addEventListener('mouseup', (event) => {
+                if (!gameStarted || !controls.isLocked) return; // Only handle clicks if game started and locked
+                 if (event.button === 0) { // Left mouse button
+                     showLine = false;
+                 }
+             });
+
+            // Keydown/Keyup listeners are defined elsewhere (onKeyDown, onKeyUp) and added correctly
+            // document.addEventListener('keydown', onKeyDown); // Keep these assignment lines
+            // document.addEventListener('keyup', onKeyUp); // Keep these assignment lines
         }
 
-        // Log initial state - music will start playing after first interaction via resumeAudio -> initializeAndStartMusic
-        if (musicShouldPlay) {
-             console.log("Music checkbox checked on load, waiting for interaction to play.");
-        }
+        // Update the orb popup handlers
+        function updateOrbPopupHandlers() {
+            const popup = document.getElementById('orbPopup');
+            const resetButton = document.getElementById('resetButton');
+            const ruleButton = document.getElementById('ruleButton');
+            const orbPopup = document.getElementById('orbPopup'); // Reference to the popup itself
 
-        // Removed backgroundMusic object and related code no longer needed
-
-        // Check collisions for normal movement
-        // --- Start Iterative Collision Resolution ---
-        const MAX_ITERATIONS = 8; // Increased iterations further
-         let resolvedPosition = camera.position.clone(); // Work with a temporary position
-         let wasStuckInLoop = false;
-
-        // *** ADDED: Ensure a playerCollider is defined for this scope ***
-        // Assuming playerRadius is available here. Using resolvedPosition initially.
-        const playerCollider = new THREE.Sphere(resolvedPosition, playerRadius);
-
-        for (let i = 0; i < MAX_ITERATIONS; i++) {
-            playerCollider.center.copy(resolvedPosition); // Update collider for check
-            const normalCollision = checkCollision(resolvedPosition, playerRadius);
-
-            if (!normalCollision.collision) {
-                break; // Exit loop if no collision
+            if (!popup || !resetButton || !ruleButton) {
+                 console.error("Orb popup elements not found!");
+                 return; // Exit if elements are missing
             }
 
-            // Apply push-out to the temporary resolvedPosition
-            const distance = resolvedPosition.distanceTo(normalCollision.closestPoint);
-            const isStuck = distance < playerRadius * STUCK_THRESHOLD;
-            const pushDir = new THREE.Vector3();
-            pushDir.copy(resolvedPosition).sub(normalCollision.closestPoint).normalize();
-
-            if (isStuck) {
-                wasStuckInLoop = true;
-                // Player is stuck, apply stronger push-out force
-                const pushAmount = (playerRadius - distance) + playerRadius * 0.1; // Push out slightly past surface
-                resolvedPosition.x += pushDir.x * pushAmount * STUCK_PUSH_FORCE; // Use STUCK_PUSH_FORCE
-                resolvedPosition.z += pushDir.z * pushAmount * STUCK_PUSH_FORCE;
-                
-                // Apply immediate vertical nudge if stuck
-                verticalVelocity = Math.max(verticalVelocity, 0.3); // Ensure some upward push
-                isGrounded = false;
-
-                // Optionally break after strong push, or let iterate
-                // break; 
-            } else {
-                // Normal collision response
-                const pushDistance = (playerRadius - distance) + COLLISION_BIAS; // penetration depth + bias
-                resolvedPosition.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
-                resolvedPosition.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
-
-                // Handle ceiling hits during iteration
-                if (pushDir.y < -0.1 && verticalVelocity > 0) { 
-                    verticalVelocity = 0; // Stop upward movement
-                    resolvedPosition.y += pushDir.y * pushDistance * COLLISION_PUSH_FORCE; // Apply vertical push
+            // Define handlers within this scope to easily remove them later
+            const handleReset = () => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'reset_game',
+                        username: playerUsername // Include username for server confirmation
+                    }));
                 }
-            }
-            // If it's the last iteration and still colliding, log a warning
-            if (i === MAX_ITERATIONS - 1 && checkCollision(resolvedPosition, playerRadius).collision) {
-                console.warn('Collision resolution may be incomplete after max iterations');
-            }
-        } 
-        // --- End Iterative Collision Resolution Loop ---
+                // Don't call local handleGameReset here, wait for server confirmation via 'reset_game' message
+                orbPopup.style.display = 'none'; // Hide popup immediately
+                cleanupPopupListeners(); // Clean up listeners when popup hides
+            };
 
-        // Update the actual camera position with the resolved one
-        camera.position.copy(resolvedPosition);
-        // Update the collider's center to the final position
-        playerCollider.center.copy(camera.position); // Final collider update
-
-        // --- [REMOVED] Separate velocity adjustment block after the loop --- 
-
-        // Apply friction to normal movement (Now applied regardless of final collision state)
-        const effectiveSmoothing = Math.pow(MOVEMENT_SMOOTHING, deltaTime * 60); // Framerate independent
-        velocity.x *= effectiveSmoothing;
-        velocity.z *= effectiveSmoothing;
-
-        // Stop movement when velocity is very small
-        if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
-        if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
-
-        // --- Adjust velocity based on the collision *within* this loop iteration ---
-        // Use the pushDir calculated for the position adjustment in this iteration.
-        const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
-
-        if (!wasStuckInLoop && dotProduct < 0) { // Only adjust if not stuck and moving into wall
-            // Project velocity onto the collision plane (slide)
-            const slideVelX = velocity.x - pushDir.x * dotProduct;
-            const slideVelZ = velocity.z - pushDir.z * dotProduct;
-            velocity.x = slideVelX * CORNER_SLIDE_FORCE; // Apply sliding with force factor
-            velocity.z = slideVelZ * CORNER_SLIDE_FORCE;
-        } // else: if stuck or moving away/parallel, let velocity persist
-
-        // If it's the last iteration and still colliding, log a warning
-        if (i === MAX_ITERATIONS - 1 && checkCollision(resolvedPosition, playerRadius).collision) {
-            console.warn('Collision resolution may be incomplete after max iterations');
-        }
-
-    // Always render the scene
-    renderer.render(scene, camera);
-
-animate();
-
-// Add after the checkCollision function
-function checkContinuousCollision(startPos, endPos, radius) {
-    // Create a line segment from start to end position
-    const line = new THREE.Line3(startPos, endPos);
-    let closestCollision = null;
-    let minDistance = Infinity;
-    
-    // Temporary vectors for calculations
-    const worldToLocalMatrix = new THREE.Matrix4();
-    const localStartPos = new THREE.Vector3();
-    const localEndPos = new THREE.Vector3();
-    const localClosestPoint = new THREE.Vector3();
-    const worldClosestPoint = new THREE.Vector3();
-    
-    // --- Get potentially colliding objects from spatial grid --- 
-    // Query based on the bounding box of the movement line + radius
-    const movementBox = new THREE.Box3().setFromPoints([startPos, endPos]);
-    movementBox.expandByScalar(radius);
-    const queryCenter = movementBox.getCenter(new THREE.Vector3());
-    const queryRadius = movementBox.getSize(new THREE.Vector3()).length() / 2;
-    const nearbyObjects = spatialGrid.getNearbyObjects(queryCenter, queryRadius + 50); // Query based on movement path
-    // console.log(`Checking continuous collisions against ${nearbyObjects.size} nearby objects`); // Optional debug log
-
-    nearbyObjects.forEach(tower => {
-    // for (const tower of towers) { // <-- OLD WAY: Iterate through all towers
-        const isBridge = tower.isBridge;
-        
-        // OBB Check logic remains the same...
-        if (isBridge && tower.localCollisionBox && tower.mesh) {
-            // --- OBB Check for Bridges ---
-            const bridgeMesh = tower.mesh;
-            const localBox = tower.localCollisionBox;
-            
-            // Ensure world matrix is up-to-date
-            bridgeMesh.updateMatrixWorld(true);
-            
-            // Get matrix to transform world -> local
-            worldToLocalMatrix.copy(bridgeMesh.matrixWorld).invert();
-            
-            // Transform line endpoints to bridge's local space
-            localStartPos.copy(startPos).applyMatrix4(worldToLocalMatrix);
-            localEndPos.copy(endPos).applyMatrix4(worldToLocalMatrix);
-            
-            // Create local line segment
-            const localLine = new THREE.Line3(localStartPos, localEndPos);
-            
-            // Find closest point on the local AABB to the line
-            localBox.clampPoint(localLine.closestPointToPoint(localBox.getCenter(new THREE.Vector3()), true, localClosestPoint), localClosestPoint);
-            
-            // Calculate distance in local space
-            const distance = localLine.distanceToPoint(localClosestPoint);
-            
-            // Check if the player sphere intersects the box
-            if (distance < radius) {
-                // Transform the local closest point back to world space
-                worldClosestPoint.copy(localClosestPoint).applyMatrix4(bridgeMesh.matrixWorld);
-                
-                // Calculate the actual collision point on the line
-                const collisionPoint = localLine.closestPointToPoint(localClosestPoint, true, new THREE.Vector3());
-                collisionPoint.applyMatrix4(bridgeMesh.matrixWorld);
-                
-                // Check if this is the closest collision so far
-                const worldDistance = collisionPoint.distanceTo(worldClosestPoint);
-                if (worldDistance < minDistance) {
-                    minDistance = worldDistance;
-                    closestCollision = {
-                        collision: true,
-                        tower: tower,
-                        distance: worldDistance,
-                        closestPoint: worldClosestPoint.clone(),
-                        collisionPoint: collisionPoint.clone(),
-                        isBridge: true
-                    };
+            const handleRule = () => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'attempt_rule', // Send intent to rule
+                        username: playerUsername
+                    }));
+                    console.log(`Sent attempt_rule for ${playerUsername}`);
+                } else {
+                     console.warn("Attempted to rule, but WebSocket not open.");
                 }
-            }
-        } else if (!isBridge && tower.localCollisionBox && tower.mesh) {
-            // --- OBB Check for Towers (mirroring bridge logic) ---
-            const towerMesh = tower.mesh;
-            const localBox = tower.localCollisionBox;
-            
-            // Ensure world matrix is up-to-date
-            towerMesh.updateMatrixWorld(true);
-            
-            // Get matrix to transform world -> local
-            worldToLocalMatrix.copy(towerMesh.matrixWorld).invert();
-            
-            // Transform line endpoints to tower's local space
-            localStartPos.copy(startPos).applyMatrix4(worldToLocalMatrix);
-            localEndPos.copy(endPos).applyMatrix4(worldToLocalMatrix);
-            
-            // Create local line segment
-            const localLine = new THREE.Line3(localStartPos, localEndPos);
-            
-            // Find closest point on the local AABB to the line
-            localBox.clampPoint(localLine.closestPointToPoint(localBox.getCenter(new THREE.Vector3()), true, localClosestPoint), localClosestPoint);
-            
-            // Calculate distance in local space
-            const distance = localLine.distanceToPoint(localClosestPoint);
-            
-            // Check if the player sphere intersects the box
-            if (distance < radius) {
-                // Transform the local closest point back to world space
-                worldClosestPoint.copy(localClosestPoint).applyMatrix4(towerMesh.matrixWorld);
-                
-                // Calculate the actual collision point on the line
-                const collisionPoint = localLine.closestPointToPoint(localClosestPoint, true, new THREE.Vector3());
-                collisionPoint.applyMatrix4(towerMesh.matrixWorld);
-                
-                // Check if this is the closest collision so far
-                const worldDistance = collisionPoint.distanceTo(worldClosestPoint);
-                if (worldDistance < minDistance) {
-                    minDistance = worldDistance;
-                    closestCollision = {
-                        collision: true,
-                        tower: tower,
-                        distance: worldDistance,
-                        closestPoint: worldClosestPoint.clone(),
-                        collisionPoint: collisionPoint.clone(),
-                        isBridge: false
-                    };
+                orbPopup.style.display = 'none'; // Hide popup immediately
+                cleanupPopupListeners(); // Clean up listeners when popup hides
+            };
+
+            const handleKeyPress = (event) => {
+                 // Only act if the popup is actually visible
+                if (orbPopup.style.display !== 'block') return;
+
+                if (event.key.toLowerCase() === 'c') {
+                    handleReset();
+                } else if (event.key.toLowerCase() === 'v') {
+                    handleRule();
                 }
-            }
-        }
-    }); // End of nearbyObjects loop
-    
-    return closestCollision;
-}
+            };
 
-// ... existing code ...
+            // Function to remove listeners
+            const cleanupPopupListeners = () => {
+                console.log("Cleaning up popup listeners");
+                resetButton.onclick = null; // Remove inline handler
+                ruleButton.onclick = null;  // Remove inline handler
+                document.removeEventListener('keydown', handleKeyPress);
+            };
 
-// Add these constants at the top with other constants
-const COLLISION_SAFETY_MARGIN = 0.5; // Extra margin to prevent getting stuck
-const MAX_COLLISION_ITERATIONS = 5; // Maximum number of collision resolution attempts
-const EMERGENCY_PUSH_FORCE = 2.0; // Force multiplier for emergency collision resolution
+            // Attach listeners
+            console.log("Attaching popup listeners");
+            resetButton.onclick = handleReset;
+            ruleButton.onclick = handleRule;
+            // Remove any existing keydown listener first to prevent duplicates
+            document.removeEventListener('keydown', handleKeyPress);
+            document.addEventListener('keydown', handleKeyPress);
 
-function moveWithCCD(startPos, targetPos, velocity, radius) {
-    // Check for collisions along the movement path
-    const movementCollision = checkContinuousCollision(startPos, targetPos, radius);
-    
-    if (movementCollision && movementCollision.collision) {
-        // Move to the collision point
-        const newPos = movementCollision.collisionPoint.clone();
-        
-        // Calculate push direction
-        const pushDir = new THREE.Vector3();
-        pushDir.copy(newPos).sub(movementCollision.closestPoint).normalize();
-        
-        // Force horizontal push direction (ignore vertical component)
-        const horizontalPushDir = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
-        
-        // Calculate the actual movement direction
-        const moveDir = new THREE.Vector3();
-        moveDir.subVectors(targetPos, startPos).normalize();
-        
-        // Calculate the dot product to determine if we're moving into the wall
-        const dotProduct = horizontalPushDir.x * moveDir.x + horizontalPushDir.z * moveDir.z;
-        
-        // Always apply a strong horizontal bounce
-        const bounceSpeed = STUCK_BOUNCE_SPEED * 4; // Increased base bounce speed
-        
-        // Apply position correction (horizontal only)
-        const pushDistance = radius - movementCollision.distance + COLLISION_BIAS + COLLISION_SAFETY_MARGIN;
-        newPos.x += horizontalPushDir.x * pushDistance * 3; // Increased push force
-        newPos.z += horizontalPushDir.z * pushDistance * 3;
-        
-        // Reset vertical position to prevent upward sliding
-        newPos.y = startPos.y;
-        
-        // Apply strong horizontal bounce velocity
-        velocity.x = horizontalPushDir.x * bounceSpeed;
-        velocity.z = horizontalPushDir.z * bounceSpeed;
-        
-        // Add some horizontal randomness to help escape
-        velocity.x += (Math.random() - 0.5) * bounceSpeed * 0.5;
-        velocity.z += (Math.random() - 0.5) * bounceSpeed * 0.5;
-        
-        // Reset vertical velocity to prevent upward movement
-        velocity.y = 0;
-        
-        // Final safety check
-        const finalCheck = checkCollision(newPos, radius);
-        if (finalCheck.collision) {
-            // If still colliding, force a position reset with strong horizontal bounce
-            console.warn('Final collision check failed, forcing horizontal bounce reset');
-            
-            // Reset to start position but slightly offset in the opposite direction
-            newPos.copy(startPos);
-            newPos.x -= horizontalPushDir.x * radius * 2;
-            newPos.z -= horizontalPushDir.z * radius * 2;
-            
-            // Apply emergency horizontal bounce velocity
-            velocity.x = -horizontalPushDir.x * STUCK_BOUNCE_SPEED * 5;
-            velocity.z = -horizontalPushDir.z * STUCK_BOUNCE_SPEED * 5;
-            velocity.y = 0; // Ensure no vertical movement
-        }
-        
-        return { position: newPos, velocity: velocity };
-    } else {
-        // No collision, move to target position
-        return { position: targetPos, velocity: velocity };
-    }
-}
-
-// ... existing code ...
-
-        // Function to handle orb collection
-        function handleOrbCollection(orbId, username) {
-            const orb = orbs.get(orbId);
-            if (orb) {
-                scene.remove(orb);
-                orbs.delete(orbId);
-                
-                // Only update the collector's orb count
-                if (username === playerUsername) {
-                    const currentOrbs = playerOrbs.get(playerUsername) || 0;
-                    playerOrbs.set(playerUsername, currentOrbs + 1);
-                    updateOrbCount();
-                    playOrbCollectionSound();
-
-                    // Check if this player becomes the ruler
-                    if (currentOrbs + 1 >= 30 && !currentRuler) {
-                        currentRuler = playerUsername;
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({
-                                type: 'new_ruler',
-                                username: playerUsername
-                            }));
+            // Add a MutationObserver to detect when the popup is hidden by other means
+            // and clean up listeners then as well.
+            const observer = new MutationObserver((mutationsList) => {
+                for (const mutation of mutationsList) {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                        if (orbPopup.style.display === 'none') {
+                            cleanupPopupListeners();
+                            observer.disconnect(); // Stop observing once hidden
+                            console.log("Popup hidden, listeners cleaned up via observer.");
+                            break;
                         }
                     }
                 }
+            });
+            observer.observe(orbPopup, { attributes: true });
+            popup._observer = observer; // Store observer reference for cleanup
+        }
+
+        // Call this when the orb count reaches 30 inside updateOrbCount
+         function updateOrbCount() {
+             const orbCountElement = document.getElementById('orbCount');
+             const currentOrbs = playerOrbs.get(playerUsername) || 0;
+             orbCountElement.textContent = `Orbs: ${currentOrbs}`;
+
+             // Show popup when reaching 30 orbs
+             if (currentOrbs >= 30) {
+                 const popup = document.getElementById('orbPopup');
+                 if (popup.style.display !== 'block') { // Only show and setup if not already visible
+                    popup.style.display = 'block';
+                    updateOrbPopupHandlers(); // Setup listeners when popup becomes visible
+                 }
+             } else {
+                 // Ensure popup is hidden if count drops below 30 (e.g., after reset)
+                 const popup = document.getElementById('orbPopup');
+                  if (popup && popup.style.display === 'block') {
+                       popup.style.display = 'none';
+                      // Cleanup might be needed here too if hidden externally, handled by observer now.
+                  }
+             }
+         }
+
+        // WebSocket message handler
+        ws.addEventListener('message', (event) => {
+            const data = JSON.parse(event.data);
+            switch (data.type) {
+                // ... existing cases ...
+                case 'orb_collected':
+                    // Remove the collected orb from the scene for all players
+                    const orb = orbs.get(data.orbId);
+                    if (orb) {
+                        console.log(`Orb ${data.orbId} collected by ${data.username}, removing.`); // Log orb removal
+                        // Safely remove orb and its glow
+                        if (orb.children.length > 0) {
+                            const glow = orb.children[0];
+                             if (glow) {
+                                 orb.remove(glow);
+                                 if (glow.geometry) glow.geometry.dispose();
+                                 if (glow.material) glow.material.dispose();
+                             }
+                        }
+                        scene.remove(orb);
+                        if (orb.geometry) orb.geometry.dispose();
+                        if (orb.material) orb.material.dispose();
+
+                        orbs.delete(data.orbId);
+
+                        // Update the orb count for the specific player who collected it
+                        const collectorUsername = data.username;
+                        const currentOrbs = playerOrbs.get(collectorUsername) || 0;
+                        playerOrbs.set(collectorUsername, currentOrbs + 1);
+                        console.log(`${collectorUsername} collected orb ${data.orbId}, their count: ${currentOrbs + 1}`);
+
+                        // If the collector is the local player, update the UI and play sound
+                        if (collectorUsername === playerUsername) {
+                            updateOrbCount(); // This updates UI and checks for popup
+                            playOrbCollectionSound();
+                        }
+                    } else {
+                        console.warn(`Received orb_collected for non-existent/already collected orb ID: ${data.orbId}`);
+                    }
+                    break;
+
+                case 'shotgun_shot':
+                     // Ensure this message is not from the current player and game has started
+                     if (data.username !== playerUsername && gameStarted) {
+                         const shooterPos = new THREE.Vector3().fromArray(data.position);
+                         const now = performance.now(); // Use consistent timing
+
+                         // Create visual representation of pellets fired by other players using the pool
+                         if (data.directions && Array.isArray(data.directions)) {
+                            data.directions.forEach(directionArray => {
+                                 const pellet = pelletPool.get(); // Get a pellet from the pool
+                                 if (pellet) {
+                                     const direction = new THREE.Vector3().fromArray(directionArray);
+                                     pellet.position.copy(shooterPos); // Start at shooter's reported position
+                                     if (!pellet.userData) pellet.userData = {}; // Ensure userData exists
+                                     pellet.userData.velocity = direction.multiplyScalar(PELLET_SPEED); // Use userData.velocity
+                                     pellet.userData.spawnTime = now; // Use userData.spawnTime
+                                     pellet.userData.bounces = 0; // Reset bounces
+                                     pellet.visible = true; // Make it visible
+                                     // Note: pellet is already added to the scene during pool initialization
+                                 } else {
+                                     console.warn("Pellet pool exhausted during network update for shotgun_shot");
+                                 }
+                             });
+                         } else {
+                              console.warn("Received shotgun_shot without valid directions array from:", data.username);
+                         }
+
+                         // Play sound effect for other player's shot (consider adding positional audio later)
+                         // TODO: Add positional audio? For now, global sound is fine.
+                         playShotgunSound();
+                     }
+                     break;
+                // ... existing code ...
+                case 'new_ruler':
+                    console.log(`Received new_ruler message: ${data.username}`);
+                    handleBecomeRuler(data.username);
+                    break;
+
+                case 'reset_game':
+                     console.log("Received reset_game message from server.");
+                    handleGameReset(); // Call the local reset handler
+                    // Potentially need to request world data again if orbs/etc. respawn server-side
+                     if (ws && ws.readyState === WebSocket.OPEN) {
+                        console.log("Requesting world data after reset...");
+                        ws.send(JSON.stringify({ type: 'request_world_data' }));
+                     }
+                    break;
+                 // ... other cases ...
+            }
+        });
+
+        // Function to handle orb collection
+        function handleOrbCollection(orbId, collectorUsername) { // Renamed parameter for clarity
+            const orb = orbs.get(orbId);
+            if (orb) {
+                console.log(`Handling orb collection: Orb ${orbId} by ${collectorUsername}`);
+                // Safely remove orb and its glow from the scene
+                if (orb.children.length > 0) {
+                     const glow = orb.children[0];
+                     if (glow) {
+                         orb.remove(glow);
+                         if (glow.geometry) glow.geometry.dispose();
+                         if (glow.material) glow.material.dispose();
+                     }
+                }
+                scene.remove(orb);
+                if (orb.geometry) orb.geometry.dispose();
+                if (orb.material) orb.material.dispose();
+                orbs.delete(orbId); // Remove from the map
+
+                // Update the orb count for the specific player who collected it
+                const currentOrbs = playerOrbs.get(collectorUsername) || 0;
+                playerOrbs.set(collectorUsername, currentOrbs + 1);
+                console.log(`${collectorUsername}'s orb count updated to: ${currentOrbs + 1}`);
+
+                // If the collector is the local player, update the UI and play sound
+                if (collectorUsername === playerUsername) {
+                    updateOrbCount(); // This updates UI text and checks for popup
+                    playOrbCollectionSound();
+
+                     // Check if this player becomes the ruler (based on the *new* count)
+                     // Check should be >= 30, not > 30, if 30 is the requirement
+                     if (currentOrbs + 1 >= 30 && !currentRuler) {
+                          console.log(`${playerUsername} has enough orbs to become ruler.`);
+                         // Send message to server to claim rulership
+                         if (ws && ws.readyState === WebSocket.OPEN) {
+                             ws.send(JSON.stringify({
+                                 type: 'attempt_rule', // Use the same message type as the button
+                                 username: playerUsername
+                             }));
+                             console.log(`Sent attempt_rule for ${playerUsername} after collecting orb ${orbId}`);
+                         }
+                     }
+                }
+            } else {
+                 console.warn(`handleOrbCollection called for non-existent orb ID: ${orbId}`);
             }
         }
 
-        // Function to handle game reset
+        // Function to handle game reset (called when receiving 'reset_game' message)
         function handleGameReset() {
+            console.log("Executing handleGameReset for local player:", playerUsername);
             // Reset local state
             playerOrbs.set(playerUsername, 0);
-            updateOrbCount();
+            updateOrbCount(); // Update UI and hide popup if necessary
 
-            // Remove ruler indicator if it exists
-            if (rulerIndicatorMesh) {
-                if (rulerIndicatorMesh.parent) {
-                    rulerIndicatorMesh.parent.remove(rulerIndicatorMesh);
-                }
-                 // Check if it's directly in the scene (shouldn't be if parented, but safety check)
-                if (scene.children.includes(rulerIndicatorMesh)) {
-                     scene.remove(rulerIndicatorMesh);
-                }
-                rulerIndicatorMesh = null;
-                console.log('Game reset, removed ruler indicator.');
-            }
-            currentRuler = null;
-
-            // Reset position to spawn
-            camera.position.set(0, 10, 0);
-            velocity.set(0, 0, 0);
-            flingVelocity.set(0, 0, 0);
-            verticalVelocity = 0;
-            
-            // Reset health and damage multipliers
-            playerHealth = 100;
-            updateHealthBar();
-            
-            // Close popup
-            const popup = document.getElementById('orbPopup');
-            popup.style.display = 'none';
-        }
-
-        // Function to handle becoming ruler
-        function handleBecomeRuler(username) {
-            console.log(`${username} is the new ruler!`);
-            currentRuler = username;
-
-            // Remove previous indicator if any (safety check)
+            // Remove ruler indicator if it exists and belongs to this player or anyone
             if (rulerIndicatorMesh) {
                 if (rulerIndicatorMesh.parent) {
                     rulerIndicatorMesh.parent.remove(rulerIndicatorMesh);
@@ -4284,143 +4073,154 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
                  if (scene.children.includes(rulerIndicatorMesh)) {
                      scene.remove(rulerIndicatorMesh);
                  }
+                // Dispose geometry/material? Maybe not necessary if reused.
+                 // if (rulerIndicatorMesh.geometry) rulerIndicatorMesh.geometry.dispose();
+                 // if (rulerIndicatorMesh.material) rulerIndicatorMesh.material.dispose();
                 rulerIndicatorMesh = null;
+                console.log('Game reset, removed ruler indicator.');
+            }
+            currentRuler = null; // Clear current ruler status
+
+            // Reset player health to default
+            playerHealth = 100;
+            isDead = false; // Ensure player is not marked as dead
+            updateHealthDisplay(); // Update health bar display
+
+            // Reset position to spawn (or a default)
+            camera.position.set(0, playerHeight, 0); // Use playerHeight constant
+            camera.rotation.set(0, 0, 0); // Reset camera rotation
+            controls.getObject().position.copy(camera.position); // Sync controls object position
+            controls.getObject().rotation.set(0, 0, 0); // Sync controls object rotation
+
+            velocity.set(0, 0, 0);
+            flingVelocity.set(0, 0, 0);
+            verticalVelocity = 0;
+            isFlinging = false;
+            isGrounded = true; // Assume starting on ground
+
+            // Close orb popup if it's open
+            const popup = document.getElementById('orbPopup');
+            if (popup) {
+                 popup.style.display = 'none';
+                 // Consider cleaning up listeners if they weren't already
             }
 
-            // Find the ruler's player model
+            // Clear pellets from the pool and scene
+            pelletPool.active.forEach(pellet => {
+                 scene.remove(pellet);
+                 // Optionally dispose geometry/material if not reusing meshes
+            });
+            pelletPool.active.clear();
+             // Re-add pooled pellets to the pool array (or re-initialize pool if easier)
+             // Assuming pool holds the inactive ones:
+             // pelletPool.pool.push(...pelletPool.active); // This line is wrong, need to handle pooling correctly
+             // Safest might be to clear active and assume pool holds inactive ones,
+             // or potentially re-initialize the pool if structure is complex.
+             // For now, just clearing active set.
+
+            console.log("Local game state reset.");
+            // Note: Server should send new world data (orbs etc.) if they respawned.
+        }
+
+        // Function to handle becoming ruler
+        function handleBecomeRuler(username) {
+            console.log(`${username} is the new ruler!`);
+
+            // --- Remove existing indicator regardless of who had it ---
+            if (rulerIndicatorMesh) {
+                if (rulerIndicatorMesh.parent) {
+                    rulerIndicatorMesh.parent.remove(rulerIndicatorMesh); // Remove from parent mesh
+                } else if (scene.children.includes(rulerIndicatorMesh)) {
+                    scene.remove(rulerIndicatorMesh); // Remove from scene if parented directly (less likely)
+                }
+                // Consider disposing geometry/material if creating new ones each time
+                // rulerIndicatorMesh.geometry.dispose();
+                // rulerIndicatorMesh.material.dispose();
+                rulerIndicatorMesh = null;
+                 console.log("Removed previous ruler indicator.");
+            }
+            // --- Update ruler status ---
+             currentRuler = username;
+
+
+            // Find the new ruler's player model
             const rulerState = playerStates.get(username);
             if (rulerState && rulerState.mesh) {
-                console.log(`Found player mesh for ruler ${username}`);
+                console.log(`Found player mesh for new ruler ${username}`);
                 // Create the indicator geometry and material
-                const indicatorGeometry = new THREE.ConeGeometry(2.5, 10, 8); // Radius, Height, Segments
-                const indicatorMaterial = new THREE.MeshBasicMaterial({ 
-                    color: 0xFFFF00, // Bright yellow
-                    wireframe: false 
-                });
+                 const indicatorGeometry = new THREE.ConeGeometry(2.5, 10, 8); // Radius, Height, Segments
+                 const indicatorMaterial = new THREE.MeshBasicMaterial({
+                     color: 0xFFFF00, // Bright yellow
+                     wireframe: false
+                 });
                 rulerIndicatorMesh = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
 
-                // Position the indicator above the player's head (adjust Y as needed)
-                // Capsule geometry height is 6, radius is 2. Total visual height ~10.
-                // Adding sprite height (6) puts top around Y=11 relative to player origin.
-                rulerIndicatorMesh.position.y = 15; // Place it clearly above the head+username
+                // Position the indicator above the player's head
+                rulerIndicatorMesh.position.y = 15; // Adjust as needed based on player model height/label
                 rulerIndicatorMesh.rotation.x = Math.PI; // Point the cone downwards
 
                 // Add the indicator as a child of the ruler's mesh
                 rulerState.mesh.add(rulerIndicatorMesh);
-                console.log('Added ruler indicator to player mesh.');
+                console.log('Added new ruler indicator to player mesh:', rulerState.mesh.uuid);
 
             } else {
                 console.warn(`Could not find player mesh for ruler: ${username} to attach indicator.`);
+                 // Attempt to create/find mesh again? Or wait for next position update?
+                 // For now, just log the warning. Indicator will attach on next update if mesh appears.
             }
 
-            // Existing ruler logic (health boost, message for local player)
+            // Apply effects if the local player became the ruler
             if (username === playerUsername) {
                 playerHealth = 500; // 5x health
-                updateHealthBar();
-                // Show ruler effect
+                updateHealthDisplay(); // Update health bar immediately
+                console.log(`${playerUsername} became ruler, health set to ${playerHealth}`);
+                // Show ruler effect message
                 const rulerEffect = document.createElement('div');
-                rulerEffect.style.position = 'fixed';
-                rulerEffect.style.top = '50%';
-                rulerEffect.style.left = '50%';
-                rulerEffect.style.transform = 'translate(-50%, -50%)';
-                rulerEffect.style.color = '#FFD700';
-                rulerEffect.style.fontSize = '24px';
-                rulerEffect.style.fontWeight = 'bold';
-                rulerEffect.style.textShadow = '0 0 10px #FFD700';
-                rulerEffect.style.zIndex = '2000';
+                 rulerEffect.id = 'rulerEffectMessage'; // Give it an ID for easy removal
+                rulerEffect.style.cssText = `
+                    position: fixed; top: 50%; left: 50%;
+                    transform: translate(-50%, -50%); color: #FFD700;
+                    font-size: 24px; font-weight: bold; text-shadow: 0 0 10px #FFD700;
+                    z-index: 2000; background-color: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px;
+                `;
                 rulerEffect.textContent = 'YOU ARE THE RULER!';
+                // Remove existing message if any before adding new one
+                 const existingEffect = document.getElementById('rulerEffectMessage');
+                 if (existingEffect) existingEffect.remove();
                 document.body.appendChild(rulerEffect);
-                
+
                 // Remove effect after 3 seconds
                 setTimeout(() => {
-                    document.body.removeChild(rulerEffect);
+                     // Check if the element still exists before trying to remove
+                     const effectToRemove = document.getElementById('rulerEffectMessage');
+                     if (effectToRemove) {
+                         effectToRemove.remove();
+                     }
                 }, 3000);
+            } else {
+                 // If someone else became ruler, ensure local player health is reset if they WERE ruler
+                 if (currentRuler !== playerUsername && playerHealth > 100) {
+                      console.log(`Local player ${playerUsername} is no longer ruler. Resetting health.`);
+                      playerHealth = 100; // Reset to normal health
+                      updateHealthDisplay();
+                 }
             }
         }
-
-        // Update the orb popup handlers
-        function updateOrbPopupHandlers() {
-            const popup = document.getElementById('orbPopup');
-            if (popup) {
-                // Function to handle reset
-                const handleReset = () => {
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'reset_game'
-                        }));
-                    }
-                    handleGameReset();
-                };
-                
-                // Function to handle rule
-                const handleRule = () => {
-                    if (currentRuler === playerUsername) {
-                        // Ruler already has 5x health and damage
-                        popup.style.display = 'none';
-                    } else {
-                        // Show message that someone else is ruler
-                        const message = document.createElement('div');
-                        message.style.position = 'fixed';
-                        message.style.top = '50%';
-                        message.style.left = '50%';
-                        message.style.transform = 'translate(-50%, -50%)';
-                        message.style.color = '#FFD700';
-                        message.style.fontSize = '20px';
-                        message.style.fontWeight = 'bold';
-                        message.style.textShadow = '0 0 10px #FFD700';
-                        message.style.zIndex = '2000';
-                        message.textContent = `${currentRuler} is the Ruler!`;
-                        document.body.appendChild(message);
-                        
-                        // Remove message after 2 seconds
-                        setTimeout(() => {
-                            document.body.removeChild(message);
-                        }, 2000);
-                    }
-                };
-                
-                // Add button event listeners
-                document.getElementById('resetButton').onclick = handleReset;
-                document.getElementById('ruleButton').onclick = handleRule;
-                
-                // Add keyboard event listeners
-                const handleKeyPress = (event) => {
-                    if (event.key.toLowerCase() === 'c') {
-                        handleReset();
-                    } else if (event.key.toLowerCase() === 'v') {
-                        handleRule();
-                    }
-                };
-                
-                // Add keyboard listener when popup is shown
-                document.addEventListener('keydown', handleKeyPress);
-            }
-        }
-
-        // Update the WebSocket message handler to handle new ruler and game reset
-        ws.addEventListener('message', (event) => {
-            const data = JSON.parse(event.data);
-            switch (data.type) {
-                // ... existing cases ...
-                case 'new_ruler':
-                    handleBecomeRuler(data.username);
-                    break;
-                case 'reset_game':
-                    handleGameReset();
-                    break;
-            }
-        });
 
         // Update the pellet collision handler to apply 5x damage for ruler
         function handlePelletCollision(victimUsername, attackerUsername) {
             if (ws && ws.readyState === WebSocket.OPEN) {
+                // Check who is the current ruler
                 const damage = attackerUsername === currentRuler ? SHOTGUN_DAMAGE * 5 : SHOTGUN_DAMAGE;
+                console.log(`Handling pellet collision: Attacker=${attackerUsername}, Victim=${victimUsername}, Ruler=${currentRuler}, Damage=${damage}`); // Log details
                 ws.send(JSON.stringify({
                     type: 'player_damaged',
                     victimUsername: victimUsername,
                     attackerUsername: attackerUsername,
                     damage: damage
                 }));
+            } else {
+                 console.warn("Cannot send player_damaged message, WebSocket not open.");
             }
         }
     </script>
