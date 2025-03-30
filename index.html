@@ -2001,8 +2001,19 @@
                  if (rapierWorld && playerBodyHandle !== null) {
                      const body = rapierWorld.getRigidBody(playerBodyHandle);
                      if (body) {
+                        // It's crucial to remove colliders associated with the body *before* removing the body itself
+                        // Iterate through colliders attached to the body
+                        const numColliders = body.numColliders();
+                        for (let i = 0; i < numColliders; i++) {
+                            const colliderHandle = body.collider(0); // Get collider handle (index is always 0 after removal)
+                            const collider = rapierWorld.getCollider(colliderHandle);
+                            if (collider) {
+                                rapierWorld.removeCollider(collider, false); // false: don't wake neighbors unnecessarily
+                            }
+                        }
+                        // Now remove the rigid body
                         rapierWorld.removeRigidBody(body);
-                        console.log(`Removed player Rapier body handle: ${playerBodyHandle}`);
+                        console.log(`Removed player Rapier body and colliders, handle: ${playerBodyHandle}`);
                      } else {
                          console.warn(`Could not find Rapier body with handle ${playerBodyHandle} to remove.`);
                      }
