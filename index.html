@@ -3807,9 +3807,9 @@
         if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
         if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
 
-        // --- Adjust velocity based on the collision *within* the loop ---
-        // Use the same pushDir calculated for position adjustment.
-        const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z; // Use current velocity
+        // --- Adjust velocity based on the collision *within* this loop iteration ---
+        // Use the pushDir calculated for the position adjustment in this iteration.
+        const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
 
         if (!wasStuckInLoop && dotProduct < 0) { // Only adjust if not stuck and moving into wall
             // Project velocity onto the collision plane (slide)
@@ -3817,7 +3817,7 @@
             const slideVelZ = velocity.z - pushDir.z * dotProduct;
             velocity.x = slideVelX * CORNER_SLIDE_FORCE; // Apply sliding with force factor
             velocity.z = slideVelZ * CORNER_SLIDE_FORCE;
-        } // else: if stuck or moving away/parallel, let velocity persist (stuck bounce or normal friction)
+        } // else: if stuck or moving away/parallel, let velocity persist
 
         // If it's the last iteration and still colliding, log a warning
         if (i === MAX_ITERATIONS - 1 && checkCollision(resolvedPosition, playerRadius).collision) {
