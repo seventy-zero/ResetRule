@@ -671,7 +671,7 @@
             let rigidBody = world.createRigidBody(rigidBodyDesc);
 
             // Player Collider (Capsule Shape)
-            let colliderDesc = RAPIER.ColliderDesc.capsuleY(playerHeight / 2 - playerRadius, playerRadius)
+            let colliderDesc = RAPIER.ColliderDesc.capsule(playerHeight / 2 - playerRadius, playerRadius) // <-- Changed from capsuleY
                 .setDensity(1.0) // Set density for mass calculation
                 .setFriction(0.7)
                 .setRestitution(0.3); // Adjust bounciness
@@ -3496,33 +3496,7 @@
         // Update the collider's center to the final position
         playerCollider.center.copy(camera.position); // Final collider update
 
-        // --- [REMOVED] Separate velocity adjustment block after the loop --- 
-
-        // Apply friction to normal movement (Now applied regardless of final collision state)
-        const effectiveSmoothing = Math.pow(MOVEMENT_SMOOTHING, deltaTime * 60); // Framerate independent
-        velocity.x *= effectiveSmoothing;
-        velocity.z *= effectiveSmoothing;
-
-        // Stop movement when velocity is very small
-        if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
-        if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
-
-        // --- Adjust velocity based on the collision *within* this loop iteration ---
-        // Use the pushDir calculated for the position adjustment in this iteration.
-        const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
-
-        if (!wasStuckInLoop && dotProduct < 0) { // Only adjust if not stuck and moving into wall
-            // Project velocity onto the collision plane (slide)
-            const slideVelX = velocity.x - pushDir.x * dotProduct;
-            const slideVelZ = velocity.z - pushDir.z * dotProduct;
-            velocity.x = slideVelX * CORNER_SLIDE_FORCE; // Apply sliding with force factor
-            velocity.z = slideVelZ * CORNER_SLIDE_FORCE;
-        } // else: if stuck or moving away/parallel, let velocity persist
-
-        // If it's the last iteration and still colliding, log a warning
-        if (i === MAX_ITERATIONS - 1 && checkCollision(resolvedPosition, playerRadius).collision) {
-            console.warn('Collision resolution may be incomplete after max iterations');
-        }
+        // --- REMOVED old velocity/friction/sliding logic --- 
 
     // Always render the scene
     renderer.render(scene, camera);
