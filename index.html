@@ -3786,7 +3786,7 @@
             }
             // If it's the last iteration and still colliding, log a warning
             if (i === MAX_ITERATIONS - 1 && checkCollision(resolvedPosition, playerRadius).collision) {
-                console.warn('Collision resolution failed after max iterations');
+                console.warn('Collision resolution may be incomplete after max iterations');
             }
         } 
         // --- End Iterative Collision Resolution Loop ---
@@ -3796,50 +3796,33 @@
         // Update the collider's center to the final position
         playerCollider.center.copy(camera.position); // Final collider update
 
-        // --- Velocity adjustments based on the FINAL state after resolution ---
-        const finalCollision = checkCollision(camera.position, playerRadius); 
-        if (finalCollision.collision) {
-             const pushDir = new THREE.Vector3();
-             pushDir.copy(camera.position).sub(finalCollision.closestPoint).normalize();
-             const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-             const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z;
+        // --- [REMOVED] Separate velocity adjustment block after the loop --- 
 
-             if (wasStuckInLoop) {
-                 // If we triggered the 'stuck' condition, apply escape velocity
-                 velocity.x = pushDir.x * 2.0;
-                 velocity.z = pushDir.z * 2.0;
-                 // Vertical velocity was already handled in the loop
-             } else if (dotProduct < 0) { // Moving into the wall after iterations
-                  // --- REVERTED LOGIC ---
-                  // Apply slight bounce/stop
-                  const bounceStrength = 0.05;
-                  velocity.x = pushDir.x * currentSpeed * bounceStrength;
-                  velocity.z = pushDir.z * currentSpeed * bounceStrength;
-                  if (currentSpeed > 0.1) {
-                       verticalVelocity = Math.max(verticalVelocity, currentSpeed * 0.05, 0.05); // Small hop
-                       isGrounded = false;
-                  }
-                  // --- END REVERTED LOGIC ---
-             } else { // Sliding along the wall or moving away
-                  // Project velocity onto tangent plane and apply friction/sliding force
-                  const slideVelX = velocity.x - pushDir.x * dotProduct;
-                  const slideVelZ = velocity.z - pushDir.z * dotProduct;
-                  velocity.x = slideVelX * CORNER_SLIDE_FORCE;
-                  velocity.z = slideVelZ * CORNER_SLIDE_FORCE;
-             }
-         } // else: No collision after resolution, velocity remains as calculated from input
+        // Apply friction to normal movement (Now applied regardless of final collision state)
+        const effectiveSmoothing = Math.pow(MOVEMENT_SMOOTHING, deltaTime * 60); // Framerate independent
+        velocity.x *= effectiveSmoothing;
+        velocity.z *= effectiveSmoothing;
 
-         // Apply friction to normal movement (applied after collision response)
-         const effectiveSmoothing = Math.pow(MOVEMENT_SMOOTHING, deltaTime * 60); // Framerate independent
-         velocity.x *= effectiveSmoothing;
-         velocity.z *= effectiveSmoothing;
+        // Stop movement when velocity is very small
+        if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
+        if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
 
-         // Stop movement when velocity is very small
-         if (Math.abs(velocity.x) < MIN_VELOCITY_THRESHOLD) velocity.x = 0;
-         if (Math.abs(velocity.z) < MIN_VELOCITY_THRESHOLD) velocity.z = 0;
-         // } // This brace might be closing the 'else' block from line 2866, needs verification
-         // --- Previous code structure needs careful review ensure correct block closure --- 
-    
+        // --- Adjust velocity based on the collision *within* the loop ---
+        // Use the same pushDir calculated for position adjustment.
+        const dotProduct = pushDir.x * velocity.x + pushDir.z * velocity.z; // Use current velocity
+
+        if (!wasStuckInLoop && dotProduct < 0) { // Only adjust if not stuck and moving into wall
+            // Project velocity onto the collision plane (slide)
+            const slideVelX = velocity.x - pushDir.x * dotProduct;
+            const slideVelZ = velocity.z - pushDir.z * dotProduct;
+            velocity.x = slideVelX * CORNER_SLIDE_FORCE; // Apply sliding with force factor
+            velocity.z = slideVelZ * CORNER_SLIDE_FORCE;
+        } // else: if stuck or moving away/parallel, let velocity persist (stuck bounce or normal friction)
+
+        // If it's the last iteration and still colliding, log a warning
+        if (i === MAX_ITERATIONS - 1 && checkCollision(resolvedPosition, playerRadius).collision) {
+            console.warn('Collision resolution may be incomplete after max iterations');
+        }
 
     // Always render the scene
     renderer.render(scene, camera);
