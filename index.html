@@ -703,24 +703,31 @@
             group.position.set(towerData.x, height/2 + baseHeight, towerData.z);
             scene.add(group);
 
-            // --- Create a simplified local box based on the actual mesh bounds ---
-            // 1. Get the bounding box of the actual visual mesh geometry
-            const actualMeshBBox = new THREE.Box3().setFromObject(mesh);
-            const actualSize = new THREE.Vector3();
-            actualMeshBBox.getSize(actualSize);
-            
-            // 2. Create a simple BoxGeometry using these dimensions
-            //    (Use BufferGeometry directly for Box3 calculation)
-            const simpleCollisionGeometry = new THREE.BoxGeometry(actualSize.x, actualSize.y, actualSize.z);
+            // --- Create a simplified local BOX collider based on tower's WIDEST point --- 
+            let collisionWidth;
+            switch(towerData.type) {
+                case 0: collisionWidth = 18 * 2; break; // Cylindrical (Radius 18)
+                case 1: collisionWidth = 12 * 2; break; // Tapered (Radius 12)
+                case 2: collisionWidth = 36; break;     // Square (Width 36)
+                case 3: collisionWidth = 20 * 2; break; // Hexagonal (Radius 20)
+                case 4: collisionWidth = 15 * 2; break; // Twisted (Radius 15)
+                case 5: collisionWidth = 24 * 2; break; // Pyramid (Base Radius 24)
+                case 6: collisionWidth = 19 * 2; break; // Octagonal (Radius 19)
+                case 7: collisionWidth = 42; break;     // Double width box (Width 42)
+                case 8: collisionWidth = 12 * 2; break; // Inverse pyramid (Top Radius 12) - Assuming this is widest
+                case 9: collisionWidth = 24 * 2; break; // Star (Outer Radius 24)
+                case 10: collisionWidth = 8 * 2; break; // Thin spire (Radius 8)
+                default: collisionWidth = 36; // Fallback default width
+            }
 
-            // 3. Create the localCollisionBox from this size-matched simple geometry
+            // Create a simple BoxGeometry for collision using determined width and tower height
+            const collisionGeometry = new THREE.BoxGeometry(collisionWidth, height, collisionWidth);
+            // Create the localCollisionBox from this simple geometry
             const localCollisionBox = new THREE.Box3().setFromBufferAttribute(
-                simpleCollisionGeometry.attributes.position
+                 collisionGeometry.attributes.position
             );
-            simpleCollisionGeometry.dispose(); // Dispose temporary geometry
-
-            // --- Shrink the collision box slightly to prevent getting stuck on corners ---
-            localCollisionBox.expandByScalar(-0.2); // Adjust this value if needed
+            collisionGeometry.dispose(); // Dispose temporary geometry
+            // --- No shrinking needed/applied for this simpler box --- 
 
             // Store tower info with the size-matched simplified localCollisionBox
             towers.push({
