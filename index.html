@@ -2216,9 +2216,16 @@
                         pushDir.copy(camera.position).sub(movementCollision.closestPoint).normalize();
                         const pushDistance = playerRadius - movementCollision.distance;
                         
+                        // Force horizontal-only push direction
+                        pushDir.y = 0;
+                        pushDir.normalize();
+                        
                         // Apply horizontal push-out
                         camera.position.x += pushDir.x * pushDistance * COLLISION_PUSH_FORCE;
                         camera.position.z += pushDir.z * pushDistance * COLLISION_PUSH_FORCE;
+                        
+                        // Reset vertical position to prevent upward movement
+                        camera.position.y = positionBeforeFrame.y;
                         
                         // Handle velocity changes
                         const horizontalPushNormal = new THREE.Vector3(pushDir.x, 0, pushDir.z).normalize();
