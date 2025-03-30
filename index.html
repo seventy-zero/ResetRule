@@ -1112,12 +1112,12 @@
 
                     case 'position':
                         if (data.username !== playerUsername && gameStarted) {
-                            console.log('Received position update for:', {
-                                username: data.username,
-                                position: data.position,
-                                rotation: data.rotation,
-                                hasPlayerState: playerStates.has(data.username)
-                            });
+                            // console.log('Received position update for:', { // Commenting out to reduce noise
+                            //     username: data.username,
+                            //     position: data.position,
+                            //     rotation: data.rotation,
+                            //     hasPlayerState: playerStates.has(data.username)
+                            // });
                             
                             // Only create player model if we have valid position data
                             if (data.position && data.position.length === 3) {
@@ -1136,13 +1136,13 @@
                                 // Update player state with new data
                                 const playerState = playerStates.get(data.username);
                                 if (playerState) {
-                                    console.log('Updating player state for:', {
-                                        username: data.username,
-                                        oldPosition: playerState.position.clone(),
-                                        newPosition: data.position,
-                                        oldRotation: playerState.rotation.clone(),
-                                        newRotation: data.rotation
-                                    });
+                                    // console.log('Updating player state for:', { // Commenting out to reduce noise
+                                    //     username: data.username,
+                                    //     oldPosition: playerState.position.clone(),
+                                    //     newPosition: data.position,
+                                    //     oldRotation: playerState.rotation.clone(),
+                                    //     newRotation: data.rotation
+                                    // });
                                     
                                     // Update position
                                     if (data.position) {
@@ -1169,12 +1169,12 @@
                                     
                                     // Verify mesh visibility
                                     if (playerState.mesh) {
-                                        console.log('Player mesh state:', {
-                                            username: data.username,
-                                            position: playerState.mesh.position,
-                                            visible: playerState.mesh.visible,
-                                            inScene: scene.children.includes(playerState.mesh)
-                                        });
+                                        // console.log('Player mesh state:', { // Commenting out to reduce noise
+                                        //     username: data.username,
+                                        //     position: playerState.mesh.position,
+                                        //     visible: playerState.mesh.visible,
+                                        //     inScene: scene.children.includes(playerState.mesh)
+                                        // });
                                     }
                                 } else {
                                     console.warn('No player state found for username:', data.username);
