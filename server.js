@@ -326,9 +326,68 @@ class GameRoom {
         this.broadcastRoomInfo();
     }
 
+    // --- NEW HELPER FUNCTION to drop orbs ---
+    dropPlayerOrbs(ws, deathPosition = null) {
+        const player = this.players.get(ws);
+        if (!player) {
+            console.warn("Attempted to drop orbs for a player no longer in the room.");
+            return;
+        }
+
+        const orbCount = this.playerOrbs.get(ws) || 0;
+        console.log(`Player ${player.username} leaving/died with ${orbCount} orbs.`);
+
+        if (orbCount > 0) {
+            const droppedOrbsData = [];
+            // Use provided death position or player's last known position
+            const position = deathPosition ? deathPosition : [player.position.x, player.position.y, player.position.z];
+            const dropRadius = 5;
+
+            for (let i = 0; i < orbCount; i++) {
+                this.lastOrbId++;
+                const neonColors = [
+                    0x39FF14, 0x1B03A3, 0xBC13FE, 0xFF10F0
+                ];
+                const randomColor = neonColors[Math.floor(Math.random() * neonColors.length)];
+                const orbRadius = 6;
+                const randomAngle = Math.random() * Math.PI * 2;
+                const randomDist = Math.random() * dropRadius;
+                const orbX = position[0] + Math.cos(randomAngle) * randomDist;
+                const orbY = position[1] + 1;
+                const orbZ = position[2] + Math.sin(randomAngle) * randomDist;
+
+                const newOrbData = {
+                    id: this.lastOrbId,
+                    position: { x: orbX, y: orbY, z: orbZ },
+                    color: randomColor,
+                    size: orbRadius
+                };
+
+                this.world.orbs.push(newOrbData);
+                droppedOrbsData.push(newOrbData);
+            }
+
+            // Reset player's orb count (important!)
+            this.playerOrbs.set(ws, 0);
+
+            if (droppedOrbsData.length > 0) {
+                console.log(`Broadcasting ${droppedOrbsData.length} dropped orbs from ${player.username}.`);
+                this.broadcast(JSON.stringify({
+                    type: 'orbs_dropped',
+                    orbs: droppedOrbsData
+                }));
+            }
+        }
+    }
+    // --- END HELPER FUNCTION ---
+
     removePlayer(ws) {
         const player = this.players.get(ws);
         if (player) {
+            // --- Drop orbs BEFORE removing player data ---
+            this.dropPlayerOrbs(ws);
+            // -------------------------------------------
+
             // Broadcast that the player left
             this.broadcast(JSON.stringify({
                 type: 'player_left',
@@ -545,57 +604,9 @@ class GameRoom {
                 const deadPlayerWs = [...this.players.entries()].find(([socket, playerData]) => playerData.username === data.username)?.[0];
                 
                 if (deadPlayerWs) {
-                    const orbCount = this.playerOrbs.get(deadPlayerWs) || 0;
-                    console.log(`Player ${data.username} died with ${orbCount} orbs.`);
-                    
-                    if (orbCount > 0) {
-                        const droppedOrbsData = [];
-                        const deathPosition = data.position || [0, 10, 0]; // Use received position or default
-                        const dropRadius = 5; // How far around the death point orbs can spawn
-
-                        for (let i = 0; i < orbCount; i++) {
-                            this.lastOrbId++; // Generate unique ID
-                            
-                            // Define dropped orb properties (similar to client-side)
-                            const neonColors = [
-                                0x39FF14, // Neon Green
-                                0x1B03A3, // Neon Blue
-                                0xBC13FE, // Neon Purple
-                                0xFF10F0  // Neon Pink
-                            ];
-                            const randomColor = neonColors[Math.floor(Math.random() * neonColors.length)];
-                            const orbRadius = 6; // Standard orb size
-                            
-                            // Calculate slightly randomized position
-                            const randomAngle = Math.random() * Math.PI * 2;
-                            const randomDist = Math.random() * dropRadius;
-                            const orbX = deathPosition[0] + Math.cos(randomAngle) * randomDist;
-                            const orbY = deathPosition[1] + 1; // Spawn slightly above death point Y
-                            const orbZ = deathPosition[2] + Math.sin(randomAngle) * randomDist;
-                            
-                            const newOrbData = {
-                                id: this.lastOrbId,
-                                position: { x: orbX, y: orbY, z: orbZ },
-                                color: randomColor,
-                                size: orbRadius // Assuming size corresponds to radius for client
-                            };
-                            
-                            this.world.orbs.push(newOrbData); // Add to the authoritative world state
-                            droppedOrbsData.push(newOrbData); // Add to the list to broadcast
-                        }
-
-                        // Reset dead player's orb count
-                        this.playerOrbs.set(deadPlayerWs, 0);
-                        
-                        // Broadcast the newly dropped orbs to everyone
-                        if (droppedOrbsData.length > 0) {
-                            console.log(`Broadcasting ${droppedOrbsData.length} dropped orbs from ${data.username}.`);
-                            this.broadcast(JSON.stringify({
-                                type: 'orbs_dropped',
-                                orbs: droppedOrbsData
-                            }));
-                        }
-                    }
+                    // --- Call helper function to drop orbs --- 
+                    this.dropPlayerOrbs(deadPlayerWs, data.position);
+                    // ---------------------------------------
                 } else {
                     console.warn(`Received player_died message for unknown player: ${data.username}`);
                 }
