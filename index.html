@@ -1218,7 +1218,7 @@
                     case 'player_damaged':
                         // Check if the damage message is intended for this player
                         if (data.victimUsername === playerUsername) {
-                             console.log(`Received damage: ${data.damage} from ${data.attackerUsername}`); // Log received damage
+                             console.log(`[Damage Debug] Received player_damaged message. Victim: ${data.victimUsername}, Attacker: ${data.attackerUsername}, Damage: ${data.damage}`); // Log received damage
                             takeDamage(data.damage); // Apply damage locally
                         }
                         break;
@@ -2488,18 +2488,23 @@
                         if (username === playerUsername || !playerState.mesh) return; 
 
                         const distance = pellet.position.distanceTo(playerState.mesh.position);
+                        // --- DEBUG LOG START ---
+                        if (distance < (playerRadius + PELLET_RADIUS + 10)) { // Log nearby pellets
+                             console.log(`[Pellet Debug] Pellet ${pellet.uuid.substring(0,4)} near ${username}. Distance: ${distance.toFixed(2)}, Required: < ${(playerRadius + PELLET_RADIUS).toFixed(2)}`);
+                        }
+                        // --- DEBUG LOG END ---
 
                         if (distance < playerRadius + PELLET_RADIUS) {
                             // Player was hit
-                            console.log(`Pellet hit player: ${username}`); // Add log
+                            console.log(`[Pellet Debug] HIT DETECTED! Pellet ${pellet.uuid.substring(0,4)} hit player: ${username}`); // Add log
                             if (ws && ws.readyState === WebSocket.OPEN) {
+                                console.log(`[Pellet Debug] Sending player_damaged message for ${username}`); // Confirm message sent
                                 ws.send(JSON.stringify({
                                     type: 'player_damaged',
                                     victimUsername: username, // Send victim's username
                                     attackerUsername: playerUsername, // Send attacker's username
                                     damage: SHOTGUN_DAMAGE 
                                 }));
-                                console.log(`Sent player_damaged message for ${username}`); // Confirm message sent
                             }
                             pelletPool.release(pellet);
                             return; // Stop processing this pellet after hit
@@ -3421,8 +3426,9 @@
         function takeDamage(damage) {
             if (isDead) return;
             
+            console.log(`[Damage Debug] takeDamage called. Current Health: ${playerHealth}, Damage: ${damage}`); // Log before damage
             playerHealth -= damage;
-            console.log(`Took ${damage} damage. Health: ${playerHealth}`);
+            console.log(`[Damage Debug] Health after damage: ${playerHealth}`); // Log after damage
             
             // Visual feedback for damage
             document.body.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
@@ -3578,6 +3584,10 @@
             const segments = healthDisplay.children;
             const healthPerSegment = 20; // 100 health / 5 segments
             
+            // --- DEBUG LOG START ---
+            // console.log(`[Health Debug] updateHealthDisplay called. Current Player Health: ${playerHealth}`); // Optional: Log health value being used
+            // --- DEBUG LOG END ---
+
             for (let i = 0; i < segments.length; i++) {
                 const segmentHealth = Math.max(0, playerHealth - (i * healthPerSegment));
                 const segmentPercentage = Math.min(100, (segmentHealth / healthPerSegment) * 100);
