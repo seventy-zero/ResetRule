@@ -2671,7 +2671,12 @@
             function checkOrbCollisionRapier(playerBody) {
                  if (!world || !playerBody) return;
 
-                 const playerPosition = playerBody.translation();
+                 // --- Convert Rapier position to THREE.Vector3 ---
+                 const rapierPos = playerBody.translation();
+                 const playerPosition = objectPool.getVector();
+                 playerPosition.set(rapierPos.x, rapierPos.y, rapierPos.z);
+                 // --- End Conversion ---
+
                  // Define a shape for the player's interaction radius (larger than visual/physics body)
                  const interactionRadius = playerRadius * 3; // Increased pickup radius (adjust as needed)
                  const checkShape = new RAPIER.Ball(interactionRadius);
@@ -2700,6 +2705,10 @@
                          // Note: We don't remove the orb here, wait for server confirmation
                      }
                  });
+
+                 // --- Release pooled vector ---
+                 objectPool.releaseVector(playerPosition);
+                 // --- End Release ---
             }
 
             // Update sendPositionUpdate to potentially take args or read from body
