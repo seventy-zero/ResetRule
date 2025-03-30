@@ -532,10 +532,28 @@
         function removePlayer(username) {
             console.log('Removing player:', username);
             const playerState = playerStates.get(username);
-            if (playerState) {
+            if (playerState && playerState.mesh) { // Added check for mesh existence
+                // Dispose geometry and materials
+                playerState.mesh.traverse(child => {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                             child.material.forEach(mat => {
+                                 if (mat.map) mat.map.dispose(); // Dispose texture if it exists
+                                 mat.dispose();
+                             });
+                        } else {
+                            if (child.material.map) child.material.map.dispose(); // Dispose texture if it exists
+                            child.material.dispose();
+                        }
+                    }
+                });
+                // Remove mesh from scene
                 scene.remove(playerState.mesh);
                 playerStates.delete(username);
                 console.log('Player removed successfully:', username);
+            } else {
+                 console.log(`[removePlayer] Player or mesh not found for ${username}`);
             }
         }
 
@@ -1825,7 +1843,8 @@
                 playerStates.forEach((playerState, username) => {
                     removePlayer(username);
                 });
-                
+                playerStates.clear(); // Explicitly clear the map after removing individuals
+
                 // Reset game state
                 gameStarted = false;
                 playerUsername = '';
