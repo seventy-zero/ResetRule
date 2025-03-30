@@ -1814,17 +1814,27 @@
                 event.preventDefault();
                 if (usernameInput.value.trim()) {
                     playerUsername = usernameInput.value.trim();
+
+                    // --- FIX & LOGGING START ---
+                    console.log(`[Start Game Debug] Starting game as ${playerUsername}. PlayerStates size BEFORE join: ${playerStates.size}`); // Log map state
+                    playerHealth = 100; // Reset health
+                    updateHealthDisplay(); // Update display immediately
                     gameStarted = true;
+                    // --- FIX & LOGGING END ---
+
                     instructions.classList.add('hidden');
-                    
+
                     // Send join message to server
                     if (ws.readyState === WebSocket.OPEN) {
                         ws.send(JSON.stringify({
                             type: 'join',
                             username: playerUsername
                         }));
+                         console.log(`[Start Game Debug] Sent join message for ${playerUsername}.`); // Log message send
+                    } else {
+                         console.warn(`[Start Game Debug] WebSocket not open when trying to join.`);
                     }
-                    
+
                     if (isMobile) {
                         document.querySelector('.mobile-controls').style.display = 'block';
                         document.getElementById('flingButton').style.display = 'block';
