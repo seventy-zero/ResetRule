@@ -2386,16 +2386,16 @@
             pelletPool.initialize(scene);
 
             // Define updatePellets function after pelletPool is initialized
-            function updatePellets(deltaTime) { // Renamed and takes deltaTime
+            function updatePellets(deltaTime) {
                 // GUARD CLAUSE: Ensure pool is initialized and has active pellets
                 if (!pelletPool.isInitialized || pelletPool.active.size === 0) {
                     return; 
                 }
 
-                const currentTime = performance.now(); // Use performance.now() for consistency
+                const currentTime = performance.now();
 
                 // Iterate over a copy of the active set to avoid issues when removing items
-                const activePellets = new Set(pelletPool.active); 
+                const activePellets = new Set(pelletPool.active);
 
                 activePellets.forEach(pellet => {
                     // Check if pellet still exists in the main active set (might have been removed)
@@ -2404,110 +2404,100 @@
                     }
 
                     // Check if pellet has expired
-                    if (currentTime - pellet.userData.spawnTime > PELLET_LIFETIME) { // <-- Corrected variable
+                    if (currentTime - pellet.userData.spawnTime > PELLET_LIFETIME) {
                         pelletPool.release(pellet);
-                        return; // Stop processing this pellet
+                        return;
                     }
 
                     // Store last position for collision detection
-                    // Ensure lastPosition exists before copying
                     if (!pellet.lastPosition) {
                         pellet.lastPosition = new THREE.Vector3();
                     }
                     pellet.lastPosition.copy(pellet.position);
 
                     // Apply gravity (framerate independent)
-                    // Ensure velocity exists in userData
                     if (!pellet.userData.velocity) {
-                        pellet.userData.velocity = new THREE.Vector3(); // Initialize if missing
+                        pellet.userData.velocity = new THREE.Vector3();
                     }
-                    // Apply gravity to userData velocity
                     pellet.userData.velocity.y -= PELLET_GRAVITY * deltaTime;
 
-                    // Apply friction (framerate independent) to userData velocity
+                    // Apply friction (framerate independent)
                     const effectivePelletFriction = Math.pow(PELLET_FRICTION, deltaTime * 60);
                     pellet.userData.velocity.multiplyScalar(effectivePelletFriction);
 
-                    // Calculate potential next position using userData velocity
-                    const deltaPosition = pellet.userData.velocity.clone().multiplyScalar(deltaTime);
-                    const nextPosition = pellet.position.clone().add(deltaPosition);
-
-
-                    // --- Simple Raycast Collision Check ---
-                    const rayDirection = deltaPosition.clone().normalize(); // Based on userData velocity
-                    const rayLength = deltaPosition.length();
-                    
-                    // Only cast if moving significantly
-                    if (rayLength > 0.001) { 
-                        const pelletRaycaster = new THREE.Raycaster(pellet.position, rayDirection, 0, rayLength + PELLET_RADIUS);
-                        
-                        // Objects to check collisions against (towers and bridges)
-                        const collisionObjects = towers.map(t => t.mesh).concat(bridges.map(b => b.mesh)); 
-                        const intersects = pelletRaycaster.intersectObjects(collisionObjects, true); // Check recursively
-
-                        let hit = false;
-                        if (intersects.length > 0) {
-                            const intersect = intersects[0]; // Closest intersection
-                            if (intersect.distance <= rayLength + PELLET_RADIUS) {
-                                 hit = true;
-                                // Collision Response
-                                if (pellet.userData.bounces >= PELLET_MAX_BOUNCES) { // Use userData bounces
-                                    pelletPool.release(pellet);
-                                    return; // Stop processing this pellet
-                                } else {
-                                    // Move pellet to collision point (approximately)
-                                    pellet.position.copy(intersect.point).addScaledVector(intersect.face.normal, PELLET_RADIUS * 0.1); // Move slightly off surface
-
-                                    // Reflect velocity in userData
-                                    const normal = intersect.face.normal;
-                                    pellet.userData.velocity.reflect(normal);
-
-                                    // Apply bounce and friction to reflected velocity in userData
-                                    pellet.userData.velocity.multiplyScalar(PELLET_BOUNCE * PELLET_FRICTION);
-
-                                    pellet.userData.bounces++; // Increment userData bounces
-                                }
-                            }
-                        }
-
-                        // If no collision detected by raycast, update position normally
-                        if (!hit) {
-                             pellet.position.copy(nextPosition);
-                        }
-
-                    } else {
-                         // If not moving much, just update position directly (handles settling)
-                         pellet.position.copy(nextPosition);
-                    }
-                    // --- End Simple Raycast Collision Check ---
-
+                    // Update position with fixed timestep
+                    pellet.position.addScaledVector(pellet.userData.velocity, deltaTime);
 
                     // Check for collisions with players
                     playerStates.forEach((playerState, username) => {
                         // Skip self-collision or if player mesh doesn't exist yet
-                        if (username === playerUsername || !playerState.mesh) return; 
+                        if (username === playerUsername || !playerState.mesh) return;
 
                         const distance = pellet.position.distanceTo(playerState.mesh.position);
 
                         if (distance < playerRadius + PELLET_RADIUS) {
                             // Player was hit
-                            console.log(`Pellet hit player: ${username}`); // Add log
+                            console.log(`Pellet hit player: ${username}`);
                             if (ws && ws.readyState === WebSocket.OPEN) {
                                 ws.send(JSON.stringify({
                                     type: 'player_damaged',
-                                    victimUsername: username, // Send victim's username
-                                    attackerUsername: playerUsername, // Send attacker's username
-                                    damage: SHOTGUN_DAMAGE 
+                                    victimUsername: username,
+                                    attackerUsername: playerUsername,
+                                    damage: SHOTGUN_DAMAGE
                                 }));
-                                console.log(`Sent player_damaged message for ${username}`); // Confirm message sent
                             }
                             pelletPool.release(pellet);
-                            return; // Stop processing this pellet after hit
+                            return;
                         }
                     });
 
-                    // Remove pellet if it's fallen too far (check after potential collision response)
-                    if (pelletPool.active.has(pellet) && pellet.position.y < -1000) {
+                    // Check for collisions with towers and bridges
+                    const pelletCollider = new THREE.Sphere(pellet.position, PELLET_RADIUS);
+                    let collision = false;
+                    let collisionNormal = new THREE.Vector3();
+
+                    // Check tower collisions
+                    for (const tower of towers) {
+                        const towerBox = new THREE.Box3().setFromObject(tower.mesh);
+                        if (towerBox.containsSphere(pelletCollider)) {
+                            const center = towerBox.getCenter(new THREE.Vector3());
+                            collisionNormal.copy(pellet.position).sub(center).normalize();
+                            collision = true;
+                            break;
+                        }
+                    }
+
+                    // Check bridge collisions
+                    for (const bridge of bridges) {
+                        const bridgeObject = towers.find(t => t.mesh === bridge.mesh);
+                        if (bridgeObject && bridgeObject.collisionBoxes) {
+                            const bridgeBox = bridgeObject.collisionBoxes[0];
+                            if (bridgeBox.containsSphere(pelletCollider)) {
+                                const center = bridgeBox.getCenter(new THREE.Vector3());
+                                collisionNormal.copy(pellet.position).sub(center).normalize();
+                                collision = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Handle collision response
+                    if (collision) {
+                        // Move pellet back to last position
+                        pellet.position.copy(pellet.lastPosition);
+
+                        // Reflect velocity based on collision normal
+                        if (pellet.userData.bounces < PELLET_MAX_BOUNCES) {
+                            pellet.userData.velocity.reflect(collisionNormal);
+                            pellet.userData.velocity.multiplyScalar(PELLET_BOUNCE);
+                            pellet.userData.bounces++;
+                        } else {
+                            pelletPool.release(pellet);
+                        }
+                    }
+
+                    // Remove pellet if it's fallen too far
+                    if (pellet.position.y < -1000) {
                         pelletPool.release(pellet);
                     }
                 });
@@ -3419,19 +3409,54 @@
 
         // Add these new functions
         function takeDamage(damage) {
-            if (isDead) return;
+            if (isDead) return; // Don't take damage if already dead
             
             playerHealth -= damage;
-            console.log(`Took ${damage} damage. Health: ${playerHealth}`);
-            
+            console.log(`Player health: ${playerHealth}`);
+
             // Visual feedback for damage
-            document.body.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
+            document.body.style.backgroundColor = 'rgba(255, 0, 0, 0.2)';
             setTimeout(() => {
                 document.body.style.backgroundColor = 'transparent';
-            }, 200);
-            
+            }, 100);
+
+            // Check for death
             if (playerHealth <= 0) {
-                die();
+                playerHealth = 0;
+                isDead = true;
+                
+                // Show death message
+                const deathMessage = document.createElement('div');
+                deathMessage.style.position = 'fixed';
+                deathMessage.style.top = '50%';
+                deathMessage.style.left = '50%';
+                deathMessage.style.transform = 'translate(-50%, -50%)';
+                deathMessage.style.color = 'red';
+                deathMessage.style.fontSize = '48px';
+                deathMessage.style.fontWeight = 'bold';
+                deathMessage.style.textAlign = 'center';
+                deathMessage.style.zIndex = '1000';
+                deathMessage.textContent = 'YOU DIED';
+                deathMessage.dataset.listener = 'deathMessage';
+                
+                // Add respawn instructions
+                const respawnText = document.createElement('div');
+                respawnText.style.color = 'white';
+                respawnText.style.fontSize = '24px';
+                respawnText.style.marginTop = '20px';
+                respawnText.textContent = 'Press SPACE to respawn';
+                deathMessage.appendChild(respawnText);
+                
+                document.body.appendChild(deathMessage);
+                
+                // Add respawn listener
+                const respawnListener = (event) => {
+                    if (event.code === 'Space') {
+                        respawn();
+                    }
+                };
+                deathMessage.dataset.listener = respawnListener;
+                document.addEventListener('keydown', respawnListener);
             }
         }
 
@@ -3693,7 +3718,7 @@
                         
                         if (distance < playerRadius + PELLET_RADIUS) {
                             // Player was hit
-                            console.log(`Pellet hit player: ${username}`); // Add log
+                            console.log(`Pellet hit player: ${username}`);
                             if (ws && ws.readyState === WebSocket.OPEN) {
                                 ws.send(JSON.stringify({
                                     type: 'player_damaged',
@@ -3709,7 +3734,7 @@
                     }
                 });
                 
-                // Remove pellet if it's fallen too far
+                // Remove pellet if it's fallen too far (check after potential collision response)
                 if (pellet.position.y < -1000) {
                     pelletPool.release(pellet);
                 }
