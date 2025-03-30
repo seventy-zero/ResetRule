@@ -2443,6 +2443,9 @@
 
                 // Update pellets (keep existing logic for now)
                 updatePellets(deltaTime);
+
+                // Render the scene
+                renderer.render(scene, camera);
             }
 
             animate();
