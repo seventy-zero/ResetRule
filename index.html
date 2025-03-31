@@ -2044,6 +2044,7 @@
                 // Add fling button event listeners
                 flingBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
+                    if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
                     flingStartTime = performance.now();
                     console.log('Fling button touch started');
                     showLine = true;
@@ -2074,6 +2075,7 @@
 
                 flingBtn.addEventListener('touchmove', function(e) {
                     e.preventDefault();
+                    if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
                     if (!showLine) return;
                     
                     // Update line trace position
@@ -2129,6 +2131,7 @@
 
                 flingBtn.addEventListener('touchend', function(e) {
                     e.preventDefault();
+                    if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
                     const touchDuration = performance.now() - flingStartTime;
                     console.log('Fling button touch ended');
                     showLine = false;
@@ -2215,6 +2218,7 @@
                 rightJoystickZone.addEventListener('touchmove', function(e) {
                     if (!isRightTouching) return;
                     e.preventDefault();
+                    if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
                     const touch = e.touches[0];
                     const currentTime = performance.now();
                     
@@ -2415,6 +2419,7 @@
             if (!isMobile) {
                 // Movement controls
                 const onKeyDown = function(event) {
+                    if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
                     switch (event.code) {
                         case 'ArrowUp':
                         case 'KeyW':
@@ -2443,6 +2448,7 @@
                 };
 
                 const onKeyUp = function(event) {
+                    if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
                     switch (event.code) {
                         case 'ArrowUp':
                         case 'KeyW':
@@ -2471,12 +2477,14 @@
 
                 // Mouse controls for line visibility
                 document.addEventListener('mousedown', (event) => {
+                    if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
                     if (event.button === 0) { // Left mouse button
                         showLine = true;
                     }
                 });
 
                 document.addEventListener('mouseup', (event) => {
+                    if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
                     if (event.button === 0) { // Left mouse button
                         showLine = false;
                     }
@@ -3609,6 +3617,7 @@
         if (!isMobile) {
             // Add shotgun firing to mouse controls
             document.addEventListener('mousedown', (event) => {
+                if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
                 if (event.button === 2) { // Right mouse button (changed from 1 to 2)
                     console.log('DESKTOP Right Mouse Down -> Firing shotgun'); // <-- ADD LOG
                     fireShotgun();
@@ -3647,6 +3656,7 @@
             // Add shotgun button event listeners
             shotgunButton.addEventListener('touchstart', function(e) {
                 e.preventDefault();
+                if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
                 console.log('Mobile shotgun button TAPPED.'); // <-- ADDED LOG
                 fireShotgun();
             }, { passive: false });
@@ -3656,6 +3666,7 @@
 
             shotgunButton.addEventListener('touchstart', function(e) {
                 e.preventDefault();
+                if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
                 shotgunButtonHeld = true;
                 this.classList.add('active'); // Add visual feedback
                 console.log('Mobile shotgun button HELD.');
@@ -3663,6 +3674,7 @@
 
             shotgunButton.addEventListener('touchend', function(e) {
                 e.preventDefault();
+                if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
                 if (shotgunButtonHeld) {
                     console.log('Mobile shotgun button RELEASED -> Firing.');
                     fireShotgun(); // Fire on release
