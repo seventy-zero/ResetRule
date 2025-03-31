@@ -1482,13 +1482,15 @@
                 },
 
                 _createPelletMesh() {
-                    const pelletGeometry = new THREE.SphereGeometry(PELLET_RADIUS, 6, 6);
-                    const pelletMaterial = new THREE.MeshBasicMaterial({ 
-                        color: 0xffff00,
-                        transparent: true,
-                        opacity: 0.8
-                    });
-                    const pelletMesh = new THREE.Mesh(pelletGeometry, pelletMaterial);
+                    // --- Use Shared Geometry and Material ---
+                    // const pelletGeometry = new THREE.SphereGeometry(PELLET_RADIUS, 6, 6); // OLD
+                    // const pelletMaterial = new THREE.MeshBasicMaterial({                // OLD
+                    //     color: 0xffff00,                                             // OLD
+                    //     transparent: true,                                           // OLD
+                    //     opacity: 0.8                                                 // OLD
+                    // });                                                              // OLD
+                    const pelletMesh = new THREE.Mesh(sharedPelletGeometry, sharedPelletMaterial); // NEW
+                    // --- End Use Shared Geometry and Material ---
                     pelletMesh.userData = {
                         velocity: new THREE.Vector3(),
                         spawnTime: 0,
@@ -3482,7 +3484,13 @@
 
         // Sound effects
         function playShotgunSound() {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            // --- Reuse existing global audioContext ---
+            // const audioContext = new (window.AudioContext || window.webkitAudioContext)(); // OLD
+            if (!audioContext) { // Safety check if context wasn't created elsewhere
+                console.error("AudioContext not available for shotgun sound.");
+                return;
+            }
+            // --- End Reuse ---
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
             
