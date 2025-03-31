@@ -1482,15 +1482,13 @@
                 },
 
                 _createPelletMesh() {
-                    // --- Use Shared Geometry and Material ---
-                    // const pelletGeometry = new THREE.SphereGeometry(PELLET_RADIUS, 6, 6); // OLD
-                    // const pelletMaterial = new THREE.MeshBasicMaterial({                // OLD
-                    //     color: 0xffff00,                                             // OLD
-                    //     transparent: true,                                           // OLD
-                    //     opacity: 0.8                                                 // OLD
-                    // });                                                              // OLD
-                    const pelletMesh = new THREE.Mesh(sharedPelletGeometry, sharedPelletMaterial); // NEW
-                    // --- End Use Shared Geometry and Material ---
+                    const pelletGeometry = new THREE.SphereGeometry(PELLET_RADIUS, 6, 6);
+                    const pelletMaterial = new THREE.MeshBasicMaterial({ 
+                        color: 0xffff00,
+                        transparent: true,
+                        opacity: 0.8
+                    });
+                    const pelletMesh = new THREE.Mesh(pelletGeometry, pelletMaterial);
                     pelletMesh.userData = {
                         velocity: new THREE.Vector3(),
                         spawnTime: 0,
@@ -3484,13 +3482,7 @@
 
         // Sound effects
         function playShotgunSound() {
-            // --- Reuse existing global audioContext ---
-            // const audioContext = new (window.AudioContext || window.webkitAudioContext)(); // OLD
-            if (!audioContext) { // Safety check if context wasn't created elsewhere
-                console.error("AudioContext not available for shotgun sound.");
-                return;
-            }
-            // --- End Reuse ---
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
             
@@ -3754,127 +3746,127 @@
         }
 
         // Add health display update to animation loop
-        // function animate() { // <-- REMOVE REDUNDANT/CONFLICTING animate() DEFINITION
-        //     requestAnimationFrame(animate);
-        //     
-        //     // Update health display
-        //     updateHealthDisplay();
-        //     
-        //     // Update pellet animations
-        //     animatePellets();
-        //     
-        //     // ... rest of animate function ...
-        // } // <-- REMOVE
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update health display
+            updateHealthDisplay();
+            
+            // Update pellet animations
+            animatePellets();
+            
+            // ... rest of animate function ...
+        }
 
         // Add pellet animation to the main animation loop
-        // function animatePellets() { // <-- REMOVE CONFLICTING/UNUSED animatePellets()
-        //     const currentTime = Date.now();
-        //     
-        //     pelletPool.active.forEach(pellet => {
-        //         // Check if pellet has expired
-        //         if (currentTime - pellet.spawnTime > PELLET_LIFETIME) {
-        //             pelletPool.release(pellet);
-        //             return;
-        //         }
-        //         
-        //         // Store last position for collision detection
-        //         pellet.lastPosition.copy(pellet.position);
-        //         
-        //         // Apply gravity (framerate independent)
-        //         if (!pellet.userData.velocity) {
-        //             pellet.userData.velocity = new THREE.Vector3();
-        //         }
-        //         pellet.userData.velocity.y -= PELLET_GRAVITY * FIXED_DELTA_TIME;
-        //         
-        //         // Apply friction (framerate independent)
-        //         const effectivePelletFriction = Math.pow(PELLET_FRICTION, FIXED_DELTA_TIME * 60);
-        //         pellet.userData.velocity.multiplyScalar(effectivePelletFriction);
-        //         
-        //         // Update position with fixed timestep
-        //         pellet.position.addScaledVector(pellet.userData.velocity, FIXED_DELTA_TIME);
-        //         
-        //         // Check for collisions with towers
-        //         const pelletCollider = new THREE.Sphere(pellet.position, PELLET_RADIUS);
-        //         let collision = false;
-        //         let collisionNormal = new THREE.Vector3();
-        //         
-        //         // Check tower collisions
-        //         for (const tower of towers) {
-        //             const towerBox = new THREE.Box3().setFromObject(tower.mesh);
-        //             if (towerBox.containsSphere(pelletCollider)) {
-        //                 // Calculate collision normal
-        //                 const center = towerBox.getCenter(new THREE.Vector3());
-        //                 collisionNormal.copy(pellet.position).sub(center).normalize();
-        //                 collision = true;
-        //                 break;
-        //             }
-        //         }
-        //         
-        //         // Check bridge collisions
-        //         for (const bridge of bridges) {
-        //             // Get the bridge's collision box from the towers array
-        //             const bridgeObject = towers.find(t => t.mesh === bridge.mesh);
-        //             if (bridgeObject && bridgeObject.collisionBoxes) {
-        //                 const bridgeBox = bridgeObject.collisionBoxes[0];
-        //                 if (bridgeBox.containsSphere(pelletCollider)) {
-        //                     // Calculate collision normal from bridge center
-        //                     const center = bridgeBox.getCenter(new THREE.Vector3());
-        //                     collisionNormal.copy(pellet.position).sub(center).normalize();
-        //                     collision = true;
-        //                     break;
-        //                 }
-        //             }
-        //         }
-        //         
-        //         // Handle collision response
-        //         if (collision) {
-        //             // Move pellet back to last position
-        //             pellet.position.copy(pellet.lastPosition);
-        //             
-        //             // Reflect velocity based on collision normal
-        //             pellet.velocity.reflect(collisionNormal); // <-- NOTE: Uses pellet.velocity not pellet.userData.velocity
-        //             
-        //             // Apply bounce and friction
-        //             pellet.velocity.multiplyScalar(PELLET_BOUNCE * PELLET_FRICTION);
-        //             
-        //             // Increment bounce counter
-        //             pellet.bounces++; // <-- NOTE: Uses pellet.bounces not pellet.userData.bounces
-        //             
-        //             // Remove pellet if too many bounces
-        //             if (pellet.bounces >= pellet.maxBounces) { // <-- NOTE: Uses pellet.maxBounces (undefined?)
-        //                 pelletPool.release(pellet);
-        //             }
-        //         }
-        //         
-        //         // Check for collisions with players
-        //         playerStates.forEach((playerState, username) => {
-        //             if (username !== playerUsername) {
-        //                 const playerCollider = new THREE.Sphere(playerState.mesh.position, playerRadius);
-        //                 const distance = pellet.position.distanceTo(playerState.mesh.position);
-        //                 
-        //                 if (distance < playerRadius + PELLET_RADIUS) {
-        //                     // Player was hit
-        //                     console.log(`Pellet hit player: ${username}`); // Add log
-        //                     if (ws && ws.readyState === WebSocket.OPEN) {
-        //                         ws.send(JSON.stringify({
-        //                             type: 'player_damaged',
-        //                             username: username, // Send victim's username
-        //                             attackerUsername: playerUsername, // Send attacker's username
-        //                             damage: SHOTGUN_DAMAGE 
-        //                         }));
-        //                     }
-        //                     pelletPool.release(pellet);
-        //                     return; // Stop processing this pellet after hit
-        //                 }
-        //             }
-        //         });
-        //         
-        //         // Remove pellet if it's fallen too far
-        //         if (pellet.position.y < -1000) {
-        //             pelletPool.release(pellet);
-        //         }
-        //     });
-        // } // <-- REMOVE
+        function animatePellets() {
+            const currentTime = Date.now();
+            
+            pelletPool.active.forEach(pellet => {
+                // Check if pellet has expired
+                if (currentTime - pellet.spawnTime > PELLET_LIFETIME) {
+                    pelletPool.release(pellet);
+                    return;
+                }
+                
+                // Store last position for collision detection
+                pellet.lastPosition.copy(pellet.position);
+                
+                // Apply gravity (framerate independent)
+                if (!pellet.userData.velocity) {
+                    pellet.userData.velocity = new THREE.Vector3();
+                }
+                pellet.userData.velocity.y -= PELLET_GRAVITY * FIXED_DELTA_TIME;
+                
+                // Apply friction (framerate independent)
+                const effectivePelletFriction = Math.pow(PELLET_FRICTION, FIXED_DELTA_TIME * 60);
+                pellet.userData.velocity.multiplyScalar(effectivePelletFriction);
+                
+                // Update position with fixed timestep
+                pellet.position.addScaledVector(pellet.userData.velocity, FIXED_DELTA_TIME);
+                
+                // Check for collisions with towers
+                const pelletCollider = new THREE.Sphere(pellet.position, PELLET_RADIUS);
+                let collision = false;
+                let collisionNormal = new THREE.Vector3();
+                
+                // Check tower collisions
+                for (const tower of towers) {
+                    const towerBox = new THREE.Box3().setFromObject(tower.mesh);
+                    if (towerBox.containsSphere(pelletCollider)) {
+                        // Calculate collision normal
+                        const center = towerBox.getCenter(new THREE.Vector3());
+                        collisionNormal.copy(pellet.position).sub(center).normalize();
+                        collision = true;
+                        break;
+                    }
+                }
+                
+                // Check bridge collisions
+                for (const bridge of bridges) {
+                    // Get the bridge's collision box from the towers array
+                    const bridgeObject = towers.find(t => t.mesh === bridge.mesh);
+                    if (bridgeObject && bridgeObject.collisionBoxes) {
+                        const bridgeBox = bridgeObject.collisionBoxes[0];
+                        if (bridgeBox.containsSphere(pelletCollider)) {
+                            // Calculate collision normal from bridge center
+                            const center = bridgeBox.getCenter(new THREE.Vector3());
+                            collisionNormal.copy(pellet.position).sub(center).normalize();
+                            collision = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // Handle collision response
+                if (collision) {
+                    // Move pellet back to last position
+                    pellet.position.copy(pellet.lastPosition);
+                    
+                    // Reflect velocity based on collision normal
+                    pellet.velocity.reflect(collisionNormal);
+                    
+                    // Apply bounce and friction
+                    pellet.velocity.multiplyScalar(PELLET_BOUNCE * PELLET_FRICTION);
+                    
+                    // Increment bounce counter
+                    pellet.bounces++;
+                    
+                    // Remove pellet if too many bounces
+                    if (pellet.bounces >= pellet.maxBounces) {
+                        pelletPool.release(pellet);
+                    }
+                }
+                
+                // Check for collisions with players
+                playerStates.forEach((playerState, username) => {
+                    if (username !== playerUsername) {
+                        const playerCollider = new THREE.Sphere(playerState.mesh.position, playerRadius);
+                        const distance = pellet.position.distanceTo(playerState.mesh.position);
+                        
+                        if (distance < playerRadius + PELLET_RADIUS) {
+                            // Player was hit
+                            console.log(`Pellet hit player: ${username}`); // Add log
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({
+                                    type: 'player_damaged',
+                                    username: username, // Send victim's username
+                                    attackerUsername: playerUsername, // Send attacker's username
+                                    damage: SHOTGUN_DAMAGE 
+                                }));
+                            }
+                            pelletPool.release(pellet);
+                            return; // Stop processing this pellet after hit
+                        }
+                    }
+                });
+                
+                // Remove pellet if it's fallen too far
+                if (pellet.position.y < -1000) {
+                    pelletPool.release(pellet);
+                }
+            });
+        }
 
         // Update the collision handling in the animation loop
         function handleCollision(collisionResult, isFlinging) {
