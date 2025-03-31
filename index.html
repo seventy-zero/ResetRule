@@ -3705,10 +3705,12 @@
         function updateHealthDisplay() {
             const segments = healthDisplay.children;
             const numSegments = segments.length;
-            const maxHealth = 100; // Assuming max health is 100
+            // --- MODIFIED: Dynamically set maxHealth based on ruler status ---
+            const maxHealth = (currentRuler === playerUsername) ? 500 : 100;
+            // --- END MODIFICATION ---
             const healthPerSegment = maxHealth / numSegments;
 
-            console.log(`[Health Debug] updateHealthDisplay called. Current Player Health: ${playerHealth}`);
+            console.log(`[Health Debug] updateHealthDisplay called. Current Player Health: ${playerHealth}, Max Health: ${maxHealth}`); // Updated log
 
             for (let i = 0; i < numSegments; i++) {
                 const segmentThreshold = (i + 1) * healthPerSegment;
@@ -4499,7 +4501,7 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
                 const handleRule = () => {
                     if (currentRuler === playerUsername) {
                         // Ruler already has 5x health and damage
-                        popup.style.display = 'none';
+                        popup.style.display = 'none'; // <-- ADDED: Close popup
                     } else {
                         // Show message that someone else is ruler
                         const message = document.createElement('div');
@@ -4520,6 +4522,7 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
                             document.body.removeChild(message);
                         }, 2000);
                     }
+                    popup.style.display = 'none'; // <-- ADDED: Close popup even if someone else is ruler
                 };
                 
                 // Add button event listeners

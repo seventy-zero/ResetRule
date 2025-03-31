@@ -294,36 +294,59 @@ class GameRoom {
         this.currentRuler = null; // Track the current ruler
         this.playerOrbs = new Map(); // <-- Track orb counts per player (ws -> count)
         this.lastOrbId = this.world.orbs.reduce((maxId, orb) => Math.max(maxId, orb.id), 0); // <-- Initialize max orb ID
+        this.cleanupInterval = setInterval(() => this.cleanup(), 30000); // Cleanup inactive players every 30 seconds
         console.log(`Room ${this.name} created with ${this.world.orbs.length} orbs. Max initial Orb ID: ${this.lastOrbId}`);
     }
 
     addPlayer(ws, username) {
-        this.players.set(ws, {
-            username: username,
-            position: { x: 0, y: 10, z: 0 },
-            rotation: { x: 0, y: 0, z: 0 },
-            lastActivity: Date.now()
-        });
-        this.playerOrbs.set(ws, 0); // <-- Initialize player orb count
-        this.lastActivity = Date.now();
-        
-        // Log world data before sending
-        console.log(`Sending world data to ${username}:`, {
-            towers: this.world.towers.length,
-            bridges: this.world.bridges.length,
-            orbs: this.world.orbs.length
-        });
-        
-        // Send world data to the new player
+        // Check if username already exists
+        for (const [clientWs, playerData] of this.players.entries()) {
+            if (playerData.username === username) {
+                console.log(`Username ${username} already taken in room ${this.id}.`);
+                ws.send(JSON.stringify({ type: 'error', message: 'Username already taken' }));
+                ws.close();
+                return;
+            }
+        }
+
+        console.log(`Player ${username} joined room ${this.id} (${this.name})`);
+        const playerData = {
+            username,
+            position: [0, 10, 0], // Initial position
+            rotation: [0, 0, 0],
+            speed: 0,
+            heading: 0,
+            verticalSpeed: 0,
+            lastUpdateTime: Date.now(),
+            orbCount: 0 // <-- ADDED: Initialize orb count
+        };
+        this.players.set(ws, playerData);
+
+        // Assign WebSocket to the room
+        ws.roomId = this.id;
+
+        // Send world data and current players to the new player
+        const playersData = Array.from(this.players.values()).map(p => ({
+            username: p.username,
+            position: p.position,
+            rotation: p.rotation
+        }));
         ws.send(JSON.stringify({
             type: 'world_data',
             towers: this.world.towers,
             bridges: this.world.bridges,
-            orbs: this.world.orbs
+            orbs: this.world.orbs,
+            players: playersData,
+            currentRuler: this.currentRuler // <-- ADDED: Send current ruler on join
         }));
-        
-        // Broadcast updated player count to all players in the room
-        this.broadcastRoomInfo();
+
+        // Notify other players about the new player
+        this.broadcast(JSON.stringify({
+            type: 'player_joined',
+            username: username,
+            position: { x: 0, y: 10, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 }
+        }), ws);
     }
 
     // --- NEW HELPER FUNCTION to drop orbs ---
@@ -413,6 +436,14 @@ class GameRoom {
             if (this.players.size === 0) {
                 this.isActive = false;
             }
+
+            // --- ADDED: Check if the leaving player was the ruler ---
+            if (player && player.username === this.currentRuler) {
+                console.log(`Ruler ${this.currentRuler} left room ${this.id}. Resetting ruler.`);
+                this.currentRuler = null;
+                this.broadcast({ type: 'new_ruler', username: null }); // Notify clients ruler is gone
+            }
+            // --- END ADDED ---
         }
     }
 
@@ -519,6 +550,14 @@ class GameRoom {
                             orbId: data.orbId,
                             username: player.username
                         }));
+
+                        // --- Check for new ruler ---
+                        if (currentServerOrbCount + 1 >= 30 && this.currentRuler === null) {
+                            this.currentRuler = player.username;
+                            console.log(`Player ${player.username} has become the ruler in room ${this.id}!`);
+                            this.broadcast(JSON.stringify({ type: 'new_ruler', username: this.currentRuler }));
+                        }
+                        // --- End ruler check ---
                     }
                 }
                 break;
@@ -588,6 +627,7 @@ class GameRoom {
                     bridges: this.world.bridges,
                     orbs: this.world.orbs
                 }));
+                console.log(`Game reset initiated by ${playerData.username} in room ${this.id}`);
                 break;
 
             case 'player_damaged':
@@ -601,21 +641,32 @@ class GameRoom {
                     }
                 });
 
-                // If victim found and connection is open, send them the damage message
                 if (victimWs && victimWs.readyState === WebSocket.OPEN) {
                     console.log(`[Server Debug] Relaying player_damaged message to ${victimUsername}`); // Log relay
+                    const attackerUsername = data.attackerUsername;
+                    let damage = data.damage; // Use let to allow modification
+
+                    console.log(`Received player_damaged: Victim=${victimUsername}, Attacker=${attackerUsername}, BaseDamage=${damage}`);
+
+                    // --- ADDED: Apply ruler damage multiplier ---
+                    if (attackerUsername === this.currentRuler) {
+                        damage *= 5;
+                        console.log(`Attacker ${attackerUsername} is ruler. Applying 5x damage. NewDamage=${damage}`);
+                    }
+                    // --- END ADDED ---
+
                     victimWs.send(JSON.stringify({
                         type: 'player_damaged',
                         victimUsername: victimUsername,
-                        attackerUsername: data.attackerUsername, // Pass attacker info
-                        damage: data.damage             // Pass damage amount
+                        attackerUsername: attackerUsername,
+                        damage: damage // Send potentially modified damage
                     }));
                 } else {
                     console.log(`[Server Debug] Could not find or send player_damaged message to ${victimUsername}`);
                 }
                 break;
 
-            case 'player_died': // <-- NEW CASE
+            case 'player_died':
                 const deadPlayerWs = [...this.players.entries()].find(([socket, playerData]) => playerData.username === data.username)?.[0];
                 
                 if (deadPlayerWs) {
