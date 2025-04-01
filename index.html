@@ -288,6 +288,12 @@
         let wsConnectionAttempted = false; // Track if we've attempted to connect
         let worldDataRequested = false; // Track if we've requested world data
 
+        // --- WebRTC Variables --- 
+        let peerConnections = new Map(); // Stores RTCPeerConnection objects { peerId: connection }
+        let dataChannels = new Map(); // Stores RTCDataChannel objects { peerId: channel }
+        let localPeerId = null; // Set by the server on join
+        // ------------------------
+
         // Shooting system constants - Adjusted for shotgun feel
         const SHOTGUN_COOLDOWN = 800; // milliseconds cooldown
         const PELLET_COUNT = 10;       // Number of pellets per shot
@@ -383,6 +389,8 @@
         const velocity = new THREE.Vector3();
         const flingVelocity = new THREE.Vector3();
         const direction = new THREE.Vector3();
+        const playerCollider = new THREE.Sphere(); // Initialize the main player collider
+        const raycaster = new THREE.Raycaster(); // Define raycaster here
 
         // Mobile detection
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -390,121 +398,58 @@
         // Add interpolation settings
         const INTERPOLATION_SPEED = 0.15;
 
-        // Store player states for interpolation
+        // Define PlayerState class
         class PlayerState {
-            constructor(username, mesh) {
+            constructor(username, mesh, peerId = null) { // Add peerId parameter
                 this.username = username;
                 this.mesh = mesh;
-                this.position = new THREE.Vector3();
-                this.rotation = new THREE.Euler();
+                this.peerId = peerId; // Store peerId
+                this.position = mesh.position.clone();
+                this.rotation = new THREE.Euler().copy(mesh.rotation);
                 this.speed = 0;
                 this.heading = 0;
                 this.verticalSpeed = 0;
+                this.isJumping = false;
+                this.canJump = true;
+                this.isShooting = false;
+                this.lastShotTime = 0;
                 this.lastUpdateTime = Date.now();
-                this.isVisible = true;
-            }
-
-            update(deltaTime) {
-                if (!this.mesh) {
-                    console.warn(`No mesh found for player ${this.username}`);
-                    return;
-                }
-
-                // Make sure mesh is visible if it should be
-                this.mesh.visible = this.isVisible;
-                if (!this.isVisible) return; // Don't update if not visible
-
-                // Use exponential smoothing for interpolation towards the authoritative position
-                // Reduced from -20 to -15 for smoother interpolation
-                const lerpFactor = 1 - Math.exp(-25 * deltaTime); // WAS -15
-
-                // Smoothly interpolate position towards the last known server position
-                this.mesh.position.lerp(this.position, lerpFactor);
-
-                // Smoothly interpolate rotation using Euler angles
-                const headingRad = (this.heading * Math.PI) / 180;
-                // this.mesh.rotation.y = -headingRad; // Old direct setting
-
-                // Lerp rotation 
-                const targetRotation = objectPool.getVector(); // Use object pool
-                targetRotation.set(0, -headingRad, 0); // Assuming Y-axis rotation based on heading
-
-                // Interpolate Euler angles (ensure angles wrap correctly if needed, though lerp might handle it)
-                this.mesh.rotation.x += (targetRotation.x - this.mesh.rotation.x) * lerpFactor;
-                this.mesh.rotation.y += (targetRotation.y - this.mesh.rotation.y) * lerpFactor;
-                this.mesh.rotation.z += (targetRotation.z - this.mesh.rotation.z) * lerpFactor;
-
-                objectPool.releaseVector(targetRotation); // Release vector back to pool
+                this.health = 100; // Add health property
+                this.orbCount = 0; // Track collected orbs
+                this.isRuler = false; // Track if player is the ruler
             }
         }
 
         // Function to create player model
-        function createPlayerModel(username) {
-            // More detailed log
-            console.log(`[CreateModel Debug] Attempting model creation. Target User: ${username}, Local User: ${playerUsername}, Game Started: ${gameStarted}, PlayerStates has target? ${playerStates.has(username)}`);
-
-            // Check if player model already exists
+        function createPlayerModel(username, peerId = null) { // Add peerId parameter
             if (playerStates.has(username)) {
-                const existingState = playerStates.get(username);
-                // If a model somehow exists but the mesh is gone (e.g., disposal error), try recreating.
-                if (!existingState.mesh || !scene.children.includes(existingState.mesh)) {
-                    console.warn(`[CreateModel Debug] Player state existed for ${username}, but mesh was missing/removed. Recreating.`);
-                    playerStates.delete(username); // Remove bad state first
-                } else {
-                    console.log(`[CreateModel Debug] Player model already exists in map and scene for: ${username}. Skipping creation.`);
-                    return existingState.mesh; // Return existing mesh
-                }
+                console.warn(`[createPlayerModel] Attempted to create model for existing player: ${username}`);
+                return playerStates.get(username).mesh; // Return existing mesh
             }
-
-            const geometry = new THREE.CapsuleGeometry(2, 6, 2, 8);
-            const material = new THREE.MeshBasicMaterial({ 
-                color: 0x00ff00, 
-                wireframe: true 
+            console.log(`[createPlayerModel] Creating model for: ${username} (PeerID: ${peerId || 'N/A'})`);
+            const geometry = new THREE.CapsuleGeometry(0.5, 1, 4, 8); 
+            const material = new THREE.MeshStandardMaterial({
+                color: getRandomColor(),
+                roughness: 0.5,
+                metalness: 0.5
             });
             const playerMesh = new THREE.Mesh(geometry, material);
-            
-            // Add username label
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            canvas.width = 256;
-            canvas.height = 64;
-            
-            context.fillStyle = '#000000';
-            context.fillRect(0, 0, canvas.width, canvas.height);
-            
-            context.font = '32px Arial';
-            context.fillStyle = '#ffffff';
-            context.textAlign = 'center';
-            context.fillText(username, canvas.width / 2, canvas.height / 2);
-            
-            const texture = new THREE.CanvasTexture(canvas);
-            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
-            const sprite = new THREE.Sprite(spriteMaterial);
-            sprite.scale.set(10, 2.5, 1);
-            sprite.position.y = 6;
-            playerMesh.add(sprite);
-            
-            // Add to scene
+            playerMesh.castShadow = true;
+            playerMesh.receiveShadow = true;
+            playerMesh.position.set(0, 1, 0); // Set initial y position to avoid falling through floor
+        
+            // Create and position the username label
+            const usernameLabel = createUsernameLabel(username);
+            playerMesh.add(usernameLabel);
+            playerMesh.userData.usernameLabel = usernameLabel; // Store reference for update
+            playerMesh.userData.username = username; // Store username directly on mesh user data
+        
             scene.add(playerMesh);
-            console.log('Added player mesh to scene:', {
-                username: username,
-                mesh: playerMesh,
-                position: playerMesh.position,
-                visible: playerMesh.visible
-            });
-            
-            // Create and store player state
-            const playerState = new PlayerState(username, playerMesh);
-            playerState.position.set(0, playerHeight, 0);
-            playerState.rotation.set(0, 0, 0);
-            playerStates.set(username, playerState);
-            // --- Initialize local orb count for self --- 
-            if (username === playerUsername) {
-                playerOrbs.set(username, 0);
-                updateOrbCount(); // Update display on initial join
-            }
-            // -----------------------------------------
-            console.log('Player model created successfully for:', username);
+            const newState = new PlayerState(username, playerMesh, peerId); // Pass peerId to constructor
+            playerStates.set(username, newState);
+        
+            console.log(`[createPlayerModel] Successfully created model and state for ${username}. PlayerStates size: ${playerStates.size}`);
+            updatePlayerList();
             return playerMesh;
         }
 
@@ -1011,8 +956,8 @@
         let wsReconnectAttempts = 0;
         const MAX_RECONNECT_ATTEMPTS = 5;
 
+        // --- Update WebSocket setup --- 
         function setupWebSocket() {
-            // Don't set up if we already have a connection
             if (ws && ws.readyState === WebSocket.OPEN) {
                 console.log('WebSocket already connected');
                 return;
@@ -1025,312 +970,69 @@
 
             ws.addEventListener('open', () => {
                 console.log('WebSocket connection established');
-                // Request world data if we haven't already
-                if (!worldDataRequested) {
-                    console.log('Requesting world data...');
-                    ws.send(JSON.stringify({
-                        type: 'request_world_data'
-                    }));
-                    worldDataRequested = true;
-                }
-                // Only send join message if we have a username
-                if (playerUsername) {
-                    const joinMessage = {
-                        type: 'join',
-                        username: playerUsername
-                    };
-                    console.log('Sending join message:', joinMessage);
-                    ws.send(JSON.stringify(joinMessage));
-                }
+                // Server now sends world data upon successful join
+                if (playerUsername) { 
+                    sendJoinMessage(); // Use a helper function
+                } 
             });
 
-            ws.addEventListener('message', (event) => {
+            ws.addEventListener('message', async (event) => {
                 const data = JSON.parse(event.data);
-                console.log(`[WS Receive Debug] Received message type: ${data.type}, Victim: ${data.victimUsername || 'N/A'}, LocalUser: ${playerUsername}`); // Log ALL incoming message types
-                // console.log('Received WebSocket message:', { // Commenting this out to reduce console noise
-                //     type: data.type,
-                //     username: data.username,
-                //     position: data.position,
-                //     rotation: data.rotation,
-                //     timestamp: new Date().toISOString()
-                // });
-                
+                // console.log('[WS Receive]', data.type); // Optional: Log all incoming WS messages
+
                 switch (data.type) {
                     case 'world_data':
-                        console.log('Received world data with players:', data.players);
-                        // Clear existing player states except current player
-                        const currentPlayerState = playerStates.get(playerUsername);
-                        playerStates.clear();
-                        if (currentPlayerState) {
-                            playerStates.set(playerUsername, currentPlayerState);
-                        }
-                        
-                        // Clear existing towers and bridges using the new function
-                        clearTowers();
-                        
-                        // Create towers from server data first
-                        if (data.towers) {
-                            console.log('Creating towers:', data.towers.length);
-                            data.towers.forEach(towerData => {
-                                createTowerFromData(towerData);
-                            });
-                        }
-                        
-                        // Create bridges from server data
-                        if (data.bridges) {
-                            data.bridges.forEach(bridgeData => {
-                                createBridgeFromData(bridgeData);
-                            });
-                        }
-
-                        // Debug logging for orbs
-                        console.log('Processing orbs data:', data.orbs);
-                        
-                        // Clear existing orbs
-                        orbs.forEach(orb => {
-                            console.log('Removing existing orb:', orb);
-                            scene.remove(orb);
-                        });
-                        orbs.clear();
-                        
-                        // Create new orbs
-                        if (data.orbs && data.orbs.length > 0) {
-                            console.log('Creating orbs:', data.orbs.length);
-                            data.orbs.forEach((orbData, index) => {
-                                console.log(`Creating orb ${index}:`, orbData);
-                                try {
-                                    const orb = createOrb(orbData);
-                                    console.log(`Successfully created orb ${index}:`, orb);
-                                    // Ensure orb is added to scene
-                                    if (orb && !scene.children.includes(orb)) { // Add check for orb existence
-                                        scene.add(orb);
-                                    }
-                                } catch (error) {
-                                    console.error(`Error creating orb ${index}:`, error);
-                                }
-                            });
-                        } else {
-                            console.warn('No orbs data received from server');
-                        }
-
-                        // --- SET gameStarted AFTER processing world data ---
-                        gameStarted = true;
-                        console.log('[World Data Debug] World data processed. Game Started set to true.');
-                        // ----------------------------------------------------
+                        console.log('Received world data');
+                        localPeerId = data.yourPeerId; // Store our assigned peer ID
+                        console.log(`Assigned Peer ID: ${localPeerId}`);
+                        handleWorldData(data); // Process world data
+                        establishPeerConnections(data.players); // Start connecting to existing peers
+                        gameStarted = true; // Set game started AFTER world is loaded and ID assigned
+                        console.log('World data processed, peer connections initiated. Game Started.');
                         break;
-
-                    case 'room_info':
-                        console.log(`Joined room ${data.name} with ${data.playerCount} players`);
-                        // Only update room info if we have a valid player count
-                        if (data.playerCount > 0) {
-                            document.getElementById('roomInfo').textContent = `${data.name} - Players: ${data.playerCount}/20`;
-                        }
-                        break;
-
                     case 'player_joined':
-                        console.log('[PlayerJoined Debug] Received player_joined:', {
-                            username: data.username,
-                            localUsername: playerUsername,
-                            gameStarted: gameStarted,
-                            shouldCreate: (data.username !== playerUsername && gameStarted)
-                        });
-                        // Only create player model if it's not the current player and game has started
-                        if (data.username !== playerUsername && gameStarted) {
-                            console.log(`[PlayerJoined Debug] Conditions met for creating model for ${data.username}. Checking map... PlayerStates has? ${playerStates.has(data.username)}`); // Log check before create
-                            if (!playerStates.has(data.username)) {
-                                const playerMesh = createPlayerModel(data.username);
-                                // Conditional log based on playerMesh creation result
-                                if (playerMesh) {
-                                    console.log('[PlayerJoined Debug] Player model created via createPlayerModel:', {
-                                        username: data.username,
-                                        meshId: playerMesh.uuid.substring(0, 6), // Log part of mesh ID
-                                        inScene: scene.children.includes(playerMesh)
-                                    });
-                                } else {
-                                     console.warn(`[PlayerJoined Debug] createPlayerModel returned null/undefined for ${data.username}`);
-                                }
-                            } else {
-                                 console.log(`[PlayerJoined Debug] Skipping model creation for ${data.username} because playerStates already has them.`);
-                            }
-                            updatePlayerList(); // Keep this outside the if, might need update even if model exists
-                        }
+                        console.log('[WS Receive] player_joined:', data.username, data.peerId);
+                        handlePlayerJoined(data.username, data.peerId); // Use specific handler
+                        await connectToPeer(data.peerId); // Initiate connection to the new peer
                         break;
-
-                    case 'position':
-                        if (data.username !== playerUsername && gameStarted) {
-                            // console.log('Received position update for:', { // Commenting out to reduce noise
-                            //     username: data.username,
-                            //     position: data.position,
-                            //     rotation: data.rotation,
-                            //     hasPlayerState: playerStates.has(data.username)
-                            // });
-                            
-                            // Only create player model if we have valid position data
-                            if (data.position && data.position.length === 3) {
-                                // Ensure player model exists before updating position
-                                if (!playerStates.has(data.username)) {
-                                    console.log('Creating missing player model for:', data.username);
-                                    const playerMesh = createPlayerModel(data.username);
-                                    console.log('Created missing player model:', {
-                                        username: data.username,
-                                        mesh: playerMesh,
-                                        position: playerMesh.position,
-                                        visible: playerMesh.visible
-                                    });
-                                }
-                                
-                                // Update player state with new data
-                                const playerState = playerStates.get(data.username);
-                                if (playerState) {
-                                    // console.log('Updating player state for:', { // Commenting out to reduce noise
-                                    //     username: data.username,
-                                    //     oldPosition: playerState.position.clone(),
-                                    //     newPosition: data.position,
-                                    //     oldRotation: playerState.rotation.clone(),
-                                    //     newRotation: data.rotation
-                                    // });
-                                    
-                                    // Update position
-                                    if (data.position) {
-                                        playerState.position.fromArray(data.position);
-                                    }
-                                    
-                                    // Update rotation
-                                    if (data.rotation) {
-                                        playerState.rotation.fromArray(data.rotation);
-                                    }
-                                    
-                                    // Update speed and heading if provided
-                                    if (data.speed !== undefined) {
-                                        playerState.speed = data.speed;
-                                    }
-                                    if (data.heading !== undefined) {
-                                        playerState.heading = data.heading;
-                                    }
-                                    if (data.verticalSpeed !== undefined) {
-                                        playerState.verticalSpeed = data.verticalSpeed;
-                                    }
-                                    
-                                    playerState.lastUpdateTime = Date.now();
-                                    
-                                    // Verify mesh visibility
-                                    if (playerState.mesh) {
-                                        // console.log('Player mesh state:', { // Commenting out to reduce noise
-                                        //     username: data.username,
-                                        //     position: playerState.mesh.position,
-                                        //     visible: playerState.mesh.visible,
-                                        //     inScene: scene.children.includes(playerState.mesh)
-                                        // });
-                                    }
-                                } else {
-                                    console.warn('No player state found for username:', data.username);
-                                }
-                            }
-                        }
-                        break;
-
                     case 'player_left':
-                        console.log('Player left:', data.username);
-                        handlePlayerLeft(data.username);
+                        console.log('[WS Receive] player_left:', data.username, data.peerId);
+                        handlePlayerLeft(data.username, data.peerId); // Pass peerId
                         break;
-
-                    case 'shotgun_shot':
-                        // Ensure this message is not from the current player and game has started
-                        if (data.username !== playerUsername && gameStarted) {
-                            const shooterPos = new THREE.Vector3().fromArray(data.position);
-                            const now = performance.now(); // Use consistent timing
-
-                            // Create visual representation of pellets fired by other players using the pool
-                            data.directions.forEach(directionArray => {
-                                const pellet = pelletPool.get(); // Get a pellet from the pool
-                                if (pellet) {
-                                    const direction = new THREE.Vector3().fromArray(directionArray);
-                                    pellet.position.copy(shooterPos); // Start at shooter's reported position
-                                    pellet.userData.velocity = direction.clone().multiplyScalar(PELLET_SPEED);
-                                    pellet.userData.spawnTime = now;
-                                    pellet.userData.bounces = 0;
-                                    pellet.visible = true; // Make it visible
-                                    pelletPool.active.add(pellet); // Add to active set
-                                } else {
-                                    console.warn("Pellet pool exhausted during network update for shotgun_shot");
-                                }
-                            });
-
-                            // Play sound effect for other player's shot
-                            playShotgunSound();
-                        }
+                    case 'webrtc_offer':
+                        handleWebRTCOffer(data);
                         break;
-
-                    case 'player_damaged':
-                        // Log regardless of who the victim is
-                        console.log(`[Damage Debug] Received ANY player_damaged message. Target Victim: ${data.victimUsername}, Local User: ${playerUsername}, Attacker: ${data.attackerUsername}, Damage: ${data.damage}`);
-                        // Check if the damage message is intended for this player
-                        if (data.victimUsername === playerUsername) {
-                             console.log(`[Damage Debug] Message IS for me (${playerUsername}). Applying damage.`); // Log received damage
-                            takeDamage(data.damage); // Apply damage locally
-                        } else {
-                             console.log(`[Damage Debug] Message is for someone else (${data.victimUsername}). Ignoring.`);
-                        }
+                    case 'webrtc_answer':
+                        handleWebRTCAnswer(data);
                         break;
-
-                    case 'item_collected':
-                        handleItemCollection(data.itemId, data.username);
+                    case 'webrtc_ice':
+                        handleWebRTCIce(data);
                         break;
-
-                    case 'orb_collected':
-                        // Remove the collected orb from the scene for all players
-                        const orb = orbs.get(data.orbId);
-                        if (orb) {
-                            scene.remove(orb);
-                            orbs.delete(data.orbId);
-                            
-                            // Only update the collector's orb count
-                            if (data.username === playerUsername) {
-                                const currentOrbs = playerOrbs.get(playerUsername) || 0;
-                                playerOrbs.set(playerUsername, currentOrbs + 1);
-                                updateOrbCount();
-                                playOrbCollectionSound();
-                            }
-                        }
+                    case 'room_info':
+                        handleRoomInfo(data);
                         break;
-
-                    case 'orbs_dropped': // <-- ADD THIS CASE
-                         // --- Client Debug Log ---
-                         console.log(`[Orb Drop Client Debug] Received 'orbs_dropped' message. Data:`, data);
-                         // ------------------------
-                         console.log(`[Orb Drop Debug] Received ${data.orbs.length} dropped orbs.`); // Existing log
-                         data.orbs.forEach(orbData => {
-                             // --- Client Debug Log ---
-                             console.log(`[Orb Drop Client Debug] Processing orbData:`, orbData);
-                             // ------------------------
-                             if (!orbs.has(orbData.id)) {
-                                 console.log(`[Orb Drop Debug] Creating dropped orb ${orbData.id}`); // Existing log
-                                 // --- Wrap createOrb in try-catch ---
-                                 try {
-                                     const createdOrb = createOrb(orbData); // Call createOrb
-                                     if (createdOrb) {
-                                         console.log(`[Orb Drop Client Debug] Successfully created orb ${orbData.id} from dropped data.`); // Log success
-                                     } else {
-                                          console.error(`[Orb Drop Client Debug] createOrb returned null/undefined for dropped orb ${orbData.id}.`); // Log failure
-                                     }
-                                 } catch (error) {
-                                      console.error(`[Orb Drop Client Debug] Error calling createOrb for ${orbData.id}:`, error); // Log error
-                                 }
-                                 // -----------------------------------
-                             } else {
-                                 console.log(`[Orb Drop Debug] Dropped orb ${orbData.id} already exists locally. Ignoring.`); // Existing log
-                                 console.warn(`[Orb Drop Client Debug] Orb ${orbData.id} already exists, skipping creation.`); // Added warning
-                             }
-                         });
-                         break;
-
-                    case 'new_ruler':
+                    case 'orb_collected': 
+                        handleOrbCollected(data);
+                        break;
+                    case 'orbs_dropped': 
+                        handleOrbsDropped(data);
+                        break;
+                    case 'new_ruler': 
                         handleBecomeRuler(data.username);
                         break;
-
-                    case 'reset_game':
+                    case 'reset_game': 
                         handleGameReset();
                         break;
+                    case 'player_died_broadcast': 
+                         console.log(`Player ${data.username} died.`);
+                         break;
+                    case 'error': 
+                         console.error('Server Error:', data.message);
+                         break;
+                    default:
+                         if (!['position', 'shotgun_shot', 'player_damaged'].includes(data.type)) { 
+                              console.log(`[WS Receive] Unhandled WebSocket message type: ${data.type}`);
+                         }
                 }
             });
 
@@ -1339,11 +1041,293 @@
             });
 
             ws.addEventListener('close', () => {
-                console.log('Disconnected from server');
-                // Attempt to reconnect after a delay
-                setTimeout(setupWebSocket, 3000);
+                console.log('Disconnected from WebSocket server');
+                gameStarted = false;
+                localPeerId = null;
+                peerConnections.forEach(pc => pc.close());
+                peerConnections.clear();
+                dataChannels.clear();
+                playerStates.forEach((state, username) => removePlayer(username)); 
+                playerStates.clear();
+                clearTowers();
+                orbs.forEach(orb => scene.remove(orb));
+                orbs.clear();
+                playerOrbs.clear();
+                updateOrbCount();
+                updatePlayerList();
+                document.getElementById('roomInfo').textContent = 'Disconnected';
+
+                if (wsReconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                     const delay = Math.pow(2, wsReconnectAttempts) * 1000; 
+                     console.log(`Attempting WebSocket reconnect in ${delay / 1000}s...`);
+                     setTimeout(() => {
+                         wsReconnectAttempts++;
+                         setupWebSocket(); 
+                     }, delay);
+                } else {
+                     console.error('Max WebSocket reconnect attempts reached.');
+                }
             });
         }
+
+        // --- Helper to send Join message --- 
+        function sendJoinMessage() {
+             if (ws && ws.readyState === WebSocket.OPEN && playerUsername) {
+                 console.log(`Sending join message for ${playerUsername}...`);
+                 ws.send(JSON.stringify({ 
+                     type: 'join', 
+                     username: playerUsername 
+                 }));
+             } else {
+                  console.warn('Cannot send join message: WebSocket not open or no username.');
+             }
+        }
+
+        // --- WebRTC Core Functions --- 
+
+        // --- Establish WebRTC Connections to Initial Peers --- 
+        async function establishPeerConnections(playersData) {
+            console.log('Establishing initial peer connections...');
+            for (const playerData of playersData) {
+                if (playerData.peerId && playerData.peerId !== localPeerId) {
+                    console.log(`Initiating connection to existing peer: ${playerData.username} (${playerData.peerId})`);
+                    await connectToPeer(playerData.peerId);
+                }
+            }
+        }
+
+        // --- Initiate WebRTC Connection to a Specific Peer --- 
+        async function connectToPeer(peerId) {
+            if (peerConnections.has(peerId) || peerId === localPeerId) {
+                 console.log(`Already connected or connecting to ${peerId}, or it's self. Skipping.`);
+                 return;
+            }
+            console.log(`Creating offer for peer: ${peerId}`);
+            try {
+                const peerConnection = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+                
+                peerConnection.onicecandidate = event => {
+                    if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'webrtc_ice',
+                            toId: peerId,
+                            candidate: event.candidate
+                        }));
+                    }
+                };
+                
+                const dataChannel = peerConnection.createDataChannel('gameData', {
+                    ordered: false,
+                    maxRetransmits: 0
+                });
+                console.log(`Created data channel for ${peerId}`);
+                setupDataChannelHandlers(dataChannel, peerId);
+                
+                peerConnections.set(peerId, peerConnection);
+                dataChannels.set(peerId, dataChannel);
+                
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'webrtc_offer',
+                        toId: peerId,
+                        offer: offer
+                    }));
+                } else {
+                    console.error(`Cannot send offer: WebSocket not open.`);
+                }
+            } catch (error) {
+                console.error(`Error creating offer for peer ${peerId}:`, error);
+                if (peerConnections.has(peerId)) peerConnections.get(peerId).close();
+                peerConnections.delete(peerId);
+                dataChannels.delete(peerId);
+            }
+        }
+
+        // --- Handle Incoming WebRTC Offer --- 
+        async function handleWebRTCOffer(data) {
+            const { fromId, offer } = data;
+            if (peerConnections.has(fromId)) {
+                console.log(`Offer received from ${fromId}, but connection already exists/pending.`);
+                return;
+            }
+            console.log(`Handling offer from peer: ${fromId}`);
+            try {
+                const peerConnection = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+                
+                peerConnection.onicecandidate = event => {
+                    if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'webrtc_ice',
+                            toId: fromId,
+                            candidate: event.candidate
+                        }));
+                    }
+                };
+                
+                peerConnection.ondatachannel = event => {
+                    const dataChannel = event.channel;
+                    console.log(`Received data channel from ${fromId}`);
+                    setupDataChannelHandlers(dataChannel, fromId);
+                    dataChannels.set(fromId, dataChannel);
+                };
+                
+                peerConnections.set(fromId, peerConnection);
+                
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                     ws.send(JSON.stringify({
+                         type: 'webrtc_answer',
+                         toId: fromId,
+                         answer: answer
+                     }));
+                } else {
+                     console.error(`Cannot send answer: WebSocket not open.`);
+                }
+            } catch (error) {
+                console.error(`Error handling offer from peer ${fromId}:`, error);
+                if (peerConnections.has(fromId)) peerConnections.get(fromId).close();
+                peerConnections.delete(fromId);
+                dataChannels.delete(fromId);
+            }
+        }
+
+        // --- Handle Incoming WebRTC Answer --- 
+        async function handleWebRTCAnswer(data) {
+            const { fromId, answer } = data;
+            console.log(`Handling answer from peer: ${fromId}`);
+            const peerConnection = peerConnections.get(fromId);
+            if (peerConnection && peerConnection.signalingState === 'have-local-offer') {
+                try {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                    console.log(`Successfully set remote description for answer from ${fromId}. Connection established.`);
+                } catch (error) {
+                    console.error(`Error setting remote description for answer from ${fromId}:`, error);
+                }
+            } else {
+                 console.warn(`Received answer from ${fromId}, but no connection found or state is not have-local-offer.`);
+            }
+        }
+
+        // --- Handle Incoming ICE Candidate --- 
+        async function handleWebRTCIce(data) {
+            const { fromId, candidate } = data;
+            const peerConnection = peerConnections.get(fromId);
+            if (peerConnection && candidate) {
+                 try {
+                     await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                 } catch (error) {
+                      if (!error.message.includes('Cannot add ICE candidate when connection is closed') && 
+                          !error.message.includes('Error processing ICE candidate')) {
+                           console.warn(`Error adding ICE candidate from ${fromId}:`, error.message);
+                      }
+                 }
+            } 
+        }
+
+        // --- Setup Data Channel Handlers --- 
+        function setupDataChannelHandlers(dataChannel, peerId) {
+            dataChannel.onopen = () => {
+                console.log(`Data channel to ${peerId} OPENED`);
+            };
+
+            dataChannel.onclose = () => {
+                console.log(`Data channel to ${peerId} CLOSED`);
+                if (peerConnections.has(peerId)) {
+                    peerConnections.get(peerId).close();
+                    peerConnections.delete(peerId);
+                }
+                dataChannels.delete(peerId);
+            };
+
+            dataChannel.onerror = (error) => {
+                console.error(`Data channel error with ${peerId}:`, error);
+            };
+
+            dataChannel.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleGameData(data, peerId);
+                } catch (error) {
+                     console.error(`Error parsing WebRTC message from ${peerId}:`, event.data, error);
+                }
+            };
+        }
+
+        // --- Handle Incoming Game Data (from WebRTC) --- 
+        function handleGameData(data, fromPeerId) {
+            // Find player state based on peerId
+            const playerState = Array.from(playerStates.values()).find(state => state.peerId === fromPeerId);
+            if (!playerState) {
+                // Optional: Log if we receive data from an unknown peer
+                // console.warn(`Received game data from unknown peer: ${fromPeerId}`);
+                return; // Ignore data if we don't have state for the peer
+            }
+            const username = playerState.username;
+
+            switch (data.type) {
+                case 'position':
+                    // Only process if the peer state exists and the data is valid
+                    if (playerState && data.position && data.rotation) {
+                        playerState.position.fromArray(data.position);
+                        playerState.rotation.fromArray(data.rotation);
+                        if (data.speed !== undefined) playerState.speed = data.speed;
+                        if (data.heading !== undefined) playerState.heading = data.heading;
+                        if (data.verticalSpeed !== undefined) playerState.verticalSpeed = data.verticalSpeed;
+                        playerState.lastUpdateTime = Date.now();
+                    }
+                    break;
+                case 'shotgun_shot':
+                    // Only process if the peer state exists and data is valid
+                    if (playerState && data.position && data.directions) {
+                        const shooterPos = new THREE.Vector3().fromArray(data.position);
+                        const now = performance.now();
+                        data.directions.forEach(directionArray => {
+                            const pellet = pelletPool.get();
+                            if (pellet) {
+                                const direction = new THREE.Vector3().fromArray(directionArray);
+                                pellet.position.copy(shooterPos);
+                                pellet.userData.velocity = direction.clone().multiplyScalar(PELLET_SPEED);
+                                pellet.userData.spawnTime = now;
+                                pellet.userData.bounces = 0;
+                                pellet.visible = true;
+                                pelletPool.active.add(pellet);
+                            } else {
+                                console.warn("Pellet pool exhausted rendering peer shotgun shot");
+                            }
+                        });
+                        playShotgunSound(); // Play sound for peer shot
+                    }
+                    break;
+                case 'pellet_hit':
+                    // Only process if this client is the victim
+                    if (data.victimUsername === playerUsername) {
+                         console.log(`[WebRTC Receive] Confirmed hit by ${username} (${fromPeerId}). Damage: ${data.damage}`);
+                         takeDamage(data.damage); // Apply damage locally
+                    }
+                    break;
+                 case 'player_died': // Add handler for when a peer informs us they died
+                     console.log(`[WebRTC Receive] Peer ${username} (${fromPeerId}) reported death.`);
+                     // We might already handle removal via 'player_left' from server,
+                     // but this could be used for immediate visual feedback if needed.
+                     // For now, just log it.
+                     break;
+                default:
+                    console.log(`[WebRTC Receive] Unhandled game data type: ${data.type} from ${username} (${fromPeerId})`);
+            }
+        }
+
+        // ... rest of the code ...
 
         // Function to update player list
         function updatePlayerList() {
@@ -1370,33 +1354,37 @@
         }
 
         // Update player list when players join/leave
-        function handlePlayerJoined(username) {
-            console.log('Handling player joined:', username);
-            if (username !== playerUsername && gameStarted) {
-                // Create player model if it doesn't exist
-                if (!playerStates.has(username)) {
-                    createPlayerModel(username);
-                }
-                updatePlayerList();
+        function handlePlayerJoined(username, peerId) {
+            if (username !== playerUsername && !playerStates.has(username) && gameStarted) {
+                console.log(`Handling player joined: ${username}, PeerID: ${peerId}`);
+                createPlayerModel(username, peerId); // Pass peerId here
             }
+            updatePlayerList(); // Update list regardless
         }
 
-        function handlePlayerLeft(username) {
-            console.log('Handling player left:', username);
-            // If the player leaving is the current ruler, remove the indicator
-            if (username === currentRuler && rulerIndicatorMesh) {
-                if (rulerIndicatorMesh.parent) {
-                    rulerIndicatorMesh.parent.remove(rulerIndicatorMesh);
-                }
-                // Check if it's directly in the scene (shouldn't be if parented, but safety check)
-                if (scene.children.includes(rulerIndicatorMesh)) {
-                     scene.remove(rulerIndicatorMesh);
-                }
-                rulerIndicatorMesh = null;
-                currentRuler = null; // Reset ruler status as they left
-                console.log('Ruler left, removed indicator.');
+        function handlePlayerLeft(username, peerId) { // Add peerId parameter
+            console.log(`Handling player left: ${username} (PeerID: ${peerId})`);
+            const playerState = playerStates.get(username);
+            if (playerState && playerState.mesh) {
+                console.log(`Removing mesh for ${username}`);
+                scene.remove(playerState.mesh);
             }
-            removePlayer(username); // Removes player mesh (and indicator if it's a child)
+            playerStates.delete(username);
+        
+            // Close WebRTC connection for the leaving peer
+            if (peerId && peerConnections.has(peerId)) {
+                console.log(`Closing WebRTC connection for peer ${peerId}`);
+                peerConnections.get(peerId).close();
+                peerConnections.delete(peerId);
+            }
+            if (peerId && dataChannels.has(peerId)) {
+                // Channel should close automatically when peerConnection closes, 
+                // but we remove it from our map explicitly.
+                dataChannels.delete(peerId);
+                console.log(`Removed data channel reference for peer ${peerId}`);
+            }
+        
+            console.log(`Player ${username} removed. PlayerStates size: ${playerStates.size}, PeerConnections size: ${peerConnections.size}`);
             updatePlayerList();
         }
 
@@ -1527,10 +1515,9 @@
             pelletPool.initialize(scene); // This should now execute correctly
 
             // Camera setup
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000);
-            camera.position.set(0, playerHeight, 0);
-            scene.add(camera);
-            console.log('Camera initialized at height:', playerHeight);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+            camera.position.set(0, playerHeight, 0); // Start at player height
+            console.log('Camera created');
 
             // Renderer setup
             renderer = new THREE.WebGLRenderer({ 
@@ -1550,25 +1537,22 @@
             console.log('Renderer initialized');
 
             // Controls setup
-            controls = new PointerLockControls(camera, document.body);
-            controls.minPolarAngle = 0.1; // Limit looking up (in radians)
-            controls.maxPolarAngle = Math.PI - 0.1; // Limit looking down (in radians)
-            controls.enableDamping = true; // Add smooth damping
-            controls.dampingFactor = 0.05; // Adjust damping factor
-            
-            // Add camera rotation constraints
-            camera.rotation.order = 'YXZ'; // Set rotation order to prevent gimbal lock
-            camera.rotation.x = 0; // Reset initial rotation
-            camera.rotation.z = 0; // Reset initial rotation
-            
-            // Add camera rotation update function
+            controls = new PointerLockControls(camera, renderer.domElement);
+            scene.add(controls.getObject()); // Add camera to scene via controls
+            console.log('Controls created');
+
+            // Lock controls on click
+            document.addEventListener('click', function() {
+                if (gameStarted) {
+                    controls.lock();
+                }
+            });
+
+            // Update camera rotation in controls
             function updateCameraRotation() {
-                // Clamp vertical rotation (X axis)
-                camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
-                
-                // Force roll to 0 (Z axis)
-                camera.rotation.z = 0;
-                
+                // Limit vertical rotation
+                const maxVerticalRotation = Math.PI / 2 - 0.1;
+                camera.rotation.x = Math.max(-maxVerticalRotation, Math.min(maxVerticalRotation, camera.rotation.x));
                 // Normalize Y rotation to prevent overflow
                 camera.rotation.y = ((camera.rotation.y % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
             }
@@ -1585,8 +1569,15 @@
             console.log('Controls initialized');
 
             // Collision setup
-            const playerCollider = new THREE.Sphere(new THREE.Vector3(0, playerHeight, 0), playerRadius);
-            const raycaster = new THREE.Raycaster();
+            // --- [REMOVED] Redeclaration of playerCollider here --- 
+            // const playerCollider = new THREE.Sphere(new THREE.Vector3(0, playerHeight, 0), playerRadius);
+            // --- Use the globally declared playerCollider instead ---
+            playerCollider.center.set(0, playerHeight, 0);
+            playerCollider.radius = playerRadius;
+
+            // --- [REMOVED] Redeclaration of raycaster here --- 
+            // const raycaster = new THREE.Raycaster();
+            // --- Use the globally declared raycaster --- 
 
             // Log scene state
             console.log('Initial scene state:', {
@@ -2886,6 +2877,10 @@
                         playerCollider.center.copy(camera.position); // Update collider to final position
                         // ... (Orb check etc) ...
 
+                        // --- Send Position Update via WebRTC ---
+                        sendPositionUpdateWebRTC();
+                        // --- End Position Update ---
+
                     } // End of if (controls.isLocked && gameStarted)
 
                     // Update line trace position
@@ -3266,183 +3261,24 @@
             }
             animate();
 
-            // Send position updates
-            function sendPositionUpdate() {
-                if (ws.readyState === WebSocket.OPEN && gameStarted) {
-                    // Calculate speed and heading
-                    const dx = camera.position.x - lastSentPosition.x;
-                    const dz = camera.position.z - lastSentPosition.z;
-                    const speed = Math.sqrt(dx * dx + dz * dz) / (0.016); // Assuming 60fps
-                    const heading = Math.atan2(-dx, -dz) * 180 / Math.PI;
-                    const verticalSpeed = (camera.position.y - lastSentPosition.y) / 0.016;
+            // --- NEW: Send position updates via WebRTC ---
+            const positionUpdateInterval = 50; // Send position updates every 50ms (20fps)
+            let lastPositionSendTime = 0;
 
-                    // Round position data to 2 decimal places
-                    const positionData = {
-                        position: [
-                            Math.round(camera.position.x * 100) / 100,
-                            Math.round(camera.position.y * 100) / 100,
-                            Math.round(camera.position.z * 100) / 100
-                        ],
-                        rotation: [
-                            Math.round(camera.rotation.x * 100) / 100,
-                            Math.round(camera.rotation.y * 100) / 100,
-                            Math.round(camera.rotation.z * 100) / 100
-                        ],
-                        speed: Math.round(speed),
-                        heading: Math.round(heading),
-                        verticalSpeed: Math.round(verticalSpeed * 100) / 100
-                    };
+            function sendPositionUpdateWebRTC() {
+                if (!gameStarted || !localPeerId) return; // Don't send if not ready
 
-                    ws.send(JSON.stringify({
-                        type: 'position',
-                        ...positionData
-                    }));
-
-                    lastSentPosition.copy(camera.position);
-                    lastSentRotation.copy(camera.rotation);
+                const now = performance.now();
+                if (now - lastPositionSendTime < positionUpdateInterval) {
+                    return; // Throttle sending
                 }
-            }
+                lastPositionSendTime = now;
 
-            // Update position more frequently (16ms = ~60fps)
-            setInterval(sendPositionUpdate, 16);
-
-            // Add periodic player list updates
-            setInterval(() => {
-                if (document.getElementById('playerList').classList.contains('visible')) {
-                    updatePlayerList();
-                }
-            }, 100); // Update every 100ms when visible
-        } catch (error) {
-            console.error('Error during initialization:', error);
-            document.body.innerHTML = `
-                <div style="color: white; background: rgba(0,0,0,0.8); padding: 20px; text-align: center;">
-                    An error occurred while initializing the game.<br>
-                    Please try refreshing the page or use a different browser.
-                </div>
-            `;
-            throw error;
-        }
-
-        // Initialize WebSocket connection AFTER scene is set up
-        setupWebSocket();
-
-        // Function to create an orb
-        function createOrb(orbData) {
-            // Updated validation to check nested position properties
-            if (!orbData || !orbData.position || typeof orbData.position.x === 'undefined' || typeof orbData.position.y === 'undefined' || typeof orbData.position.z === 'undefined' || typeof orbData.id === 'undefined') {
-                console.error('Invalid orb data received:', orbData);
-                return null;
-            }
-            
-            console.log('Creating orb with data:', orbData);
-            
-            const orbId = orbData.id;
-            
-            // Check if orb already exists
-            if (orbs.has(orbId)) {
-                console.log(`Orb ${orbId} already exists, updating position.`);
-                const existingOrb = orbs.get(orbId);
-                // Update position using nested properties
-                existingOrb.position.set(orbData.position.x, orbData.position.y, orbData.position.z);
-                return existingOrb;
-            }
-            
-            // Doubled the orb radius from 3 to 6
-            const orbRadius = 6;
-            const geometry = new THREE.SphereGeometry(orbRadius, 16, 16); 
-            
-            // Define the allowed neon colors
-            const neonColors = [
-                0x39FF14, // Neon Green
-                0x1B03A3, // Neon Blue
-                0xBC13FE, // Neon Purple
-                0xFF10F0  // Neon Pink
-            ];
-            
-            // Select a random neon color
-            const randomColor = neonColors[Math.floor(Math.random() * neonColors.length)];
-            
-            const material = new THREE.MeshBasicMaterial({ 
-                color: randomColor,
-                wireframe: true // Keep wireframe for style
-            });
-            
-            const orb = new THREE.Mesh(geometry, material);
-            // Set position using nested properties
-            orb.position.set(orbData.position.x, orbData.position.y, orbData.position.z);
-            // Updated originalScale to match new orbRadius
-            orb.userData = { id: orbId, originalScale: orbRadius }; 
-            
-            // Add glow effect
-            const glowMaterial = new THREE.MeshBasicMaterial({
-                color: randomColor,
-                transparent: true,
-                opacity: 0.3
-            });
-            const glowMesh = new THREE.Mesh(geometry.clone(), glowMaterial);
-            glowMesh.scale.multiplyScalar(1.5); // Slightly larger scale for glow
-            orb.add(glowMesh);
-            
-            // Add to scene and map
-            if (scene) {
-                 scene.add(orb);
-                 orbs.set(orbId, orb);
-                 console.log(`Orb ${orbId} created and added to scene at`, orb.position);
-                 return orb;
-            } else {
-                 console.error('Scene not initialized when trying to create orb', orbId);
-                 return null;
-            }
-        }
-
-        // Add after the playerOrbs Map declaration
-        function updateOrbCount() {
-            const orbCountElement = document.getElementById('orbCount');
-            // --- Get count specifically for the CURRENT playerUsername, OR default to 0 if username is empty --- 
-            const countToShow = playerUsername ? (playerOrbs.get(playerUsername) || 0) : 0;
-            orbCountElement.textContent = `Orbs: ${countToShow}`;
-            // ---------------------------------------------------------------------------------------------
-            
-            // Show popup when reaching 30 orbs
-            if (countToShow >= 30) { // Use countToShow here
-                const popup = document.getElementById('orbPopup');
-                popup.style.display = 'block';
-                updateOrbPopupHandlers(); // Ensure handlers are attached
-            }
-        }
-
-        // Create shotgun muzzle flash effect
-        const muzzleFlashGeometry = new THREE.SphereGeometry(8, 16, 16);
-        const muzzleFlashMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffff00,
-            transparent: true,
-            opacity: 1.0
-        });
-        const muzzleFlash = new THREE.Mesh(muzzleFlashGeometry, muzzleFlashMaterial);
-        muzzleFlash.visible = false;
-        scene.add(muzzleFlash);
-
-        // Add a second, larger flash for better visibility
-        const outerFlashGeometry = new THREE.SphereGeometry(12, 16, 16);
-        const outerFlashMaterial = new THREE.MeshBasicMaterial({
-            color: 0xff6600,
-            transparent: true,
-            opacity: 0.9
-        });
-        const outerFlash = new THREE.Mesh(outerFlashGeometry, outerFlashMaterial);
-        outerFlash.visible = false;
-        scene.add(outerFlash);
-
-        // Handle shotgun firing - Rewritten
-        function fireShotgun() {
-            // --- MODIFIED: Removed !controls.isLocked check ---
-            if (!camera) {
-                console.warn("fireShotgun called but camera is not ready."); // Added warning
-                return;
-            }
-            // --- END MODIFICATION ---
-
-            const now = performance.now();
+                // Calculate speed and heading (or get from player state if applicable)
+                const dx = camera.position.x - lastSentPosition.x;
+                const dz = camera.position.z - lastSentPosition.z;
+                const speed = Math.sqrt(dx * dx + dz * dz) / (positionUpdateInterval / 1000);
+                const heading = Math.atan2(-dx, -dz) * 180 / Math.PI;
             if (now - lastShotTime < SHOTGUN_COOLDOWN) {
                 return; // Cooldown active
             }
@@ -4118,6 +3954,7 @@
 
         for (let i = 0; i < MAX_ITERATIONS; i++) {
             playerCollider.center.copy(resolvedPosition); // Update collider for check
+            playerCollider.radius = playerRadius; // Ensure radius is set
             const normalCollision = checkCollision(resolvedPosition, playerRadius);
 
             if (!normalCollision.collision) {
@@ -4166,8 +4003,9 @@
         camera.position.copy(resolvedPosition);
         // Update the collider's center to the final position
         playerCollider.center.copy(camera.position); // Final collider update
+        playerCollider.radius = playerRadius; // Ensure radius is set
 
-        // --- [REMOVED] Separate velocity adjustment block after the loop --- 
+        // ... existing code ...
 
         // Apply friction to normal movement (Now applied regardless of final collision state)
         const effectiveSmoothing = Math.pow(MOVEMENT_SMOOTHING, deltaTime * 60); // Framerate independent
@@ -4611,16 +4449,41 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
 
         // Update the pellet collision handler to apply 5x damage for ruler
         function handlePelletCollision(victimUsername, attackerUsername) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                const damage = attackerUsername === currentRuler ? SHOTGUN_DAMAGE * 5 : SHOTGUN_DAMAGE;
-                ws.send(JSON.stringify({
-                    type: 'player_damaged',
-                    victimUsername: victimUsername,
-                    attackerUsername: attackerUsername,
-                    damage: damage
-                }));
+            // --- [REMOVED] Sending damage via WebSocket --- 
+            // if (ws && ws.readyState === WebSocket.OPEN) { ... }
+            
+            // --- Send PELLET_HIT directly to the VICTIM via WebRTC --- 
+            const playerState = Array.from(playerStates.values()).find(state => state.username === victimUsername);
+            if (playerState && playerState.peerId) {
+                 // Calculate damage (consider ruler)
+                 const damage = attackerUsername === currentRuler ? SHOTGUN_DAMAGE * 5 : SHOTGUN_DAMAGE;
+                 console.log(`[Pellet Hit] Sending pellet_hit to ${victimUsername} (${playerState.peerId}). Damage: ${damage}`);
+                 sendGameDataToPeer(playerState.peerId, {
+                     type: 'pellet_hit',
+                     victimUsername: victimUsername, // Keep for potential logging on receiver
+                     damage: damage
+                 });
+            } else {
+                 console.warn(`[Pellet Hit] Could not find peerId for victim ${victimUsername} to send hit message.`);
             }
-        }
-    </script>
-</body>
-</html>
+        } // Closing brace for handlePelletCollision
+    } // <--- ADDED closing brace for the main 'try' block
+    catch (error) {
+        console.error('Initialization failed:', error);
+        // Display error message to the user (optional)
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; background: red; color: white; padding: 10px; text-align: center; z-index: 9999;';
+        errorDiv.textContent = 'Error during initialization. Check console for details.';
+        document.body.appendChild(errorDiv);
+    }
+
+    // Always render the scene
+    // renderer.render(scene, camera); // This should be inside animate()
+
+    animate(); // Start the animation loop AFTER try...catch
+
+    // Add after the checkCollision function
+// ... existing code ...
+    </script> // Closing tag for the main script block
+</body> // Closing tag for the body
+</html> // Closing tag for the HTML document
