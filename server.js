@@ -1,10 +1,8 @@
 const express = require('express');
 const WebSocket = require('ws');
 const path = require('path');
-const http = require('http');
 
 const app = express();
-const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
 // World generation constants
@@ -275,412 +273,555 @@ function generateWorld() {
     return { towers, bridges, orbs };
 }
 
-// WebSocket Server Setup
+// Serve static files
+app.use(express.static(path.join(__dirname)));
+
+const server = app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
+
 const wss = new WebSocket.Server({ server });
 
 // Room management
-const rooms = new Map(); // Stores GameRoom instances
-
-// Player ID to WebSocket mapping (needed for signaling)
-const players = new Map(); // peerId -> ws
-
-// Generate unique ID for peers
-function generatePeerId() {
-    return 'peer-' + Math.random().toString(36).substring(2, 15);
-}
-
 class GameRoom {
     constructor(id) {
         this.id = id;
         this.name = generateRoomName();
-        this.players = new Map(); // Use peerId as key
-        this.worldData = generateWorld(); // Generate world once per room
-        console.log(`Room ${this.name} (${this.id}) created.`);
+        this.players = new Map();
+        this.isActive = true;
+        this.lastActivity = Date.now();
+        this.world = generateWorld(); // Generate world when room is created
+        this.currentRuler = null; // Track the current ruler
+        this.playerOrbs = new Map(); // <-- Track orb counts per player (ws -> count)
+        this.lastOrbId = this.world.orbs.reduce((maxId, orb) => Math.max(maxId, orb.id), 0); // <-- Initialize max orb ID
+        this.cleanupInterval = setInterval(() => this.cleanup(), 30000); // Cleanup inactive players every 30 seconds
+        console.log(`Room ${this.name} created with ${this.world.orbs.length} orbs. Max initial Orb ID: ${this.lastOrbId}`);
     }
 
-    addPlayer(ws, username, peerId) {
-        if (this.isFull()) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Room is full' }));
-            ws.close();
-            return false;
-        }
-
-        // Check if username is already taken in this room
-        for (const [existingPeerId, playerData] of this.players.entries()) {
+    addPlayer(ws, username) {
+        // Check if username already exists
+        for (const [clientWs, playerData] of this.players.entries()) {
             if (playerData.username === username) {
-                ws.send(JSON.stringify({ type: 'error', message: 'Username already taken in this room' }));
+                console.log(`Username ${username} already taken in room ${this.id}.`);
+                ws.send(JSON.stringify({ type: 'error', message: 'Username already taken' }));
                 ws.close();
-                return false;
+                return;
             }
         }
 
+        console.log(`Player ${username} joined room ${this.id} (${this.name})`);
         const playerData = {
-            username: username,
-            peerId: peerId, // Store peerId
-            ws: ws, // Keep reference to ws for signaling
-            orbs: 0,
-            position: { x: 0, y: 10, z: 0 }, // Initial position
-            rotation: { x: 0, y: 0, z: 0 }
+            username,
+            position: [0, 10, 0], // Initial position
+            rotation: [0, 0, 0],
+            speed: 0,
+            heading: 0,
+            verticalSpeed: 0,
+            lastUpdateTime: Date.now(),
+            orbCount: 0 // <-- ADDED: Initialize orb count
         };
-        this.players.set(peerId, playerData);
-        players.set(peerId, ws); // Update global map
-        ws.roomId = this.id; // Associate ws with room
-        ws.peerId = peerId; // Associate ws with peerId
+        this.players.set(ws, playerData);
 
-        console.log(`${username} (${peerId}) joined room ${this.name} (${this.id})`);
+        // Assign WebSocket to the room
+        ws.roomId = this.id;
 
         // Send world data and current players to the new player
-        const currentPlayersData = Array.from(this.players.values()).map(p => ({
+        const playersData = Array.from(this.players.values()).map(p => ({
             username: p.username,
-            peerId: p.peerId, // Send peerId
-            position: [p.position.x, p.position.y, p.position.z],
-            rotation: [p.rotation.x, p.rotation.y, p.rotation.z],
-            orbs: p.orbs
+            position: p.position,
+            rotation: p.rotation
         }));
-
         ws.send(JSON.stringify({
             type: 'world_data',
-            towers: this.worldData.towers,
-            bridges: this.worldData.bridges,
-            orbs: this.worldData.orbs,
-            players: currentPlayersData,
-            yourPeerId: peerId // Send the assigned peerId to the client
+            towers: this.world.towers,
+            bridges: this.world.bridges,
+            orbs: this.world.orbs,
+            players: playersData,
+            currentRuler: this.currentRuler // <-- ADDED: Send current ruler on join
         }));
 
-        // Notify other players in the room about the new player
+        // Notify other players about the new player
         this.broadcast(JSON.stringify({
             type: 'player_joined',
             username: username,
-            peerId: peerId, // Include peerId
-            position: [0, 10, 0], // Initial position
-            rotation: [0, 0, 0]
-        }), peerId); // Exclude the new player
-
-        this.broadcastRoomInfo();
-        return true;
+            position: { x: 0, y: 10, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 }
+        }), ws);
     }
 
-    dropPlayerOrbs(peerId, deathPosition = null) {
-        const playerData = this.players.get(peerId);
-        if (!playerData || playerData.orbs <= 0) return; // No orbs to drop
-
-        const droppedOrbs = [];
-        const basePosition = deathPosition || playerData.position || { x: 0, y: 10, z: 0 }; // Use player's last known position or default
-        const numOrbsToDrop = playerData.orbs;
-
-        console.log(`[Orb Drop Server Debug] Player ${playerData.username} dropping ${numOrbsToDrop} orbs near`, basePosition);
-
-        for (let i = 0; i < numOrbsToDrop; i++) {
-            // Generate a unique ID for the dropped orb
-            const orbId = `dropped-${peerId}-${Date.now()}-${i}`;
-
-            // Slightly randomized position around the base
-            const dropX = basePosition.x + (Math.random() - 0.5) * 10;
-            const dropY = basePosition.y + 5 + Math.random() * 5; // Drop slightly above and spread vertically
-            const dropZ = basePosition.z + (Math.random() - 0.5) * 10;
-
-            const droppedOrbData = {
-                id: orbId,
-                position: { x: dropX, y: dropY, z: dropZ },
-                color: Math.floor(Math.random() * 0xFFFFFF), // Random color for dropped orbs
-                size: 1.0, // Standard size for dropped orbs
-                isDropped: true // Flag as dropped
-            };
-            droppedOrbs.push(droppedOrbData);
-
-            // Add dropped orb to the room's world data so new players see it
-            this.worldData.orbs.push(droppedOrbData);
+    // --- NEW HELPER FUNCTION to drop orbs ---
+    dropPlayerOrbs(ws, deathPosition = null) {
+        const player = this.players.get(ws);
+        if (!player) {
+            console.warn("[DropOrbs Debug] Attempted to drop orbs for a player no longer in the room or not found."); // Added detail
+            return;
         }
 
-        console.log(`[Orb Drop Server Debug] Broadcasting ${droppedOrbs.length} dropped orbs.`);
+        const orbCount = this.playerOrbs.get(ws) || 0;
+        console.log(`[DropOrbs Debug] Called for user: ${player.username}. Orb count: ${orbCount}. Death Pos: ${deathPosition}`); // Added log
 
-        // Broadcast the dropped orbs to everyone in the room
-        this.broadcast(JSON.stringify({
-            type: 'orbs_dropped',
-            orbs: droppedOrbs
-        }));
+        // --- Add early exit and log if no orbs ---
+        if (orbCount <= 0) {
+            console.log(`[DropOrbs Debug] Player ${player.username} had 0 orbs. Nothing to drop.`);
+            return; // Exit early if no orbs
+        }
+        // -----------------------------------------
 
-        // Reset the player's orb count
-        playerData.orbs = 0;
+        if (orbCount > 0) { // This check is slightly redundant now but safe
+            const droppedOrbsData = [];
+            // Use provided death position or player's last known position
+            const position = deathPosition ? deathPosition : [player.position.x, player.position.y, player.position.z];
+            const dropRadius = 5;
+            console.log(`[DropOrbs Debug] Using position ${position} for ${player.username}`); // Log position used
+
+            for (let i = 0; i < orbCount; i++) {
+                this.lastOrbId++;
+                const neonColors = [
+                    0x39FF14, 0x1B03A3, 0xBC13FE, 0xFF10F0
+                ];
+                const randomColor = neonColors[Math.floor(Math.random() * neonColors.length)];
+                const orbRadius = 6;
+                const randomAngle = Math.random() * Math.PI * 2;
+                const randomDist = Math.random() * dropRadius;
+                const orbX = position[0] + Math.cos(randomAngle) * randomDist;
+                const orbY = position[1] + 1;
+                const orbZ = position[2] + Math.sin(randomAngle) * randomDist;
+
+                const newOrbData = {
+                    id: this.lastOrbId,
+                    position: { x: orbX, y: orbY, z: orbZ },
+                    color: randomColor,
+                    size: orbRadius
+                };
+
+                this.world.orbs.push(newOrbData);
+                droppedOrbsData.push(newOrbData);
+                console.log(`[DropOrbs Debug] Generated orb ${this.lastOrbId}:`, newOrbData); // Added log
+            }
+
+            // Reset player's orb count (important!)
+            this.playerOrbs.set(ws, 0);
+            console.log(`[DropOrbs Debug] Reset orb count for ${player.username} to 0.`); // Added log
+
+            if (droppedOrbsData.length > 0) {
+                // --- Log before broadcast ---
+                console.log(`[DropOrbs Debug] Broadcasting ${droppedOrbsData.length} orbs. Data:`, JSON.stringify(droppedOrbsData));
+                // --------------------------
+                this.broadcast(JSON.stringify({
+                    type: 'orbs_dropped',
+                    orbs: droppedOrbsData
+                }));
+            }
+        }
     }
+    // --- END HELPER FUNCTION ---
 
-    removePlayer(peerId) {
-        const playerData = this.players.get(peerId);
-        if (playerData) {
-            console.log(`${playerData.username} (${peerId}) left room ${this.name} (${this.id})`);
-
-            // Drop orbs before removing player data
-            this.dropPlayerOrbs(peerId, playerData.position);
-
-            this.players.delete(peerId);
-            players.delete(peerId); // Remove from global map
-
-            // Notify remaining players
+    removePlayer(ws) {
+        const player = this.players.get(ws);
+        if (player) {
+            // Broadcast that the player left
             this.broadcast(JSON.stringify({
                 type: 'player_left',
-                peerId: peerId,
-                username: playerData.username // Keep username for display
-            }), null); // Send to everyone
-
+                username: player.username
+            }));
+            
+            // Remove the player
+            this.players.delete(ws);
+            this.playerOrbs.delete(ws); // <-- Remove from orb tracking
+            
+            // Broadcast updated player count
             this.broadcastRoomInfo();
-        } else {
-             console.log(`Attempted to remove non-existent player with peerId ${peerId} from room ${this.name}`);
-        }
+            
+            // Mark room as inactive if empty
+            if (this.players.size === 0) {
+                this.isActive = false;
+            }
 
-        // If room becomes empty, potentially clean it up
-        if (this.players.size === 0) {
-            this.cleanup();
+            // --- ADDED: Check if the leaving player was the ruler ---
+            if (player && player.username === this.currentRuler) {
+                console.log(`Ruler ${this.currentRuler} left room ${this.id}. Resetting ruler.`);
+                this.currentRuler = null;
+                this.broadcast({ type: 'new_ruler', username: null }); // Notify clients ruler is gone
+            }
+            // --- END ADDED ---
         }
     }
 
     broadcastRoomInfo() {
-        const playerCount = this.players.size;
-        this.broadcast(JSON.stringify({
+        const info = {
             type: 'room_info',
+            id: this.id,
             name: this.name,
-            playerCount: playerCount
-        }));
+            playerCount: this.players.size
+        };
+        this.broadcast(JSON.stringify(info));
     }
 
     isFull() {
         return this.players.size >= 20;
     }
 
-    broadcast(message, excludePeerId = null) {
-        this.players.forEach((playerData, peerId) => {
-            if (peerId !== excludePeerId && playerData.ws && playerData.ws.readyState === WebSocket.OPEN) {
-                try {
-                    playerData.ws.send(message);
-                } catch (error) {
-                    console.error(`Error sending message to ${playerData.username} (${peerId}):`, error);
-                    // Consider removing player if WebSocket is broken
-                    this.removePlayer(peerId);
-                }
+    broadcast(message, excludeWs = null) {
+        this.players.forEach((playerData, ws) => {
+            if (ws !== excludeWs && ws.readyState === WebSocket.OPEN) {
+                ws.send(message);
             }
         });
     }
 
     cleanup() {
-        console.log(`Room ${this.name} (${this.id}) is empty, removing.`);
-        rooms.delete(this.id);
+        // Remove disconnected players
+        this.players.forEach((playerData, ws) => {
+            if (ws.readyState !== WebSocket.OPEN) {
+                this.removePlayer(ws);
+            }
+        });
     }
 
-    handleMessage(ws, peerId, data) {
-        const senderData = this.players.get(peerId);
-        if (!senderData) {
-             console.warn(`Received message from unknown peerId ${peerId} in room ${this.name}`);
-             return; // Ignore messages from unknown peers
-        }
+    handleMessage(ws, data) {
+        switch (data.type) {
+            case 'join':
+                this.addPlayer(ws, data.username);
+                
+                // Send initial room information to the new player
+                ws.send(JSON.stringify({
+                    type: 'room_info',
+                    id: this.id,
+                    name: this.name,
+                    playerCount: this.players.size
+                }));
 
-        // --- Update player state (position, etc.) based on WebSocket messages if needed --- 
-        // --- (Could keep some reliable messages like chat, score updates via WS) --- 
-        if (data.type === 'position' && data.position) {
-             senderData.position = { x: data.position[0], y: data.position[1], z: data.position[2] };
-             senderData.rotation = data.rotation ? { x: data.rotation[0], y: data.rotation[1], z: data.rotation[2] } : senderData.rotation;
-             // OPTIONAL: Broadcast position via WS for fallback or debugging, but primary is WebRTC
-             // this.broadcast(JSON.stringify({...data, peerId: peerId }), peerId);
-        } else if (data.type === 'collect_orb') {
-             // Handle orb collection logic (remove from world, update player count, broadcast)
-             const orbId = data.orbId;
-             const orbIndex = this.worldData.orbs.findIndex(orb => orb.id === orbId);
-             if (orbIndex !== -1) {
-                 this.worldData.orbs.splice(orbIndex, 1); // Remove orb
-                 senderData.orbs = (senderData.orbs || 0) + 1;
-                 console.log(`${senderData.username} collected orb ${orbId}. Total: ${senderData.orbs}`);
-                 // Broadcast orb collection
-                 this.broadcast(JSON.stringify({
-                     type: 'orb_collected',
-                     orbId: orbId,
-                     peerId: peerId, // Send collector's peerId
-                     username: senderData.username // Send username for display
-                 }));
-                 // Check for ruler status (optional)
-                 if (senderData.orbs >= 30) {
-                      // Handle becoming ruler
-                 }
-             } else {
-                  console.log(`Player ${senderData.username} tried to collect non-existent orb ${orbId}`);
-             }
-        } else if (data.type === 'player_died') {
-             console.log(`Player ${senderData.username} died. Dropping orbs.`);
-             // Use the position sent by the client in the death message
-             const deathPosition = data.position ? { x: data.position[0], y: data.position[1], z: data.position[2] } : senderData.position;
-             this.dropPlayerOrbs(peerId, deathPosition);
-             // Broadcast death event (optional)
-             this.broadcast(JSON.stringify({ type: 'player_died_broadcast', peerId: peerId, username: senderData.username }), peerId);
-        }
-        // --- Add other reliable message handlers (chat, game reset, ruler status etc.) --- 
-        
-        // --- Relay WebRTC Signaling Messages --- 
-        else if (['webrtc_offer', 'webrtc_answer', 'webrtc_ice'].includes(data.type)) {
-            const recipientPeerId = data.toId;
-            const recipientWs = players.get(recipientPeerId);
-            if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-                // Add sender's peerId if not present (for context on receiver side)
-                data.fromId = peerId;
-                try {
-                    recipientWs.send(JSON.stringify(data));
-                    // console.log(`Relayed ${data.type} from ${peerId} to ${recipientPeerId}`);
-                } catch (error) {
-                     console.error(`Error relaying ${data.type} to ${recipientPeerId}:`, error);
+                // Send existing players to the new player
+                this.players.forEach((playerData, playerWs) => {
+                    if (playerWs !== ws) {
+                        ws.send(JSON.stringify({
+                            type: 'player_joined',
+                            username: playerData.username,
+                            position: playerData.position,
+                            rotation: playerData.rotation
+                        }));
+                    }
+                });
+
+                // Broadcast new player to all other players in the room
+                this.broadcast(JSON.stringify({
+                    type: 'player_joined',
+                    username: data.username,
+                    position: { x: 0, y: 10, z: 0 },
+                    rotation: { x: 0, y: 0, z: 0 }
+                }), ws);
+                break;
+
+            case 'request_world_data':
+                // Send world data to the requesting player
+                ws.send(JSON.stringify({
+                    type: 'world_data',
+                    towers: this.world.towers,
+                    bridges: this.world.bridges,
+                    orbs: this.world.orbs
+                }));
+                break;
+
+            case 'collect_orb':
+                const player = this.players.get(ws);
+                if (player) {
+                    // --- ADD CHECK FOR SERVER-SIDE ORB COUNT ---
+                    const currentServerOrbCount = this.playerOrbs.get(ws) || 0;
+                    if (currentServerOrbCount >= 30) {
+                        console.log(`[Orb Cap Debug] Player ${player.username} tried to collect orb ${data.orbId} but already has ${currentServerOrbCount}. Ignoring.`);
+                        break; // Ignore the request
+                    }
+                    // ------------------------------------------
+
+                    // Find the orb in the room's world
+                    const orbIndex = this.world.orbs.findIndex(orb => orb.id === data.orbId);
+                    if (orbIndex !== -1) {
+                        // Remove the orb from the world
+                        this.world.orbs.splice(orbIndex, 1);
+
+                        // --- Update player's orb count (Use the checked count) ---
+                        this.playerOrbs.set(ws, currentServerOrbCount + 1);
+                        console.log(`Player ${player.username} collected orb ${data.orbId}. New count: ${currentServerOrbCount + 1}`);
+                        // --------------------------------
+
+                        // Broadcast orb collection to all players in the room
+                        this.broadcast(JSON.stringify({
+                            type: 'orb_collected',
+                            orbId: data.orbId,
+                            username: player.username
+                        }));
+
+                        // --- Check for new ruler ---
+                        if (currentServerOrbCount + 1 >= 30 && this.currentRuler === null) {
+                            this.currentRuler = player.username;
+                            console.log(`Player ${player.username} has become the ruler in room ${this.id}!`);
+                            this.broadcast(JSON.stringify({ type: 'new_ruler', username: this.currentRuler }));
+                        }
+                        // --- End ruler check ---
+                    }
                 }
-            } else {
-                console.warn(`Cannot relay ${data.type}: Recipient ${recipientPeerId} not found or WebSocket not open.`);
-            }
-        }
-        // --- Handle other specific game logic messages --- 
-        else {
-             console.log(`Received unhandled message type: ${data.type} from ${peerId}`);
+                break;
+
+            case 'position':
+                const playerData = this.players.get(ws);
+                if (playerData) {
+                    playerData.position = data.position;
+                    playerData.rotation = data.rotation;
+                    
+                    this.broadcast(JSON.stringify({
+                        type: 'position',
+                        username: playerData.username,
+                        position: data.position,
+                        rotation: data.rotation
+                    }), ws);
+                }
+                break;
+
+            case 'shotgun_shot':
+                const shooter = this.players.get(ws);
+                if (shooter) {
+                    // Broadcast shot to all players in the room
+                    this.broadcast(JSON.stringify({
+                        type: 'shotgun_shot',
+                        username: shooter.username,
+                        position: data.position,
+                        directions: data.directions
+                    }), ws);
+                }
+                break;
+
+            case 'new_ruler':
+                if (!this.currentRuler) {
+                    this.currentRuler = data.username;
+                    this.broadcast(JSON.stringify({
+                        type: 'new_ruler',
+                        username: data.username
+                    }));
+                }
+                break;
+
+            case 'reset_game':
+                // Reset the world
+                this.world = generateWorld();
+                this.lastOrbId = this.world.orbs.reduce((maxId, orb) => Math.max(maxId, orb.id), 0); // Re-init max orb ID
+                this.currentRuler = null;
+                
+                // Reset all players
+                this.players.forEach((player, playerWs) => {
+                    player.position = { x: 0, y: 10, z: 0 };
+                    player.rotation = { x: 0, y: 0, z: 0 };
+                    // NOTE: Health is client-side, no need to reset here
+                    // NOTE: Resetting orb count server-side:
+                    this.playerOrbs.set(playerWs, 0);
+                    
+                    // Send reset message to each player
+                    playerWs.send(JSON.stringify({
+                        type: 'reset_game'
+                    }));
+                });
+
+                // Broadcast new world data to all players
+                this.broadcast(JSON.stringify({
+                    type: 'world_data',
+                    towers: this.world.towers,
+                    bridges: this.world.bridges,
+                    orbs: this.world.orbs
+                }));
+                console.log(`Game reset initiated by ${playerData.username} in room ${this.id}`);
+                break;
+
+            case 'player_damaged':
+                const victimUsername = data.victimUsername;
+                let victimWs = null;
+
+                // Find the victim's WebSocket connection
+                this.players.forEach((playerData, ws) => {
+                    if (playerData.username === victimUsername) {
+                        victimWs = ws;
+                    }
+                });
+
+                if (victimWs && victimWs.readyState === WebSocket.OPEN) {
+                    console.log(`[Server Debug] Relaying player_damaged message to ${victimUsername}`); // Log relay
+                    const attackerUsername = data.attackerUsername;
+                    let damage = data.damage; // Use let to allow modification
+
+                    console.log(`Received player_damaged: Victim=${victimUsername}, Attacker=${attackerUsername}, BaseDamage=${damage}`);
+
+                    // --- ADDED: Apply ruler damage multiplier ---
+                    if (attackerUsername === this.currentRuler) {
+                        damage *= 5;
+                        console.log(`Attacker ${attackerUsername} is ruler. Applying 5x damage. NewDamage=${damage}`);
+                    }
+                    // --- END ADDED ---
+
+                    victimWs.send(JSON.stringify({
+                        type: 'player_damaged',
+                        victimUsername: victimUsername,
+                        attackerUsername: attackerUsername,
+                        damage: damage // Send potentially modified damage
+                    }));
+                } else {
+                    console.log(`[Server Debug] Could not find or send player_damaged message to ${victimUsername}`);
+                }
+                break;
+
+            case 'player_died':
+                const deadPlayerWs = [...this.players.entries()].find(([socket, playerData]) => playerData.username === data.username)?.[0];
+                
+                if (deadPlayerWs) {
+                    // --- Call helper function to drop orbs --- 
+                    this.dropPlayerOrbs(deadPlayerWs, data.position);
+                    // ---------------------------------------
+                } else {
+                    console.warn(`Received player_died message for unknown player: ${data.username}`);
+                }
+                break;
         }
     }
 }
 
-// Function to create a new room
+// Rooms management
+let rooms = [];
+let nextRoomId = 1;
+
 function createNewRoom() {
-    const roomId = 'room-' + Math.random().toString(36).substring(2, 9);
-    const room = new GameRoom(roomId);
-    rooms.set(roomId, room);
+    const room = new GameRoom(nextRoomId++);
+    rooms.push(room);
+    console.log(`Created new room: ${room.name} (ID: ${room.id})`);
     return room;
 }
 
-// Function to find an available room or create a new one
 function findAvailableRoom() {
-    for (const [roomId, room] of rooms.entries()) {
-        if (!room.isFull()) {
-            return room;
-        }
+    // First, try to find an existing room that's not full
+    let room = rooms.find(r => r.isActive && !r.isFull());
+    
+    // If no available room found, create a new one
+    if (!room) {
+        room = createNewRoom();
     }
-    // No available rooms, create a new one
-    return createNewRoom();
+    
+    return room;
 }
 
-// WebSocket connection handling
-wss.on('connection', (ws) => {
-    console.log('Client connected via WebSocket');
-    ws.peerId = generatePeerId(); // Assign unique ID on initial connection
-    ws.roomId = null; // Not in a room initially
+// Clean up inactive rooms and disconnected players more frequently
+setInterval(() => {
+    // Clean up each room
+    rooms.forEach(room => {
+        room.cleanup();
+    });
+    
+    // Remove inactive rooms
+    rooms = rooms.filter(room => room.isActive);
+}, 10000); // Check every 10 seconds
 
+wss.on('connection', (ws) => {
     let currentRoom = null;
-    let playerUsernameForLog = 'unknown';
+    let playerUsernameForLog = 'unknown'; // Store username for logging on close
 
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
 
-            // Handle initial join message
-            if (data.type === 'join' && data.username) {
-                playerUsernameForLog = data.username; // Store for logging
+            // Assign player to a room on first message (e.g., join)
+            if (!currentRoom) {
                 currentRoom = findAvailableRoom();
-                if (currentRoom.addPlayer(ws, data.username, ws.peerId)) {
-                    // Successfully added to room
-                    console.log(`WebSocket for ${playerUsernameForLog} (${ws.peerId}) associated with room ${currentRoom.name}`);
-                } else {
-                    // Failed to add (e.g., room full, username taken)
-                    currentRoom = null; // Reset currentRoom
-                    playerUsernameForLog = 'unknown'; // Reset log name
-                }
-            } 
-            // Handle world data request (should happen before join usually)
-            else if (data.type === 'request_world_data') {
-                 // This might be handled differently now. World data sent on join.
-                 console.log('Received request_world_data (handled on join)');
-            }
-            // Handle messages within a room context
-            else if (currentRoom) {
-                currentRoom.handleMessage(ws, ws.peerId, data);
-            }
-            // Handle messages before joining a room (if any)
-            else {
-                console.log('Received message before joining a room:', data.type);
+                console.log(`[Connection] Assigning new connection to room: ${currentRoom.name}`);
             }
 
+            // Store username if it's a join message for logging
+            if (data.type === 'join' && data.username) {
+                 playerUsernameForLog = data.username;
+                 console.log(`[Connection] WebSocket associated with username: ${playerUsernameForLog}`);
+            }
+
+            currentRoom.handleMessage(ws, data);
+
         } catch (error) {
-            console.error('Failed to parse message or handle client request:', error);
-            ws.send(JSON.stringify({ type: 'error', message: 'Invalid message format' }));
+            console.error('Error processing message:', error);
+            // Attempt removal if error occurs after room assignment
+             if (currentRoom) {
+                 console.error(`Removing player ${playerUsernameForLog} due to message processing error.`);
+                 currentRoom.dropPlayerOrbs(ws); // Try dropping orbs first
+                 currentRoom.removePlayer(ws);
+             }
         }
     });
 
     ws.on('close', () => {
-        console.log(`WebSocket closed for player: ${playerUsernameForLog} (${ws.peerId}).`);
-        if (ws.roomId && rooms.has(ws.roomId)) {
-            const room = rooms.get(ws.roomId);
-            room.removePlayer(ws.peerId); // Use peerId to remove
+        console.log(`[Connection] WebSocket closed for player: ${playerUsernameForLog}.`);
+        if (currentRoom) {
+            console.log(`[Connection] Attempting orb drop for ${playerUsernameForLog} in room ${currentRoom.name} before removal.`);
+            currentRoom.dropPlayerOrbs(ws); // <<< Drop orbs here
+            console.log(`[Connection] Proceeding to remove player ${playerUsernameForLog} from room ${currentRoom.name}.`);
+            currentRoom.removePlayer(ws); // Now remove player data
         } else {
-             // Also remove from global map if they never joined a room
-             players.delete(ws.peerId);
+             console.log(`[Connection] Player ${playerUsernameForLog} closed connection but wasn't assigned to a room.`);
         }
-        console.log(`Remaining global players map size: ${players.size}`);
     });
 
     ws.on('error', (error) => {
-        console.error(`WebSocket client error for ${playerUsernameForLog} (${ws.peerId}):`, error);
-        if (ws.roomId && rooms.has(ws.roomId)) {
-             const room = rooms.get(ws.roomId);
-             console.error(`Removing player ${playerUsernameForLog} (${ws.peerId}) from room ${room.name} due to WebSocket error.`);
-             room.removePlayer(ws.peerId);
-        } else {
-             players.delete(ws.peerId);
-        }
+        console.error(`[Connection] WebSocket client error for ${playerUsernameForLog}:`, error);
+         if (currentRoom) {
+             console.error(`Removing player ${playerUsernameForLog} from room ${currentRoom.name} due to WebSocket error.`);
+             currentRoom.dropPlayerOrbs(ws); // Try dropping orbs first
+             currentRoom.removePlayer(ws);
+         }
     });
 });
 
+// Handle errors
 wss.on('error', (error) => {
     console.error('WebSocket Server Error:', error);
 });
 
-// Serve static files
-app.use(express.static(path.join(__dirname)));
-
-// Start the server
-server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
 });
 
-// --- Vector Math Utilities (Keep if used elsewhere) --- 
-// Define Vector3 class (basic implementation)
-function Vector3(x = 0, y = 0, z = 0) {
+// Create an object pool for frequently created/destroyed objects
+const objectPool = {
+    pool: [],
+    get: function() {
+        return this.pool.pop() || this.createNew();
+    },
+    release: function(obj) {
+        this.pool.push(obj);
+    }
+};
+
+// Add to renderer setup
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1)); // Limit pixel ratio
+renderer.shadowMap.enabled = false; // Disable shadows if not needed
+
+// Vector math helper functions
+function Vector3(x, y, z) {
     this.x = x;
     this.y = y;
     this.z = z;
 }
 
-Vector3.prototype.set = function(x, y, z) {
-    this.x = x; this.y = y; this.z = z;
-    return this;
-};
-
-Vector3.prototype.copy = function(v) {
-    this.x = v.x; this.y = v.y; this.z = v.z;
-    return this;
-};
-
-Vector3.prototype.add = function(v) {
-    this.x += v.x; this.y += v.y; this.z += v.z;
-    return this;
+Vector3.prototype.clone = function() {
+    return new Vector3(this.x, this.y, this.z);
 };
 
 Vector3.prototype.sub = function(v) {
-    this.x -= v.x; this.y -= v.y; this.z -= v.z;
+    this.x -= v.x;
+    this.y -= v.y;
+    this.z -= v.z;
     return this;
-};
-
-Vector3.prototype.multiplyScalar = function(s) {
-    this.x *= s; this.y *= s; this.z *= s;
-    return this;
-};
-
-Vector3.prototype.lengthSq = function() {
-    return this.x * this.x + this.y * this.y + this.z * this.z;
 };
 
 Vector3.prototype.length = function() {
-    return Math.sqrt(this.lengthSq());
+    return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
 };
 
 Vector3.prototype.normalize = function() {
     const len = this.length();
     if (len > 0) {
-        this.multiplyScalar(1 / len);
+        this.x /= len;
+        this.y /= len;
+        this.z /= len;
     }
     return this;
 };
@@ -691,58 +832,77 @@ function dotProduct(v1, v2) {
 
 function angleBetween(v1, v2) {
     const dot = dotProduct(v1, v2);
-    const len1 = v1.length();
-    const len2 = v2.length();
-    if (len1 === 0 || len2 === 0) return 0; // Avoid division by zero
-    const cosTheta = dot / (len1 * len2);
-    return Math.acos(Math.max(-1, Math.min(1, cosTheta))); // Clamp value to [-1, 1]
+    return Math.acos(Math.min(Math.max(dot, -1), 1));
 }
 
-// Quaternion class (basic implementation for rotations)
-function Quaternion(x = 0, y = 0, z = 0, w = 1) {
-    this.x = x;
-    this.y = y;
-    this.z = z;
-    this.w = w;
-}
+// Handle shotgun shot
+socket.on('shotgunShot', (data) => {
+    const shooter = players.get(socket.id);
+    if (!shooter) return;
 
-Quaternion.prototype.setFromAxisAngle = function(axis, angle) {
-    const halfAngle = angle / 2;
-    const s = Math.sin(halfAngle);
-    this.x = axis.x * s;
-    this.y = axis.y * s;
-    this.z = axis.z * s;
-    this.w = Math.cos(halfAngle);
-    return this;
-};
+    const shotData = {
+        position: data.position,
+        direction: data.direction,
+        shooterId: socket.id,
+        pellets: data.pellets
+    };
 
-Quaternion.prototype.multiplyQuaternions = function(a, b) {
-    const qax = a.x, qay = a.y, qaz = a.z, qaw = a.w;
-    const qbx = b.x, qby = b.y, qbz = b.z, qbw = b.w;
+    // Broadcast to all players
+    io.emit('shotgunShot', shotData);
 
-    this.x = qax * qbw + qaw * qbx + qay * qbz - qaz * qby;
-    this.y = qay * qbw + qaw * qby + qaz * qbx - qax * qbz;
-    this.z = qaz * qbw + qaw * qbz + qax * qby - qay * qbx;
-    this.w = qaw * qbw - qax * qbx - qay * qby - qaz * qbz;
+    // Check for hits on other players
+    players.forEach((player, playerId) => {
+        if (playerId === socket.id) return; // Skip shooter
 
-    return this;
-};
+        // Check if player is within the cone of effect
+        const playerPos = new Vector3(player.position.x, player.position.y, player.position.z);
+        const shooterPos = new Vector3(data.position.x, data.position.y, data.position.z);
+        const direction = new Vector3(data.direction.x, data.direction.y, data.direction.z);
+        
+        // Calculate vector from shooter to player
+        const toPlayer = playerPos.clone().sub(shooterPos);
+        const distance = toPlayer.length();
+        
+        // Check if player is within the cone's range (10 units)
+        if (distance <= 10) {
+            // Calculate angle between shot direction and player
+            toPlayer.normalize();
+            const angle = angleBetween(direction, toPlayer);
+            
+            // Cone angle is about 45 degrees (0.785 radians)
+            if (angle <= 0.785) {
+                // Player is hit, apply damage
+                player.health -= 20; // Shotgun damage per pellet
+                if (player.health <= 0) {
+                    // Player died, drop their orbs
+                    const dropOrbs = player.orbs; // Drop 100% of orbs
+                    if (dropOrbs > 0) {
+                        // Drop orbs in a spread pattern around death location
+                        for (let i = 0; i < dropOrbs; i++) {
+                            const spread = 10; // Spread radius
+                            const angle = (Math.PI * 2 * i) / dropOrbs; // Evenly distribute in a circle
+                            const x = player.position.x + Math.cos(angle) * spread;
+                            const z = player.position.z + Math.sin(angle) * spread;
+                            const y = Math.random() * 100 + 50; // Random height between 50 and 150
 
-// Apply quaternion rotation to a vector
-Vector3.prototype.applyQuaternion = function(q) {
-    const x = this.x, y = this.y, z = this.z;
-    const qx = q.x, qy = q.y, qz = q.z, qw = q.w;
+                            const color = Math.floor(Math.random() * 0xFFFFFF);
+                            const size = Math.random() * 0.5 + 0.5;
 
-    // calculate quat * vector
-    const ix = qw * x + qy * z - qz * y;
-    const iy = qw * y + qz * x - qx * z;
-    const iz = qw * z + qx * y - qy * x;
-    const iw = -qx * x - qy * y - qz * z;
-
-    // calculate result * inverse quat
-    this.x = ix * qw + iw * -qx + iy * -qz - iz * -qy;
-    this.y = iy * qw + iw * -qy + iz * -qx - ix * -qz;
-    this.z = iz * qw + iw * -qz + ix * -qy - iy * -qx;
-
-    return this;
-}; 
+                            const orb = {
+                                id: orbs.length,
+                                position: { x, y, z },
+                                color,
+                                size
+                            };
+                            orbs.push(orb);
+                        }
+                        player.orbs = 0; // Set to 0 since all orbs were dropped
+                    }
+                    player.health = 100;
+                    player.position = getRandomSpawnPoint();
+                }
+                io.emit('playerHealthUpdate', { id: playerId, health: player.health });
+            }
+        }
+    });
+}); 

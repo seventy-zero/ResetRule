@@ -1557,15 +1557,6 @@
                 camera.rotation.y = ((camera.rotation.y % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
             }
             
-            // Add camera rotation update to animation loop
-            const originalAnimate = animate;
-            animate = function() {
-                if (gameStarted && controls.isLocked) {
-                    updateCameraRotation();
-                }
-                originalAnimate();
-            };
-            
             console.log('Controls initialized');
 
             // Collision setup
@@ -1573,7 +1564,7 @@
             // const playerCollider = new THREE.Sphere(new THREE.Vector3(0, playerHeight, 0), playerRadius);
             // --- Use the globally declared playerCollider instead ---
             playerCollider.center.set(0, playerHeight, 0);
-            playerCollider.radius = playerRadius;
+            localCollider.radius = playerRadius;
 
             // --- [REMOVED] Redeclaration of raycaster here --- 
             // const raycaster = new THREE.Raycaster();
@@ -3629,20 +3620,6 @@
             }
         }
 
-        // Add health display update to animation loop
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            // Update health display
-            updateHealthDisplay();
-            
-            // Update pellet animations
-            animatePellets();
-            
-            // ... rest of animate function ...
-        }
-
-        // Add pellet animation to the main animation loop
         function animatePellets() {
             const currentTime = Date.now();
             
@@ -3725,7 +3702,7 @@
                 // Check for collisions with players
                 playerStates.forEach((playerState, username) => {
                     if (username !== playerUsername) {
-                        const playerCollider = new THREE.Sphere(playerState.mesh.position, playerRadius);
+                        const playerStateCollider = new THREE.Sphere(playerState.mesh.position, playerRadius);
                         const distance = pellet.position.distanceTo(playerState.mesh.position);
                         
                         if (distance < playerRadius + PELLET_RADIUS) {
@@ -3958,11 +3935,11 @@
 
         // *** ADDED: Ensure a playerCollider is defined for this scope ***
         // Assuming playerRadius is available here. Using resolvedPosition initially.
-        const playerCollider = new THREE.Sphere(resolvedPosition, playerRadius);
+        const localCollider = new THREE.Sphere(resolvedPosition, playerRadius);
 
         for (let i = 0; i < MAX_ITERATIONS; i++) {
-            playerCollider.center.copy(resolvedPosition); // Update collider for check
-            playerCollider.radius = playerRadius; // Ensure radius is set
+            localCollider.center.copy(resolvedPosition); // Update collider for check
+            localCollider.radius = playerRadius; // Ensure radius is set
             const normalCollision = checkCollision(resolvedPosition, playerRadius);
 
             if (!normalCollision.collision) {
@@ -4011,7 +3988,7 @@
         camera.position.copy(resolvedPosition);
         // Update the collider's center to the final position
         playerCollider.center.copy(camera.position); // Final collider update
-        playerCollider.radius = playerRadius; // Ensure radius is set
+        localCollider.radius = playerRadius; // Ensure radius is set
 
         // ... existing code ...
 
@@ -4475,20 +4452,15 @@ function moveWithCCD(startPos, targetPos, velocity, radius) {
                  console.warn(`[Pellet Hit] Could not find peerId for victim ${victimUsername} to send hit message.`);
             }
         } // Closing brace for handlePelletCollision
-    } // <--- ADDED closing brace for the main 'try' block
-    catch (error) {
-        console.error('Initialization failed:', error);
-        // Display error message to the user (optional)
-        const errorDiv = document.createElement('div');
-        errorDiv.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; background: red; color: white; padding: 10px; text-align: center; z-index: 9999;';
-        errorDiv.textContent = 'Error during initialization. Check console for details.';
-        document.body.appendChild(errorDiv);
-    }
 
     // Always render the scene
     // renderer.render(scene, camera); // This should be inside animate()
 
-    animate(); // Start the animation loop AFTER try...catch
+    try {
+        animate(); // Start the animation loop
+    } catch (error) {
+        console.error("Animation loop error:", error);
+    }
 
     // Add after the checkCollision function
 // ... existing code ...
