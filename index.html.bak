@@ -1557,6 +1557,13 @@
                 camera.rotation.y = ((camera.rotation.y % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
             }
             
+            // Add camera rotation update to animation loop
+            const originalAnimate = animate;
+            animate = function() {
+                if (gameStarted && controls.isLocked) {
+                    updateCameraRotation();
+                }
+                originalAnimate();
             };
             
             console.log('Controls initialized');
@@ -3622,6 +3629,17 @@
             }
         }
 
+        // Add health display update to animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update health display
+            updateHealthDisplay();
+            
+            // Update pellet animations
+            animatePellets();
+            
+            // ... rest of animate function ...
         }
 
         // Add pellet animation to the main animation loop
