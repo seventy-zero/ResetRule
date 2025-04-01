@@ -2655,6 +2655,14 @@
                 const deltaTime = clock.getDelta();
                 const currentTime = performance.now();
 
+                // --- Add necessary updates --- 
+                updateHealthDisplay(); // Update health bar visual
+                animatePellets();     // Update active shotgun pellets
+                if (gameStarted && controls.isLocked) {
+                    updateCameraRotation(); // Update camera rotation based on controls
+                }
+                // ---------------------------
+
                 // Update pellets with fixed timestep
                 updatePellets(FIXED_DELTA_TIME);
 
