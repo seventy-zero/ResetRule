@@ -2043,10 +2043,19 @@
 
                 // Add fling button event listeners
                 flingBtn.addEventListener('touchstart', function(e) {
+                    // --- DEBUG LOG ---
+                    // console.log(`[Fling Button TouchStart] Event fired. gameStarted: ${gameStarted}, controls.isLocked: ${controls.isLocked}`);
+                    // -----------------
                     e.preventDefault();
-                    if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
+                    // --- MODIFIED CHECK ---
+                    if (!gameStarted) {
+                        console.log("[Fling Button TouchStart] Blocked: gameStarted is false.");
+                        return;
+                    }
+                    // --------------------
+                    // if (!gameStarted || !controls.isLocked) return; // <--- REMOVED THIS CHECK
                     flingStartTime = performance.now();
-                    console.log('Fling button touch started');
+                    // console.log('Fling button touch started');
                     showLine = true;
                     this.classList.add('active');
                     
@@ -2075,7 +2084,10 @@
 
                 flingBtn.addEventListener('touchmove', function(e) {
                     e.preventDefault();
-                    if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
+                    // --- MODIFIED CHECK ---
+                    if (!gameStarted || !showLine) return;
+                    // --------------------
+                    // if (!gameStarted || !controls.isLocked) return; // <--- REMOVED THIS CHECK
                     if (!showLine) return;
                     
                     // Update line trace position
@@ -2131,9 +2143,12 @@
 
                 flingBtn.addEventListener('touchend', function(e) {
                     e.preventDefault();
-                    if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
+                    // --- MODIFIED CHECK ---
+                    if (!gameStarted) return; // Only check gameStarted
+                    // --------------------
+                    // if (!gameStarted || !controls.isLocked) return; // <--- REMOVED THIS CHECK
                     const touchDuration = performance.now() - flingStartTime;
-                    console.log('Fling button touch ended');
+                    // console.log('Fling button touch ended');
                     showLine = false;
                     tubeMesh.visible = false;
                     this.classList.remove('active');
@@ -2205,20 +2220,32 @@
 
                 // Right joystick touch handlers
                 rightJoystickZone.addEventListener('touchstart', function(e) {
+                    // --- DEBUG LOG ---
+                    // console.log(`[Right Stick TouchStart] Event fired. gameStarted: ${gameStarted}, controls.isLocked: ${controls.isLocked}`);
+                    // -----------------
                     e.preventDefault();
                     e.stopPropagation(); // Try stopping propagation
                     const touch = e.touches[0];
+                    // --- MODIFIED CHECK ---
+                    if (!gameStarted) {
+                        console.log("[Right Stick TouchStart] Blocked: gameStarted is false.");
+                        return;
+                    }
+                    // --------------------
                     rightTouchStartX = touch.clientX;
                     rightTouchStartY = touch.clientY;
                     isRightTouching = true;
                     rightJoystick.style.transition = 'none';
-                    console.log('Right touch started');
+                    // console.log('Right touch started');
                 }, { passive: false });
 
                 rightJoystickZone.addEventListener('touchmove', function(e) {
-                    if (!isRightTouching) return;
+                    // if (!isRightTouching) return;
                     e.preventDefault();
-                    if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
+                    // --- MODIFIED CHECK ---
+                    if (!gameStarted || !isRightTouching) return;
+                    // --------------------
+                    // if (!gameStarted || !controls.isLocked) return; // <--- REMOVED THIS CHECK
                     const touch = e.touches[0];
                     const currentTime = performance.now();
                     
@@ -3655,8 +3682,17 @@
             
             // Add shotgun button event listeners
             shotgunButton.addEventListener('touchstart', function(e) {
+                // --- DEBUG LOG ---
+                // console.log(`[Shotgun Button TouchStart] Event fired. gameStarted: ${gameStarted}, controls.isLocked: ${controls.isLocked}`);
+                // -----------------
                 e.preventDefault();
-                if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
+                // --- MODIFIED CHECK ---
+                if (!gameStarted) {
+                    console.log("[Shotgun Button TouchStart] Blocked: gameStarted is false.");
+                    return;
+                }
+                // --------------------
+                // if (!gameStarted || !controls.isLocked) return; // <--- REMOVED THIS CHECK
                 console.log('Mobile shotgun button TAPPED.'); // <-- ADDED LOG
                 fireShotgun();
             }, { passive: false });
@@ -3665,6 +3701,10 @@
             let shotgunButtonHeld = false; // Flag to track button state
 
             shotgunButton.addEventListener('touchstart', function(e) {
+                // --- DEBUG LOG ---
+                // console.log(`[Shotgun Button TouchStart] Event fired. gameStarted: ${gameStarted}, controls.isLocked: ${controls.isLocked}`);
+                console.log(`[Shotgun Button TouchStart] Event fired. gameStarted: ${gameStarted}, controls.isLocked: ${controls.isLocked}`);
+                // -----------------
                 e.preventDefault();
                 if (!gameStarted || !controls.isLocked) return; // <--- ADD THIS CHECK
                 shotgunButtonHeld = true;
